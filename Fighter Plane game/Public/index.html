@@ -1650,7 +1650,7 @@
                 if (b.isEnemy) {
                     // INCREASED HITBOX TO 80
                     if (b.mesh.position.distanceTo(planeRig.position) < 80) { 
-                         health -= 6; 
+                         health -= 10; 
                          AudioSys.playExplosion(); 
                          if (health <= 0) { health = 0; endGame(false, "Shot Down!"); }
                          scene.remove(b.mesh); bullets.splice(i, 1); continue;
@@ -1832,3 +1832,4 @@
     </script>
 </body>
 </html>
+
