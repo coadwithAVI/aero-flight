@@ -117,6 +117,7 @@
         }
         .action-btn:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 10px 40px rgba(0, 210, 255, 0.6); filter: brightness(1.2); }
         .action-btn:active { transform: translateY(1px); }
+        .action-btn:disabled { background: #555; cursor: not-allowed; transform: none; box-shadow: none; }
         
         .secondary-btn { background: rgba(255,255,255,0.05); border: 1px solid #555; box-shadow: none; font-size: 16px; }
         .secondary-btn:hover { background: rgba(255,255,255,0.15); border-color: #fff; }
@@ -164,6 +165,20 @@
         .btn-left { grid-column: 1; grid-row: 2; }
         .btn-down { grid-column: 2; grid-row: 2; }
         .btn-right { grid-column: 3; grid-row: 2; }
+
+        /* LOADING OVERLAY */
+        #loading-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(5px);
+            display: flex; justify-content: center; align-items: center;
+            flex-direction: column; z-index: 1000;
+        }
+        .spinner {
+            width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.1);
+            border-top: 5px solid #00d2ff; border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -221,6 +236,12 @@
         </div>
     </div>
 
+    <!-- LOADING OVERLAY -->
+    <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
+        <h2 style="color:#fff;">CONNECTING TO SERVER...</h2>
+    </div>
+
     <!-- MAIN MENU -->
     <div id="start-screen" class="screen">
         <div class="menu-box">
@@ -239,12 +260,12 @@
       <div class="menu-box">
         <h1>MULTIPLAYER</h1>
 
-        <button class="action-btn" onclick="mpCreateRoom()">CREATE ROOM</button>
+        <button id="btn-create" class="action-btn" onclick="mpCreateRoom()">CREATE ROOM</button>
 
         <div style="margin-top:15px;"></div>
 
         <input id="mp-room-code" placeholder="Enter Room Code e.g. abcd" style="margin-top:10px; padding: 12px; width: 80%; border-radius: 5px; border: none; background: rgba(255,255,255,0.1); color: #fff; font-size: 16px; font-weight: bold; text-align: center;">
-        <button class="action-btn secondary-btn" onclick="mpJoinRoom()">JOIN ROOM</button>
+        <button id="btn-join" class="action-btn secondary-btn" onclick="mpJoinRoom()">JOIN ROOM</button>
 
         <button class="action-btn secondary-btn" onclick="showStartMenu()">BACK</button>
       </div>
@@ -361,6 +382,12 @@
           else console.error("Screen not found:", id);
         }
 
+        function showLoading(show) {
+            const el = document.getElementById("loading-overlay");
+            if(show) el.classList.remove("hidden");
+            else el.classList.add("hidden");
+        }
+
         function showStartMenu() { showScreen("start-screen"); }
         function openMpMenu() { showScreen("mp-menu-screen"); }
 
@@ -382,6 +409,7 @@
           }
 
           mp.playerName = prompt("Enter your name:", "PLAYER") || "PLAYER";
+          showLoading(true); // Show loading
           
           // FIX 2: Client now generates ID and uses standard 'joinRoom' 
           // because server does not support lobby 'mp_create_room'
@@ -393,14 +421,15 @@
           socket.emit("joinRoom", { room: mp.roomId, name: mp.playerName });
           
           // FIX (Bug 2): Manually showing lobby screen since server won't emit 'mp_room_created'
-          mp.isHost = true; // Assumed since created
-          mp.inLobby = true;
-          document.getElementById("lobby-room-id").innerText = mp.roomId;
-          showScreen("lobby-screen");
-          document.getElementById("host-start-btn").classList.remove("hidden");
-          
-          // Initial self-render in lobby
-          lobbyRenderPlayers([{name: mp.playerName, isHost: true}]);
+          setTimeout(() => {
+              showLoading(false);
+              mp.isHost = true; // Assumed since created
+              mp.inLobby = true;
+              document.getElementById("lobby-room-id").innerText = mp.roomId;
+              showScreen("lobby-screen");
+              document.getElementById("host-start-btn").classList.remove("hidden");
+              refreshLobbyUI();
+          }, 500);
         }
 
         function mpJoinRoom() {
@@ -417,19 +446,22 @@
           const room = (document.getElementById("mp-room-code").value || "").trim();
           if (!room) { alert("Enter Room Code"); return; }
 
+          showLoading(true);
+
           // FIX (Bug 1): Sending object { room, name }
           socket.emit("joinRoom", { room: room, name: mp.playerName });
           mp.roomId = room;
           
           // FIX (Bug 2): Manually showing lobby screen
-          mp.isHost = false; 
-          mp.inLobby = true;
-          document.getElementById("lobby-room-id").innerText = mp.roomId;
-          showScreen("lobby-screen");
-          document.getElementById("host-start-btn").classList.add("hidden");
-          
-          // Initial self-render
-          lobbyRenderPlayers([{name: mp.playerName, isHost: false}]);
+          setTimeout(() => {
+              showLoading(false);
+              mp.isHost = false; 
+              mp.inLobby = true;
+              document.getElementById("lobby-room-id").innerText = mp.roomId;
+              showScreen("lobby-screen");
+              document.getElementById("host-start-btn").classList.add("hidden");
+              refreshLobbyUI();
+          }, 500);
         }
 
         function mpLeaveLobby() {
@@ -458,15 +490,25 @@
         }
 
         // Lobby UI update
-        function lobbyRenderPlayers(players) {
-          const list = document.getElementById("lobby-player-list");
-          list.innerHTML = "";
+        function refreshLobbyUI() {
+            const list = document.getElementById("lobby-player-list");
+            list.innerHTML = "";
 
-          players.forEach((p, i) => {
-            const row = document.createElement("div");
-            row.textContent = `${i+1}. ${p.name}${p.isHost ? " (HOST)" : ""}`;
-            list.appendChild(row);
-          });
+            // Add self
+            const selfRow = document.createElement("div");
+            selfRow.textContent = `1. ${mp.playerName} ${mp.isHost ? "(HOST)" : "(YOU)"}`;
+            selfRow.style.color = "#00ff00";
+            list.appendChild(selfRow);
+
+            // Add others
+            let i = 2;
+            Object.keys(otherPlayers).forEach(id => {
+                const row = document.createElement("div");
+                row.textContent = `${i}. RIVAL PILOT`; // Generic name as server doesn't send names
+                row.style.color = "#ddd";
+                list.appendChild(row);
+                i++;
+            });
         }
         
         function mpCountdownThenStart() {
@@ -510,46 +552,16 @@
           document.getElementById("settings-screen").classList.add("hidden");
           document.getElementById("pause-screen").classList.add("hidden");
           document.getElementById("end-screen").classList.add("hidden");
+          showLoading(false);
         }
 
         // =============================
         // MULTIPLAYER SOCKET EVENTS
         // =============================
         
-        // NOTE: 'connect' event handled in init section for debug
-        
-        // --- OLD LOBBY EVENTS (Kept but likely unused with new server logic) ---
-        socket.on("mp_room_created", ({ roomId, players, hostId }) => {
-          console.log("Room Created Event Received:", roomId); 
-          mp.roomId = roomId;
-          mp.isHost = (socket.id === hostId);
-          mp.inLobby = true;
-          document.getElementById("lobby-room-id").innerText = roomId;
-          lobbyRenderPlayers(players);
-          document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost);
-          showScreen("lobby-screen");
-        });
-
-        socket.on("mp_room_joined", ({ roomId, players, hostId }) => {
-          console.log("Room Joined Event Received:", roomId); 
-          mp.roomId = roomId;
-          mp.isHost = (socket.id === hostId);
-          mp.inLobby = true;
-          document.getElementById("lobby-room-id").innerText = roomId;
-          lobbyRenderPlayers(players);
-          document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost);
-          showScreen("lobby-screen");
-        });
-
-        socket.on("mp_lobby_update", ({ roomId, players, hostId }) => {
-          if (mp.roomId !== roomId) return;
-          mp.isHost = (socket.id === hostId);
-          lobbyRenderPlayers(players);
-          document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost);
-        });
-
         socket.on("mp_error", (msg) => {
           alert(msg || "Multiplayer error");
+          showLoading(false);
         });
 
         // Listen for 'startGame' or 'gameStarted' (safest approach)
@@ -566,18 +578,7 @@
         
         // FIX 3: Handling currentPlayers to start game and map ID correctly
         socket.on('currentPlayers', (players) => {
-            // FIX (Bug 3): Removed auto-start logic to prevent bypassing lobby
-            // Game will wait for 'mp_game_starting' event from host
-
-            // FIX: Update lobby list whenever players data arrives
-            if (mp.inLobby) {
-                const list = Object.keys(players).map(id => ({
-                    name: players[id].name || "PLAYER",
-                    isHost: false // Server info might be limited
-                }));
-                lobbyRenderPlayers(list);
-            }
-
+            
             // FIX: Remove stale players (ghosts)
             Object.keys(otherPlayers).forEach(existingId => {
                 if (!players[existingId]) {
@@ -593,6 +594,9 @@
                 const pData = players[id];
                 addOtherPlayer({ playerId: id, ...pData });
             });
+
+            // FIX: Refresh UI whenever player list changes
+            if (mp.inLobby) refreshLobbyUI();
         });
 
         // FIX 4: Handling newPlayer data mismatch
@@ -600,10 +604,15 @@
             // Server sends { id: socket.id, player: {...} }
             // We adapt it to flattened object with playerId
             addOtherPlayer({ playerId: data.id, ...data.player });
+            
+            // FIX: Refresh UI on new player
+            if (mp.inLobby) refreshLobbyUI();
         });
 
         socket.on('playerDisconnected', (playerId) => {
             removeOtherPlayer(playerId);
+            // FIX: Refresh UI on disconnect
+            if (mp.inLobby) refreshLobbyUI();
         });
 
         // FIX 5: Handling playerMoved data mismatch
