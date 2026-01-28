@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sky Pilot - Multiplayer</title>
 
   <!-- Socket.IO client -->
@@ -258,7 +258,7 @@
 <script>
   document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
 
-  // --- 🔥 AUTO-SYNC SETTINGS FROM STORAGE ---
+  // --- AUTO-SYNC SETTINGS ---
   let bindings = { up: 'w', down: 's', left: 'a', right: 'd', boost: ' ', fire: 'shift' };
   const savedBinds = localStorage.getItem('skyPilot_bindings');
   if (savedBinds) { try { bindings = JSON.parse(savedBinds); } catch(e){} }
@@ -269,11 +269,11 @@
   // --- MP STATE ---
   let gameMode = "multi";
   let mp = { roomId: null, isHost: false, inLobby: false, playerName: null };
-  const otherPlayers = {}; 
+  const otherPlayers = {};     // Stores active meshes
+  const playersData = {};      // Stores raw data for players who joined while scene was null
   let socket; 
   if (typeof io !== "undefined") socket = io(); 
   else { 
-      // alert("Socket.io not loaded! Multiplayer will not work."); 
       socket = { emit() {}, on() {} }; 
   }
 
@@ -294,15 +294,63 @@
   socket.on("mp_lobby_update", ({ roomId, players, hostId }) => { if (mp.roomId !== roomId) return; mp.isHost = (socket.id === hostId); lobbyRenderPlayers(players); document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); });
   socket.on("mp_error", (msg) => alert(msg || "Multiplayer error"));
   socket.on("mp_game_starting", () => { showScreen("countdown-screen"); mpCountdownThenStart(); });
-  socket.on("currentPlayers", (players) => { Object.keys(players).forEach((id) => { if (players[id].playerId === socket.id) return; addOtherPlayer(players[id]); }); });
+
+  // --- PLAYER SYNC (FIXED: BUFFERING) ---
+  socket.on("currentPlayers", (players) => { 
+      Object.keys(players).forEach((id) => { 
+          if (players[id].playerId === socket.id) return; 
+          addOtherPlayer(players[id]); 
+      }); 
+  });
+  
   socket.on("newPlayer", (playerInfo) => addOtherPlayer(playerInfo));
+  
   socket.on("playerDisconnected", (playerId) => removeOtherPlayer(playerId));
-  socket.on("playerMoved", (playerInfo) => { const p = otherPlayers[playerInfo.playerId]; if (!p) return; p.position.set(playerInfo.x, playerInfo.y, playerInfo.z); if (playerInfo.quaternion) { p.quaternion.set(playerInfo.quaternion.x, playerInfo.quaternion.y, playerInfo.quaternion.z, playerInfo.quaternion.w); } else if (playerInfo.rotation) { p.rotation.set(playerInfo.rotation.x, playerInfo.rotation.y, playerInfo.rotation.z); } });
+  
+  socket.on("playerMoved", (playerInfo) => { 
+      // Update raw data first
+      playersData[playerInfo.playerId] = playerInfo;
+      
+      const p = otherPlayers[playerInfo.playerId]; 
+      if (!p) {
+           // Edge case: if we are in game but mesh missing, try creating it now
+           if(scene) addOtherPlayer(playerInfo);
+           return; 
+      }
+      p.position.set(playerInfo.x, playerInfo.y, playerInfo.z); 
+      if (playerInfo.quaternion) { 
+          p.quaternion.set(playerInfo.quaternion.x, playerInfo.quaternion.y, playerInfo.quaternion.z, playerInfo.quaternion.w); 
+      } else if (playerInfo.rotation) { 
+          p.rotation.set(playerInfo.rotation.x, playerInfo.rotation.y, playerInfo.rotation.z); 
+      } 
+  });
 
-  function addOtherPlayer(playerInfo) { if (!scene) return; if (otherPlayers[playerInfo.playerId]) return; const otherPlayer = createPlaneMesh(0x00ff00); otherPlayer.position.set(playerInfo.x, playerInfo.y, playerInfo.z); scene.add(otherPlayer); otherPlayers[playerInfo.playerId] = otherPlayer; }
-  function removeOtherPlayer(playerId) { if (!otherPlayers[playerId]) return; disposeHierarchy(otherPlayers[playerId]); scene.remove(otherPlayers[playerId]); delete otherPlayers[playerId]; }
+  function addOtherPlayer(playerInfo) { 
+      // 1. Store Data
+      playersData[playerInfo.playerId] = playerInfo;
 
-  // --- GAME LOGIC ---
+      // 2. If scene ready, Create Mesh
+      if (scene && !otherPlayers[playerInfo.playerId]) {
+          const otherPlayer = createPlaneMesh(0x00ff00); 
+          // Use latest known position if available
+          const x = playerInfo.x || 0;
+          const y = playerInfo.y || 400;
+          const z = playerInfo.z || 0;
+          otherPlayer.position.set(x, y, z); 
+          scene.add(otherPlayer); 
+          otherPlayers[playerInfo.playerId] = otherPlayer; 
+      }
+  }
+
+  function removeOtherPlayer(playerId) { 
+      delete playersData[playerId];
+      if (!otherPlayers[playerId]) return; 
+      disposeHierarchy(otherPlayers[playerId]); 
+      if(scene) scene.remove(otherPlayers[playerId]); 
+      delete otherPlayers[playerId]; 
+  }
+
+  // --- GAME CONFIG & LOGIC ---
   const TERRAIN_COLORS = { WATER: 0x1E90FF, SAND: 0xEEDD82, GRASS: 0x556B2F, ROCK: 0x808080, SNOW: 0xFFFFFF };
   const NORMAL_SPEED = 6.5; const BOOST_SPEED = 14.5; const TURN_SPEED = 0.05; const LIFT_SPEED = 3.5;
   const RINGS_PER_LAP = 4; const TOTAL_LAPS = 2; const TOTAL_RINGS_WIN = RINGS_PER_LAP * TOTAL_LAPS;
@@ -318,7 +366,7 @@
   const minimapCanvas = document.getElementById('minimap-canvas'); const minimapCtx = minimapCanvas.getContext('2d');
   let audioCtx, boostOsc, boostGain, boostNoise, boostNoiseGain, noiseNode, noiseGain;
 
-  // --- AUDIO SYSTEM (Syncs with isMusicOn/isSoundOn) ---
+  // --- AUDIO SYSTEM ---
   const AudioSys = {
     init: function() { if (audioCtx) return; audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
       const scrapeBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
@@ -399,10 +447,20 @@
   function updateLeaderboard() { const list = document.getElementById('leaderboard-list'); if(!list) return; list.innerHTML = ""; const row = document.createElement('div'); row.className = 'lb-row'; const n = document.createElement('span'); n.className = 'lb-name lb-player lb-rank-1'; n.innerText = `1. ${playerStats.name}`; const s = document.createElement('span'); s.className = 'lb-score'; s.innerText = `${playerStats.rings}/${TOTAL_RINGS_WIN}`; row.appendChild(n); row.appendChild(s); list.appendChild(row); }
   function ringCollected() { playerStats.rings++; playerStats.progress++; updateRingVisuals(); updateLeaderboard(); if (playerStats.rings >= TOTAL_RINGS_WIN) endGame(true, "Race Champion!"); }
   function disposeHierarchy(obj) { if (!obj) return; if (obj.children) obj.children.forEach(disposeHierarchy); if (obj.geometry) obj.geometry.dispose(); if (obj.material) { if (Array.isArray(obj.material)) obj.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); }); else { if(obj.material.map) obj.material.map.dispose(); obj.material.dispose(); } } }
+  
   function initGame() {
     AudioSys.init(); const container = document.getElementById('game-container'); if (scene) { rings.forEach(r => { scene.remove(r); disposeHierarchy(r); }); repairKits.forEach(k => { scene.remove(k); disposeHierarchy(k); }); bullets.forEach(b => { scene.remove(b.mesh); disposeHierarchy(b.mesh); }); } rings = []; repairKits = []; bullets = []; ringWaypoints = [];
-    Object.values(otherPlayers).forEach(p => { if(scene) scene.remove(p); disposeHierarchy(p); }); for (let k in otherPlayers) delete otherPlayers[k];
-    scene = new THREE.Scene(); scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 2000, 10000); camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000); renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.shadowMap.enabled = true; container.innerHTML = ""; container.appendChild(renderer.domElement);
+    
+    // 🔥 FORCE RENDER BUFFERED PLAYERS
+    scene = new THREE.Scene(); 
+    scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 2000, 10000); 
+    
+    // Iterate over buffered data and create meshes now that scene exists
+    for (let pid in playersData) {
+        if(pid !== socket.id) addOtherPlayer(playersData[pid]);
+    }
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000); renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.shadowMap.enabled = true; container.innerHTML = ""; container.appendChild(renderer.domElement);
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); scene.add(hemiLight); const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 200, 50); dirLight.castShadow = true; scene.add(dirLight);
     playerStats = { name: mp.playerName || "PLAYER", rings: 0, progress: 0 }; health = 100; boostLevel = 100;
     generateTerrain(); generateOcean(); createPlaneSystem(); createGuideArrow(); createRepairKits(); createRings(); updateRingVisuals(); updateLeaderboard(); isPlaying = true; isPaused = false; animate();
