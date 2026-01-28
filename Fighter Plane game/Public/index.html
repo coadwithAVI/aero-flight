@@ -326,46 +326,110 @@
         };
         const otherPlayers = {}; // Store other players' meshes
         
-        // Initialize socket if available, otherwise mock it to prevent crash
+        // ============================================
+        // ✅ FIX: SOCKET INITIALIZATION & DEBUG LOGS
+        // ============================================
         let socket;
         if (typeof io !== 'undefined') {
+            // FIX 1: URL TYPO FIXED (aero instead of aera)
             socket = io("https://aero-flight.onrender.com");
+            
+            // FIX: Any event debugger
+            socket.onAny((event, ...args) => {
+              console.log("📩 SOCKET EVENT:", event, args);
+            });
+
+            // DEBUG: Connection check
+            socket.on('connect', () => {
+                console.log("✅ Socket Connected! ID:", socket.id);
+            });
+            
+            socket.on('connect_error', (err) => {
+                console.error("❌ Socket Connection Error:", err.message);
+            });
         } else {
             console.warn("Socket.io not found. Multiplayer features will not work.");
-            socket = { emit: () => {}, on: () => {} }; // Mock object
+            socket = { emit: () => {}, on: () => {}, connected: false }; // Mock object
         }
 
         // show/hide helpers
+        // ✅ FIX: Robust showScreen function
         function showScreen(id) {
           document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden"));
           const el = document.getElementById(id);
           if (el) el.classList.remove("hidden");
+          else console.error("Screen not found:", id);
         }
+
         function showStartMenu() { showScreen("start-screen"); }
         function openMpMenu() { showScreen("mp-menu-screen"); }
 
         // SINGLE PLAYER START (existing)
         function startSinglePlayer() {
           gameMode = "single";
-          initGame(); // ✅ tumhara existing single-player init
+          initGame(); 
         }
 
-        // Multiplayer create/join
+        // ✅ FIX: CREATE ROOM SAFETY CHECK & LOGIC FIX 2
         function mpCreateRoom() {
           gameMode = "multi";
-          mp.playerName = prompt("Enter your name:", "PLAYER") || "PLAYER";
 
-          socket.emit("mp_create_room", { name: mp.playerName });
+          // FIX: Check if socket is actually connected before sending
+          if (!socket || !socket.connected) {
+            alert("Server se connect nahi hua. 2 sec wait karke dobara try karo. (Check Console for errors)");
+            console.log("Socket status:", socket ? socket.connected : "No socket");
+            return;
+          }
+
+          mp.playerName = prompt("Enter your name:", "PLAYER") || "PLAYER";
+          
+          // FIX 2: Client now generates ID and uses standard 'joinRoom' 
+          // because server does not support lobby 'mp_create_room'
+          mp.roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
+          console.log("Creating/Joining room:", mp.roomId);
+          alert("Room Created! Share Code: " + mp.roomId);
+          
+          // FIX (Bug 1): Sending object { room, name }
+          socket.emit("joinRoom", { room: mp.roomId, name: mp.playerName });
+          
+          // FIX (Bug 2): Manually showing lobby screen since server won't emit 'mp_room_created'
+          mp.isHost = true; // Assumed since created
+          mp.inLobby = true;
+          document.getElementById("lobby-room-id").innerText = mp.roomId;
+          showScreen("lobby-screen");
+          document.getElementById("host-start-btn").classList.remove("hidden");
+          
+          // Initial self-render in lobby
+          lobbyRenderPlayers([{name: mp.playerName, isHost: true}]);
         }
 
         function mpJoinRoom() {
           gameMode = "multi";
+          
+           // FIX: Connection check for join too
+          if (!socket || !socket.connected) {
+             alert("Server se connect nahi hua. Please wait.");
+             return;
+          }
+
           mp.playerName = prompt("Enter your name:", "PLAYER") || "PLAYER";
 
           const room = (document.getElementById("mp-room-code").value || "").trim();
           if (!room) { alert("Enter Room Code"); return; }
 
-          socket.emit("mp_join_room", { roomId: room, name: mp.playerName });
+          // FIX (Bug 1): Sending object { room, name }
+          socket.emit("joinRoom", { room: room, name: mp.playerName });
+          mp.roomId = room;
+          
+          // FIX (Bug 2): Manually showing lobby screen
+          mp.isHost = false; 
+          mp.inLobby = true;
+          document.getElementById("lobby-room-id").innerText = mp.roomId;
+          showScreen("lobby-screen");
+          document.getElementById("host-start-btn").classList.add("hidden");
+          
+          // Initial self-render
+          lobbyRenderPlayers([{name: mp.playerName, isHost: false}]);
         }
 
         function mpLeaveLobby() {
@@ -378,17 +442,19 @@
           });
           for (let k in otherPlayers) delete otherPlayers[k];
 
-          socket.emit("mp_leave_room", { roomId: mp.roomId });
+          //socket.emit("mp_leave_room", { roomId: mp.roomId }); 
+          // Note: Standard servers usually handle disconnect automatically
           mp.roomId = null;
           mp.isHost = false;
           mp.inLobby = false;
           showStartMenu();
         }
 
-        // Host start game
+        // Host start game (Dead code if lobby bypassed, but kept for structure)
         function mpHostStartGame() {
           if (!mp.isHost) return;
-          socket.emit("mp_start_game", { roomId: mp.roomId });
+          // FIX: Emit 'startGame' as expected by standard servers
+          socket.emit("startGame", { room: mp.roomId }); 
         }
 
         // Lobby UI update
@@ -450,42 +516,35 @@
         // MULTIPLAYER SOCKET EVENTS
         // =============================
         
-        socket.on("connect", () => {
-             console.log("Connected to server", socket.id);
-        });
-
+        // NOTE: 'connect' event handled in init section for debug
+        
+        // --- OLD LOBBY EVENTS (Kept but likely unused with new server logic) ---
         socket.on("mp_room_created", ({ roomId, players, hostId }) => {
+          console.log("Room Created Event Received:", roomId); 
           mp.roomId = roomId;
           mp.isHost = (socket.id === hostId);
           mp.inLobby = true;
-
           document.getElementById("lobby-room-id").innerText = roomId;
           lobbyRenderPlayers(players);
-
           document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost);
-
           showScreen("lobby-screen");
         });
 
         socket.on("mp_room_joined", ({ roomId, players, hostId }) => {
+          console.log("Room Joined Event Received:", roomId); 
           mp.roomId = roomId;
           mp.isHost = (socket.id === hostId);
           mp.inLobby = true;
-
           document.getElementById("lobby-room-id").innerText = roomId;
           lobbyRenderPlayers(players);
-
           document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost);
-
           showScreen("lobby-screen");
         });
 
         socket.on("mp_lobby_update", ({ roomId, players, hostId }) => {
           if (mp.roomId !== roomId) return;
-
           mp.isHost = (socket.id === hostId);
           lobbyRenderPlayers(players);
-
           document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost);
         });
 
@@ -493,30 +552,57 @@
           alert(msg || "Multiplayer error");
         });
 
-        socket.on("mp_game_starting", () => {
-          // everybody goes to countdown screen
-          showScreen("countdown-screen");
-          mpCountdownThenStart();
-        });
+        // Listen for 'startGame' or 'gameStarted' (safest approach)
+        const handleGameStart = () => {
+            showScreen("countdown-screen");
+            mpCountdownThenStart();
+        };
         
-        // --- MULTIPLAYER ENTITY SYNC ---
+        socket.on("startGame", handleGameStart);
+        socket.on("gameStarted", handleGameStart); // ✅ Added 'gameStarted'
+        socket.on("mp_game_starting", handleGameStart);
+        
+        // --- MULTIPLAYER ENTITY SYNC (UPDATED) ---
+        
+        // FIX 3: Handling currentPlayers to start game and map ID correctly
         socket.on('currentPlayers', (players) => {
+            // FIX (Bug 3): Removed auto-start logic to prevent bypassing lobby
+            // Game will wait for 'mp_game_starting' event from host
+
+            // FIX: Update lobby list whenever players data arrives
+            if (mp.inLobby) {
+                const list = Object.keys(players).map(id => ({
+                    name: players[id].name || "PLAYER",
+                    isHost: false // Server info might be limited
+                }));
+                lobbyRenderPlayers(list);
+            }
+
             Object.keys(players).forEach((id) => {
-                if (players[id].playerId === socket.id) return;
-                addOtherPlayer(players[id]);
+                // FIX 3: Use key 'id' instead of property .playerId
+                if (id === socket.id) return;
+                
+                // Add player with ID mapped correctly for addOtherPlayer
+                const pData = players[id];
+                addOtherPlayer({ playerId: id, ...pData });
             });
         });
 
-        socket.on('newPlayer', (playerInfo) => {
-            addOtherPlayer(playerInfo);
+        // FIX 4: Handling newPlayer data mismatch
+        socket.on('newPlayer', (data) => {
+            // Server sends { id: socket.id, player: {...} }
+            // We adapt it to flattened object with playerId
+            addOtherPlayer({ playerId: data.id, ...data.player });
         });
 
         socket.on('playerDisconnected', (playerId) => {
             removeOtherPlayer(playerId);
         });
 
+        // FIX 5: Handling playerMoved data mismatch
         socket.on('playerMoved', (playerInfo) => {
-            const p = otherPlayers[playerInfo.playerId];
+            // Server sends object with .id property
+            const p = otherPlayers[playerInfo.id];
             if (p) {
                 p.position.set(playerInfo.x, playerInfo.y, playerInfo.z);
                 
@@ -1016,7 +1102,11 @@
                 if (y < -150) y = -150;
                 positions.setY(i, y);
                 const color = new THREE.Color();
-                if (y < -50) color.setHex(TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(TERRAIN_COLORS.ROCK); else color.setHex(TERRAIN_COLORS.SNOW);
+                if (y < -50) color.setHex(TERRAIN_COLORS.SAND); 
+                else if (y < 100) color.setHex(TERRAIN_COLORS.SAND); 
+                else if (y < 500) color.setHex(TERRAIN_COLORS.GRASS); 
+                else if (y < 900) color.setHex(TERRAIN_COLORS.ROCK); 
+                else color.setHex(TERRAIN_COLORS.SNOW);
                 colors.push(color.r, color.g, color.b);
             }
             geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals();
@@ -1297,140 +1387,142 @@
 
             // --- ENEMIES LOGIC (Fixed) ---
             const now = Date.now();
-            enemies.forEach((e, idx) => {
-                if(e.userData.alive) {
-                    
-                    // --- 1. FIND NEAREST TARGET ---
-                    let closestTarget = null;
-                    let minDist = Infinity;
-
-                    // Check Player
-                    const distToPlayer = e.position.distanceTo(planeRig.position);
-                    if (distToPlayer < 10000) { 
-                        closestTarget = planeRig;
-                        minDist = distToPlayer;
-                    }
-
-                    // Check other Enemies (Free For All)
-                    enemies.forEach(other => {
-                        if (other !== e && other.userData.alive) {
-                            const d = e.position.distanceTo(other.position);
-                            if (d < minDist) {
-                                minDist = d;
-                                closestTarget = other; 
-                            }
-                        }
-                    });
-
-                    // --- 2. DODGE LOGIC (Smart Dodge) ---
-                    let isDodging = false;
-                    for(let b of bullets) {
-                          // Check only close bullets
-                        if (b.mesh.position.distanceTo(e.position) < 500) {
-                             // Check if bullet is heading towards enemy
-                             const toEnemy = e.position.clone().sub(b.mesh.position).normalize();
-                             const bulletDir = b.velocity.clone().normalize();
-                             // Fix: Only dodge bullets heading TOWARDS enemy
-                             if (bulletDir.dot(toEnemy) > 0.6) {
-                                 isDodging = true;
-                                 break;
-                             }
-                        }
-                    }
-
-                    // --- MOVEMENT LOGIC ---
-                    
-                    if (isDodging) {
-                        e.rotation.z += 0.1; 
-                        e.translateY(2);      
-                        e.translateX(Math.sin(now * 0.01) * 2); 
-                        e.translateZ(-e.userData.speed * 1.2); 
-                        // Fix: Enemies can still shoot while dodging (fall through to shooting block)
-                    } else {
-                        // COMBAT vs RACE MODE
-                        let targetPosVec;
+            if (gameMode !== "multi") {
+                enemies.forEach((e, idx) => {
+                    if(e.userData.alive) {
                         
-                        // If very close to target, engage combat mode (look at target)
-                        // otherwise focus on race (look at ring)
-                        if (closestTarget && minDist < 2000) {
-                            targetPosVec = closestTarget.position.clone();
+                        // --- 1. FIND NEAREST TARGET ---
+                        let closestTarget = null;
+                        let minDist = Infinity;
+
+                        // Check Player
+                        const distToPlayer = e.position.distanceTo(planeRig.position);
+                        if (distToPlayer < 10000) { 
+                            closestTarget = planeRig;
+                            minDist = distToPlayer;
+                        }
+
+                        // Check other Enemies (Free For All)
+                        enemies.forEach(other => {
+                            if (other !== e && other.userData.alive) {
+                                const d = e.position.distanceTo(other.position);
+                                if (d < minDist) {
+                                    minDist = d;
+                                    closestTarget = other; 
+                                }
+                            }
+                        });
+
+                        // --- 2. DODGE LOGIC (Smart Dodge) ---
+                        let isDodging = false;
+                        for(let b of bullets) {
+                            // Check only close bullets
+                            if (b.mesh.position.distanceTo(e.position) < 500) {
+                                // Check if bullet is heading towards enemy
+                                const toEnemy = e.position.clone().sub(b.mesh.position).normalize();
+                                const bulletDir = b.velocity.clone().normalize();
+                                // Fix: Only dodge bullets heading TOWARDS enemy
+                                if (bulletDir.dot(toEnemy) > 0.6) {
+                                    isDodging = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // --- MOVEMENT LOGIC ---
+                        
+                        if (isDodging) {
+                            e.rotation.z += 0.1; 
+                            e.translateY(2);      
+                            e.translateX(Math.sin(now * 0.01) * 2); 
+                            e.translateZ(-e.userData.speed * 1.2); 
+                            // Fix: Enemies can still shoot while dodging (fall through to shooting block)
                         } else {
-                            let targetIdx = e.userData.progress % RINGS_PER_LAP; 
-                            const wp = ringWaypoints[targetIdx];
-                            if (wp) targetPosVec = new THREE.Vector3(wp.x, wp.y, wp.z);
-                        }
-
-                        if (targetPosVec) {
-                            // Terrain Avoidance
-                            const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(e.quaternion); 
-                            const lookAheadPoint = e.position.clone().add(forwardDir.clone().multiplyScalar(400));
-                            const terrainH_ahead = getTerrainHeight(lookAheadPoint.x, lookAheadPoint.z);
+                            // COMBAT vs RACE MODE
+                            let targetPosVec;
                             
-                            if (lookAheadPoint.y < terrainH_ahead + 250) {
-                                targetPosVec.y = Math.max(targetPosVec.y, terrainH_ahead + 400);
+                            // If very close to target, engage combat mode (look at target)
+                            // otherwise focus on race (look at ring)
+                            if (closestTarget && minDist < 2000) {
+                                targetPosVec = closestTarget.position.clone();
+                            } else {
+                                let targetIdx = e.userData.progress % RINGS_PER_LAP; 
+                                const wp = ringWaypoints[targetIdx];
+                                if (wp) targetPosVec = new THREE.Vector3(wp.x, wp.y, wp.z);
                             }
 
-                            // Smooth Turning
-                            const dummy = new THREE.Object3D();
-                            dummy.position.copy(e.position);
-                            dummy.lookAt(targetPosVec);
-                            dummy.rotateY(Math.PI); 
-                            e.quaternion.slerp(dummy.quaternion, 0.04);
+                            if (targetPosVec) {
+                                // Terrain Avoidance
+                                const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(e.quaternion); 
+                                const lookAheadPoint = e.position.clone().add(forwardDir.clone().multiplyScalar(400));
+                                const terrainH_ahead = getTerrainHeight(lookAheadPoint.x, lookAheadPoint.z);
+                                
+                                if (lookAheadPoint.y < terrainH_ahead + 250) {
+                                    targetPosVec.y = Math.max(targetPosVec.y, terrainH_ahead + 400);
+                                }
 
-                            // Banking
-                            const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(e.quaternion);
-                            const desired = targetPosVec.clone().sub(e.position).normalize();
-                            const turnComponent = fwd.cross(desired).y; 
-                            const targetRoll = turnComponent * 20; 
-                            e.rotation.z = THREE.MathUtils.lerp(e.rotation.z, targetRoll, 0.05);
+                                // Smooth Turning
+                                const dummy = new THREE.Object3D();
+                                dummy.position.copy(e.position);
+                                dummy.lookAt(targetPosVec);
+                                dummy.rotateY(Math.PI); 
+                                e.quaternion.slerp(dummy.quaternion, 0.04);
 
-                            // Move Forward
-                            if (now > e.userData.boostUntil) {
-                                if (Math.random() < 0.005) e.userData.boostUntil = now + 2000; 
+                                // Banking
+                                const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(e.quaternion);
+                                const desired = targetPosVec.clone().sub(e.position).normalize();
+                                const turnComponent = fwd.cross(desired).y; 
+                                const targetRoll = turnComponent * 20; 
+                                e.rotation.z = THREE.MathUtils.lerp(e.rotation.z, targetRoll, 0.05);
+
+                                // Move Forward
+                                if (now > e.userData.boostUntil) {
+                                    if (Math.random() < 0.005) e.userData.boostUntil = now + 2000; 
+                                }
+                                let speed = e.userData.speed;
+                                if (now < e.userData.boostUntil) speed *= 1.5;
+                                e.translateZ(-speed);
                             }
-                            let speed = e.userData.speed;
-                            if (now < e.userData.boostUntil) speed *= 1.5;
-                            e.translateZ(-speed);
                         }
-                    }
 
-                    // --- 4. SHOOTING LOGIC ---
-                    if (closestTarget) {
-                        const distToTarget = e.position.distanceTo(closestTarget.position);
-                        if (distToTarget < 10000) {
-                            if (now - (e.userData.lastShot || 0) > 2000) { 
-                                 spawnEnemyBullet(e, closestTarget.position);
-                                 e.userData.lastShot = now;
+                        // --- 4. SHOOTING LOGIC ---
+                        if (closestTarget) {
+                            const distToTarget = e.position.distanceTo(closestTarget.position);
+                            if (distToTarget < 10000) {
+                                if (now - (e.userData.lastShot || 0) > 2000) { 
+                                    spawnEnemyBullet(e, closestTarget.position);
+                                    e.userData.lastShot = now;
+                                }
+                            }
+                        }
+
+                        // 4. Hard Floor Safety
+                        const currentH = getTerrainHeight(e.position.x, e.position.z);
+                        if(e.position.y < currentH + 80) {
+                            e.position.y = currentH + 80;
+                            e.rotation.x -= 0.05; 
+                        }
+
+                        // 5. Ring Collection
+                        let targetIdx = e.userData.progress % RINGS_PER_LAP; 
+                        const wp = ringWaypoints[targetIdx];
+                        if (wp) {
+                            const targetPosVec = new THREE.Vector3(wp.x, wp.y, wp.z);
+                            const dist = e.position.distanceTo(targetPosVec);
+
+                            // Fix: Using boolean lock
+                            if (!e.userData.ringLocked && dist < 180) {
+                                e.userData.ringLocked = true;
+                                setTimeout(() => e.userData.ringLocked = false, 700);
+                                e.userData.progress++;
+                                // Fix: Single source of truth updates
+                                enemyStats[idx].rings = e.userData.progress;
+                                ringCollected(enemyStats[idx].name);
                             }
                         }
                     }
-
-                    // 4. Hard Floor Safety
-                    const currentH = getTerrainHeight(e.position.x, e.position.z);
-                    if(e.position.y < currentH + 80) {
-                        e.position.y = currentH + 80;
-                        e.rotation.x -= 0.05; 
-                    }
-
-                    // 5. Ring Collection
-                    let targetIdx = e.userData.progress % RINGS_PER_LAP; 
-                    const wp = ringWaypoints[targetIdx];
-                    if (wp) {
-                        const targetPosVec = new THREE.Vector3(wp.x, wp.y, wp.z);
-                        const dist = e.position.distanceTo(targetPosVec);
-
-                        // Fix: Using boolean lock
-                        if (!e.userData.ringLocked && dist < 180) {
-                             e.userData.ringLocked = true;
-                             setTimeout(() => e.userData.ringLocked = false, 700);
-                             e.userData.progress++;
-                             // Fix: Single source of truth updates
-                             enemyStats[idx].rings = e.userData.progress;
-                             ringCollected(enemyStats[idx].name);
-                        }
-                    }
-                }
-            });
+                });
+            }
 
             // --- PLAYER & BULLETS ---
             if (isActionActive('fire')) {
@@ -1524,6 +1616,7 @@
 
               socket.emit("playerMovement", {
                 roomId: mp.roomId,
+                room: mp.roomId, // Add this for compatibility
                 x: planeRig.position.x,
                 y: planeRig.position.y,
                 z: planeRig.position.z,
@@ -1628,4 +1721,3 @@
     </script>
 </body>
 </html>
-
