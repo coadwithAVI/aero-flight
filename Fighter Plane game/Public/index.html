@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aero Flight: Final Pro Fixed</title>
+    <!-- ADDED: Socket.IO Client Library -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <style>
         /* FIX 1: Prevent mobile scroll/zoom via CSS */
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
@@ -223,9 +225,56 @@
     <div id="start-screen" class="screen">
         <div class="menu-box">
             <h1>SKY PILOT</h1>
-            <button class="action-btn" onclick="initGame()">LAUNCH MISSION</button>
+            <!-- Single player-->
+            <button class="action-btn" onclick="startSinglePlayer()">LAUNCH MISSION</button>
+            <!-- Multiplayer -->
+            <button class="action-btn secondary-btn" onclick="openMpMenu()">MULTIPLAYER</button>
+            <!-- Settings-->
             <button class="action-btn secondary-btn" onclick="showSettings()">SETTINGS / CONTROLS</button>
         </div>
+    </div>
+    
+    <!-- MULTIPLAYER MENU -->
+    <div id="mp-menu-screen" class="screen hidden">
+      <div class="menu-box">
+        <h1>MULTIPLAYER</h1>
+
+        <button class="action-btn" onclick="mpCreateRoom()">CREATE ROOM</button>
+
+        <div style="margin-top:15px;"></div>
+
+        <input id="mp-room-code" placeholder="Enter Room Code e.g. abcd" style="margin-top:10px; padding: 12px; width: 80%; border-radius: 5px; border: none; background: rgba(255,255,255,0.1); color: #fff; font-size: 16px; font-weight: bold; text-align: center;">
+        <button class="action-btn secondary-btn" onclick="mpJoinRoom()">JOIN ROOM</button>
+
+        <button class="action-btn secondary-btn" onclick="showStartMenu()">BACK</button>
+      </div>
+    </div>
+
+    <!-- LOBBY SCREEN -->
+    <div id="lobby-screen" class="screen hidden">
+      <div class="menu-box">
+        <h1>LOBBY</h1>
+
+        <div style="color:#00d2ff; font-weight:800; margin:10px 0;">
+          ROOM: <span id="lobby-room-id">----</span>
+        </div>
+
+        <div style="text-align:left; margin-top:10px;">
+          <div style="color:#fff; font-weight:900; margin-bottom:8px;">PLAYERS</div>
+          <div id="lobby-player-list" style="color:#ddd; font-family:monospace;"></div>
+        </div>
+
+        <button id="host-start-btn" class="action-btn hidden" onclick="mpHostStartGame()">START GAME</button>
+        <button class="action-btn secondary-btn" onclick="mpLeaveLobby()">LEAVE</button>
+      </div>
+    </div>
+
+    <!-- COUNTDOWN -->
+    <div id="countdown-screen" class="screen hidden">
+      <div class="menu-box">
+        <h1 id="countdown-text" style="font-size:90px;">3</h1>
+        <p style="color:#00d2ff; font-weight:800;">GET READY</p>
+      </div>
     </div>
 
     <!-- SETTINGS -->
@@ -264,6 +313,242 @@
     <script>
         // FIX 1: Prevent default touch actions like scroll/zoom
         document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
+
+        // =============================
+        // MULTIPLAYER LOBBY SYSTEM
+        // =============================
+        let gameMode = "single"; // "single" | "multi"
+        let mp = {
+          roomId: null,
+          isHost: false,
+          inLobby: false,
+          playerName: null,
+        };
+        const otherPlayers = {}; // Store other players' meshes
+        
+        // Initialize socket if available, otherwise mock it to prevent crash
+        let socket;
+        if (typeof io !== 'undefined') {
+            socket = io();
+        } else {
+            console.warn("Socket.io not found. Multiplayer features will not work.");
+            socket = { emit: () => {}, on: () => {} }; // Mock object
+        }
+
+        // show/hide helpers
+        function showScreen(id) {
+          document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden"));
+          const el = document.getElementById(id);
+          if (el) el.classList.remove("hidden");
+        }
+        function showStartMenu() { showScreen("start-screen"); }
+        function openMpMenu() { showScreen("mp-menu-screen"); }
+
+        // SINGLE PLAYER START (existing)
+        function startSinglePlayer() {
+          gameMode = "single";
+          initGame(); // ✅ tumhara existing single-player init
+        }
+
+        // Multiplayer create/join
+        function mpCreateRoom() {
+          gameMode = "multi";
+          mp.playerName = prompt("Enter your name:", "PLAYER") || "PLAYER";
+
+          socket.emit("mp_create_room", { name: mp.playerName });
+        }
+
+        function mpJoinRoom() {
+          gameMode = "multi";
+          mp.playerName = prompt("Enter your name:", "PLAYER") || "PLAYER";
+
+          const room = (document.getElementById("mp-room-code").value || "").trim();
+          if (!room) { alert("Enter Room Code"); return; }
+
+          socket.emit("mp_join_room", { roomId: room, name: mp.playerName });
+        }
+
+        function mpLeaveLobby() {
+          if (!mp.roomId) return showStartMenu();
+          
+          // Cleanup other players
+          Object.values(otherPlayers).forEach(p => {
+             if (scene) scene.remove(p);
+             disposeHierarchy(p);
+          });
+          for (let k in otherPlayers) delete otherPlayers[k];
+
+          socket.emit("mp_leave_room", { roomId: mp.roomId });
+          mp.roomId = null;
+          mp.isHost = false;
+          mp.inLobby = false;
+          showStartMenu();
+        }
+
+        // Host start game
+        function mpHostStartGame() {
+          if (!mp.isHost) return;
+          socket.emit("mp_start_game", { roomId: mp.roomId });
+        }
+
+        // Lobby UI update
+        function lobbyRenderPlayers(players) {
+          const list = document.getElementById("lobby-player-list");
+          list.innerHTML = "";
+
+          players.forEach((p, i) => {
+            const row = document.createElement("div");
+            row.textContent = `${i+1}. ${p.name}${p.isHost ? " (HOST)" : ""}`;
+            list.appendChild(row);
+          });
+        }
+        
+        function mpCountdownThenStart() {
+          let n = 3;
+          const txt = document.getElementById("countdown-text");
+
+          txt.innerText = n;
+
+          const timer = setInterval(() => {
+            n--;
+            if (n > 0) {
+              txt.innerText = n;
+            } else if (n === 0) {
+              txt.innerText = "GO!";
+            } else {
+              clearInterval(timer);
+
+              // ✅ Start multiplayer game (new init)
+              initMultiplayerGame();
+            }
+          }, 1000);
+        }
+
+        function initMultiplayerGame() {
+          // Multiplayer game init = tumhara same initGame logic BUT:
+          // 1) enemies optional OFF
+          // 2) socket movement sync ON
+          // 3) gameMode = "multi"
+
+          gameMode = "multi";
+
+          // ✅ re-use your current init logic
+          // easiest: call initGame() and then enable network sync flags
+          initGame(); // builds scene, rings, plane etc.
+
+          // IMPORTANT: Explicitly hide all screens to avoid overlays sticking
+          document.getElementById("start-screen").classList.add("hidden");
+          document.getElementById("lobby-screen").classList.add("hidden");
+          document.getElementById("countdown-screen").classList.add("hidden");
+          document.getElementById("mp-menu-screen").classList.add("hidden");
+          document.getElementById("settings-screen").classList.add("hidden");
+          document.getElementById("pause-screen").classList.add("hidden");
+          document.getElementById("end-screen").classList.add("hidden");
+        }
+
+        // =============================
+        // MULTIPLAYER SOCKET EVENTS
+        // =============================
+        
+        socket.on("connect", () => {
+             console.log("Connected to server", socket.id);
+        });
+
+        socket.on("mp_room_created", ({ roomId, players, hostId }) => {
+          mp.roomId = roomId;
+          mp.isHost = (socket.id === hostId);
+          mp.inLobby = true;
+
+          document.getElementById("lobby-room-id").innerText = roomId;
+          lobbyRenderPlayers(players);
+
+          document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost);
+
+          showScreen("lobby-screen");
+        });
+
+        socket.on("mp_room_joined", ({ roomId, players, hostId }) => {
+          mp.roomId = roomId;
+          mp.isHost = (socket.id === hostId);
+          mp.inLobby = true;
+
+          document.getElementById("lobby-room-id").innerText = roomId;
+          lobbyRenderPlayers(players);
+
+          document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost);
+
+          showScreen("lobby-screen");
+        });
+
+        socket.on("mp_lobby_update", ({ roomId, players, hostId }) => {
+          if (mp.roomId !== roomId) return;
+
+          mp.isHost = (socket.id === hostId);
+          lobbyRenderPlayers(players);
+
+          document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost);
+        });
+
+        socket.on("mp_error", (msg) => {
+          alert(msg || "Multiplayer error");
+        });
+
+        socket.on("mp_game_starting", () => {
+          // everybody goes to countdown screen
+          showScreen("countdown-screen");
+          mpCountdownThenStart();
+        });
+        
+        // --- MULTIPLAYER ENTITY SYNC ---
+        socket.on('currentPlayers', (players) => {
+            Object.keys(players).forEach((id) => {
+                if (players[id].playerId === socket.id) return;
+                addOtherPlayer(players[id]);
+            });
+        });
+
+        socket.on('newPlayer', (playerInfo) => {
+            addOtherPlayer(playerInfo);
+        });
+
+        socket.on('playerDisconnected', (playerId) => {
+            removeOtherPlayer(playerId);
+        });
+
+        socket.on('playerMoved', (playerInfo) => {
+            const p = otherPlayers[playerInfo.playerId];
+            if (p) {
+                p.position.set(playerInfo.x, playerInfo.y, playerInfo.z);
+                
+                // Fix: Sync using Quaternion for smoothness
+                if (playerInfo.quaternion) {
+                    p.quaternion.set(playerInfo.quaternion.x, playerInfo.quaternion.y, playerInfo.quaternion.z, playerInfo.quaternion.w);
+                } else {
+                    // Fallback to Euler if server sends old format
+                    p.rotation.set(playerInfo.rotation.x, playerInfo.rotation.y, playerInfo.rotation.z);
+                }
+            }
+        });
+
+        function addOtherPlayer(playerInfo) {
+            if (!scene) return;
+            if (otherPlayers[playerInfo.playerId]) return; // ✅ prevent duplicates
+
+            // Create a plane mesh for other players (Reuse createPlaneMesh but maybe different color)
+            const otherPlayer = createPlaneMesh(0x00ff00); // Green for allies
+            otherPlayer.position.set(playerInfo.x, playerInfo.y, playerInfo.z);
+            scene.add(otherPlayer);
+            otherPlayers[playerInfo.playerId] = otherPlayer;
+        }
+
+        function removeOtherPlayer(playerId) {
+            if (otherPlayers[playerId]) {
+                disposeHierarchy(otherPlayers[playerId]); // Clean up memory
+                scene.remove(otherPlayers[playerId]);
+                delete otherPlayers[playerId];
+            }
+        }
+
 
         // --- CONFIG & STATE ---
         const TERRAIN_COLORS = { WATER: 0x1E90FF, SAND: 0xEEDD82, GRASS: 0x556B2F, ROCK: 0x808080, SNOW: 0xFFFFFF };
@@ -534,9 +819,16 @@
             const list = document.getElementById('leaderboard-list');
             if(!list) return;
             list.innerHTML = '';
-            let racers = [playerStats, ...enemyStats];
-            // Fix: Filter dead enemies from leaderboard
-            racers = racers.filter(r => r.name === "PLAYER" || (r.obj && r.obj.userData.alive));
+            
+            let racers;
+            if (gameMode === "multi") {
+                racers = [playerStats]; // Only show self in MP until score sync is added
+            } else {
+                racers = [playerStats, ...enemyStats];
+                // Fix: Filter dead enemies from leaderboard
+                racers = racers.filter(r => r.name === "PLAYER" || (r.obj && r.obj.userData.alive));
+            }
+            
             racers.sort((a, b) => b.rings - a.rings);
             racers.forEach((r, i) => {
                 const row = document.createElement('div');
@@ -649,6 +941,8 @@
         // --- INIT ---
         function disposeHierarchy(obj) { 
             if (!obj) return;
+            // FIX: Dispose children first
+            if (obj.children) obj.children.forEach(disposeHierarchy);
             if (obj.geometry) obj.geometry.dispose();
             if (obj.material) {
                 // Fix: Dispose texture maps
@@ -662,7 +956,6 @@
                     obj.material.dispose();
                 }
             }
-            if (obj.children) obj.children.forEach(disposeHierarchy);
         }
 
         function initGame() {
@@ -674,9 +967,12 @@
                 rings.forEach(r => { scene.remove(r); disposeHierarchy(r); });
                 bullets.forEach(b => { scene.remove(b.mesh); disposeHierarchy(b.mesh); });
                 repairKits.forEach(k => { scene.remove(k); disposeHierarchy(k); }); 
-                enemies.forEach(e => { scene.remove(e); disposeHierarchy(e); });   
+                enemies.forEach(e => { scene.remove(e); disposeHierarchy(e); });    
             }
             rings = []; repairKits = []; enemies = []; bullets = []; ringWaypoints = [];
+            // CLEAR other players
+            Object.values(otherPlayers).forEach(p => { scene.remove(p); disposeHierarchy(p); });
+            for(let k in otherPlayers) delete otherPlayers[k];
 
             scene = new THREE.Scene(); scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 2000, 10000);
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
@@ -691,7 +987,13 @@
             enemiesAliveCount = 4;
             health = 100; boostLevel = 100;
             
-            generateTerrain(); generateOcean(); createPlaneSystem(); createGuideArrow(); createRepairKits(); createEnemies(); createRings();
+            generateTerrain(); generateOcean(); createPlaneSystem(); createGuideArrow(); createRepairKits(); createRings();
+            
+            // Only create enemies in single player mode
+            if (gameMode !== "multi") {
+                createEnemies();
+            }
+
             updateRingVisuals(); updateLeaderboard();
             isPlaying = true; isPaused = false; animate();
         }
@@ -847,13 +1149,18 @@
         function spawnBullet() {
             AudioSys.playGun(); 
             let target = null; let minDist = Infinity;
-            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(planeRig.quaternion);
-            enemies.forEach(e => {
-                if(e.userData.alive) {
-                    const toEnemy = new THREE.Vector3().subVectors(e.position, planeRig.position);
-                    const dist = toEnemy.length(); if(dist < 8000 && forward.dot(toEnemy.normalize()) > 0.7 && dist < minDist) { minDist = dist; target = e; }
-                }
-            });
+            
+            // Fix: Only auto-target enemies in Single Player
+            if (gameMode !== "multi") {
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(planeRig.quaternion);
+                enemies.forEach(e => {
+                    if(e.userData.alive) {
+                        const toEnemy = new THREE.Vector3().subVectors(e.position, planeRig.position);
+                        const dist = toEnemy.length(); if(dist < 8000 && forward.dot(toEnemy.normalize()) > 0.7 && dist < minDist) { minDist = dist; target = e; }
+                    }
+                });
+            }
+
             const bulletGeo = new THREE.SphereGeometry(2, 8, 8); const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
             const offsets = [-12, 12];
             offsets.forEach(offset => {
@@ -887,7 +1194,8 @@
         }
 
         function drawMinimap() {
-            if(!minimapCtx) return;
+            // Fix: Safety check if game is not fully initialized
+            if(!minimapCtx || !planeRig) return;
             minimapCtx.clearRect(0, 0, 140, 140);
             
             const cx = 70;
@@ -920,23 +1228,23 @@
             minimapCtx.restore();
 
             function drawDot(obj, color, size) {
-                if(!obj.visible) return;
+                if(!obj || !obj.visible) return; // Fix: Added null check
                 const dx = obj.position.x - planeRig.position.x;
                 const dz = obj.position.z - planeRig.position.z;
                 
                 let px, py;
 
                 if (northUp) {
-                     // North Up: +X is Right, -Z is Up (Canvas -Y)
-                     // Canvas X = dx
-                     // Canvas Y = dz (since -Z in 3D is Up, so -dz is Up in canvas, which is -Y. Wait.
-                     // 3D: (x, z). Canvas: (x, y). 
-                     // 3D forward -Z. Canvas Up -Y.
-                     // 3D right +X. Canvas Right +X.
-                     // So map 3D Z to Canvas Y directly?
-                     // If Z decreases (moves forward), Y decreases (moves up). Yes.
-                     px = dx * scale;
-                     py = dz * scale;
+                      // North Up: +X is Right, -Z is Up (Canvas -Y)
+                      // Canvas X = dx
+                      // Canvas Y = dz (since -Z in 3D is Up, so -dz is Up in canvas, which is -Y. Wait.
+                      // 3D: (x, z). Canvas: (x, y). 
+                      // 3D forward -Z. Canvas Up -Y.
+                      // 3D right +X. Canvas Right +X.
+                      // So map 3D Z to Canvas Y directly?
+                      // If Z decreases (moves forward), Y decreases (moves up). Yes.
+                      px = dx * scale;
+                      py = dz * scale;
                 } else {
                     // Heads Up logic (existing)
                     const pRot = planeRig.rotation.y;
@@ -963,6 +1271,11 @@
 
             enemies.forEach(e => {
                 if(e.userData.alive) drawDot(e, "#ff0000", 3);
+            });
+            
+            // Show other players on minimap
+            Object.values(otherPlayers).forEach(p => {
+                drawDot(p, "#0000ff", 3); // Blue for other players
             });
 
             if(currentRingObj) {
@@ -1012,7 +1325,7 @@
                     // --- 2. DODGE LOGIC (Smart Dodge) ---
                     let isDodging = false;
                     for(let b of bullets) {
-                         // Check only close bullets
+                          // Check only close bullets
                         if (b.mesh.position.distanceTo(e.position) < 500) {
                              // Check if bullet is heading towards enemy
                              const toEnemy = e.position.clone().sub(b.mesh.position).normalize();
@@ -1029,7 +1342,7 @@
                     
                     if (isDodging) {
                         e.rotation.z += 0.1; 
-                        e.translateY(2);     
+                        e.translateY(2);      
                         e.translateX(Math.sin(now * 0.01) * 2); 
                         e.translateZ(-e.userData.speed * 1.2); 
                         // Fix: Enemies can still shoot while dodging (fall through to shooting block)
@@ -1203,6 +1516,26 @@
             // AudioSys.updateContinuousAudio(isBoosting, false); 
 
             planeRig.translateZ(-currentSpeed);
+            
+            // ✅ PART 7 — Movement sending ONLY in multiplayer mode
+            if (gameMode === "multi" && socket) {
+              // Correct: Send only rig rotation (actual direction), ignore visual tilt for network to avoid doubling
+              const q = planeRig.quaternion; 
+
+              socket.emit("playerMovement", {
+                roomId: mp.roomId,
+                x: planeRig.position.x,
+                y: planeRig.position.y,
+                z: planeRig.position.z,
+                // Sending quaternion instead of euler for smoother sync
+                quaternion: { 
+                    x: q.x, 
+                    y: q.y, 
+                    z: q.z, 
+                    w: q.w 
+                }
+              });
+            }
 
             if (isActionActive('left')) { planeRig.rotation.y += TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); }
             else if (isActionActive('right')) { planeRig.rotation.y -= TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); }
