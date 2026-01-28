@@ -452,9 +452,9 @@
 
         // Host start game (Dead code if lobby bypassed, but kept for structure)
         function mpHostStartGame() {
-          if (!mp.isHost) return;
-          // FIX: Emit 'startGame' as expected by standard servers
-          socket.emit("startGame", { room: mp.roomId }); 
+          if (!mp.isHost) { alert("Only host can start."); return; }
+          // FIX: Emit 'startGame' with both room and roomId for safety
+          socket.emit("startGame", { room: mp.roomId, roomId: mp.roomId }); 
         }
 
         // Lobby UI update
@@ -578,6 +578,13 @@
                 lobbyRenderPlayers(list);
             }
 
+            // FIX: Remove stale players (ghosts)
+            Object.keys(otherPlayers).forEach(existingId => {
+                if (!players[existingId]) {
+                    removeOtherPlayer(existingId);
+                }
+            });
+
             Object.keys(players).forEach((id) => {
                 // FIX 3: Use key 'id' instead of property .playerId
                 if (id === socket.id) return;
@@ -663,6 +670,7 @@
         let isPlaying = false;
         let isPaused = false;
         let isRebinding = false; // Fix: Flag for key rebinding
+        let lastNetSend = 0; // Fix: For throttling MP events
         
         let boostLevel = 100;
         const BOOST_DRAIN = 0.8;
@@ -1609,25 +1617,29 @@
 
             planeRig.translateZ(-currentSpeed);
             
-            // ✅ PART 7 — Movement sending ONLY in multiplayer mode
-            if (gameMode === "multi" && socket) {
-              // Correct: Send only rig rotation (actual direction), ignore visual tilt for network to avoid doubling
-              const q = planeRig.quaternion; 
+            // ✅ PART 7 — Movement sending ONLY in multiplayer mode (Throttled)
+            if (gameMode === "multi" && socket && mp.roomId) { // Fix: Check roomId
+              const nowT = performance.now();
+              if (nowT - lastNetSend > 50) { // Fix: Throttle to 50ms
+                  lastNetSend = nowT;
+                  // Correct: Send only rig rotation (actual direction), ignore visual tilt for network to avoid doubling
+                  const q = planeRig.quaternion; 
 
-              socket.emit("playerMovement", {
-                roomId: mp.roomId,
-                room: mp.roomId, // Add this for compatibility
-                x: planeRig.position.x,
-                y: planeRig.position.y,
-                z: planeRig.position.z,
-                // Sending quaternion instead of euler for smoother sync
-                quaternion: { 
-                    x: q.x, 
-                    y: q.y, 
-                    z: q.z, 
-                    w: q.w 
-                }
-              });
+                  socket.emit("playerMovement", {
+                    roomId: mp.roomId,
+                    room: mp.roomId, // Add this for compatibility
+                    x: planeRig.position.x,
+                    y: planeRig.position.y,
+                    z: planeRig.position.z,
+                    // Sending quaternion instead of euler for smoother sync
+                    quaternion: { 
+                        x: q.x, 
+                        y: q.y, 
+                        z: q.z, 
+                        w: q.w 
+                    }
+                  });
+              }
             }
 
             if (isActionActive('left')) { planeRig.rotation.y += TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); }
