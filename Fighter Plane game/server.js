@@ -5,52 +5,23 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server);
 const path = require('path');
-const fs = require('fs'); // File System module for debugging
+const fs = require('fs');
 
 // --- PATH CONFIGURATION ---
-// User confirmed structure: 
-// Root: server.js
-// Subfolder: Public/ (contains index.html, etc.)
 const publicPath = path.join(__dirname, 'Public');
 
-// --- DEBUGGING LOGS ---
-console.log("🔹 SERVER STARTED");
-console.log("🔹 Root Directory:", __dirname);
-console.log("🔹 Public Directory Target:", publicPath);
-
-try {
-    if (fs.existsSync(publicPath)) {
-        const files = fs.readdirSync(publicPath);
-        console.log("🔹 FILES IN PUBLIC FOLDER:", files);
-        
-        if (!files.includes('index.html')) {
-            console.error("❌ CRITICAL ERROR: index.html is MISSING inside 'Public' folder!");
-        } else {
-            console.log("✅ index.html found inside 'Public' folder.");
-        }
-    } else {
-        console.error("❌ CRITICAL ERROR: 'Public' folder does not exist!");
-    }
-} catch (err) {
-    console.error("❌ Error accessing folders:", err);
-}
-// ----------------------------------------------------
-
-// 1. Static Files Serve Karo (Public folder se)
+// --- SERVER SETUP ---
 app.use(express.static(publicPath));
 
-// 2. Explicit Root Route with Safety Check
 app.get('/', (req, res) => {
     const filePath = path.join(publicPath, 'index.html');
-    
     if (fs.existsSync(filePath)) {
         res.sendFile(filePath);
     } else {
-        res.status(404).send("<h1>Error 404: Game File Not Found</h1><p>Server looked in: " + publicPath + "</p>");
+        res.status(404).send("<h1>Error 404: Index File Not Found</h1>");
     }
 });
 
-// Game State
 let rooms = {}; 
 
 io.on('connection', (socket) => {
@@ -59,23 +30,11 @@ io.on('connection', (socket) => {
     // 1. CREATE ROOM
     socket.on('mp_create_room', ({ name }) => {
         const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
-        
-        rooms[roomId] = {
-            hostId: socket.id,
-            players: []
-        };
-
+        rooms[roomId] = { hostId: socket.id, players: [] };
         const playerObj = { id: socket.id, name: name, isHost: true };
         rooms[roomId].players.push(playerObj);
-
         socket.join(roomId);
-
-        socket.emit('mp_room_created', { 
-            roomId, 
-            players: rooms[roomId].players, 
-            hostId: socket.id 
-        });
-        
+        socket.emit('mp_room_created', { roomId, players: rooms[roomId].players, hostId: socket.id });
         socket.emit('currentPlayers', {}); 
     });
 
@@ -83,32 +42,19 @@ io.on('connection', (socket) => {
     socket.on('mp_join_room', ({ roomId, name }) => {
         roomId = roomId.toUpperCase();
         const room = rooms[roomId];
-
         if (room) {
             const playerObj = { id: socket.id, name: name, isHost: false };
             room.players.push(playerObj);
             socket.join(roomId);
-
-            socket.emit('mp_room_joined', {
-                roomId,
-                players: room.players,
-                hostId: room.hostId
-            });
-
-            io.to(roomId).emit('mp_lobby_update', {
-                roomId,
-                players: room.players,
-                hostId: room.hostId
-            });
-
+            socket.emit('mp_room_joined', { roomId, players: room.players, hostId: room.hostId });
+            io.to(roomId).emit('mp_lobby_update', { roomId, players: room.players, hostId: room.hostId });
+            
             let currentPlayersObj = {};
             room.players.forEach(p => {
                 if(p.id !== socket.id) currentPlayersObj[p.id] = { playerId: p.id, ...p };
             });
             socket.emit('currentPlayers', currentPlayersObj);
-
             socket.to(roomId).emit('newPlayer', { playerId: socket.id, name: name });
-
         } else {
             socket.emit('mp_error', 'Room not found!');
         }
@@ -136,16 +82,23 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 5. DISCONNECT
+    // 5. 🔥 WINNER LOGIC ADDED HERE 🔥
+    socket.on('mp_player_won', ({ roomId, name }) => {
+        // Broadcast "Game Over" to EVERYONE in the room (including winner)
+        io.to(roomId).emit('mp_game_over', {
+            winnerName: name,
+            winnerId: socket.id
+        });
+    });
+
+    // 6. DISCONNECT
     const handleDisconnect = () => {
         for (const roomId in rooms) {
             const room = rooms[roomId];
             const playerIndex = room.players.findIndex(p => p.id === socket.id);
-
             if (playerIndex !== -1) {
                 room.players.splice(playerIndex, 1);
                 io.to(roomId).emit('playerDisconnected', socket.id);
-
                 if (room.players.length === 0) {
                     delete rooms[roomId];
                 } else {
@@ -153,11 +106,7 @@ io.on('connection', (socket) => {
                         room.hostId = room.players[0].id;
                         room.players[0].isHost = true;
                     }
-                    io.to(roomId).emit('mp_lobby_update', {
-                        roomId,
-                        players: room.players,
-                        hostId: room.hostId
-                    });
+                    io.to(roomId).emit('mp_lobby_update', { roomId, players: room.players, hostId: room.hostId });
                 }
                 break;
             }
@@ -165,10 +114,7 @@ io.on('connection', (socket) => {
     };
 
     socket.on('mp_leave_room', handleDisconnect);
-    socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
-        handleDisconnect();
-    });
+    socket.on('disconnect', handleDisconnect);
 });
 
 const PORT = process.env.PORT || 3000;
