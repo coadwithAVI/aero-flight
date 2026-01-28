@@ -60,32 +60,3 @@ http.listen(PORT, () => {
     console.log(`Server flying on port ${PORT}`);
 });
 ```
-
-#### File 3: `public/index.html` (Tumhara Game)
-1.  Apne `game.html` ko `public` folder ke andar move karo.
-2.  Uska naam badal kar **`index.html`** kar do.
-3.  **Bohot Zaroori:** Tumhe game code me wo changes karne honge jo maine pichle message me bataye the (AI enemies hata kar Socket logic lagana).
-
-**Short Cheat Sheet (Index.html changes):**
-* Header me: `<script src="/socket.io/socket.io.js"></script>` add karo.
-* Script start me: `const socket = io();`
-* `enemies` array ko `otherPlayers` object se replace karo.
-* `animate()` loop me `socket.emit('playerMovement', ...)` daalo.
-
----
-
-### 🚀 Step 3: GitHub par Upload Karna
-
-Render seedha tumhare computer se files nahi utha sakta. Tumhe code ko **GitHub** par dalna hoga.
-
-1.  **GitHub.com** par jao aur account banao (agar nahi hai).
-2.  **New Repository** create karo (naam rakho: `aero-flight`).
-3.  Apne computer par `aero-flight-game` folder me jao.
-4.  (Agar Git installed hai) Terminal me ye commands chalao:
-    ```bash
-    git init
-    git add .
-    git commit -m "First flight"
-    git branch -M main
-    git remote add origin https://github.com/TUMHARA_USERNAME/aero-flight.git
-    git push -u origin main
