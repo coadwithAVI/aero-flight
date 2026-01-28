@@ -3,27 +3,66 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path'); 
-const fs = require('fs'); // ✅ NEW: File System module add kiya check karne ke liye
+const fs = require('fs');
 
 const app = express();
 app.use(cors()); 
 
 // ---------------------------------------------------------
-// 1. SMART FOLDER DETECTION (Fix for 'public' vs 'Public')
+// 1. SMART FILE FINDER (Auto-Detect Folder)
 // ---------------------------------------------------------
-let publicPath = path.join(__dirname, 'public'); // Pehle chota 'p' try karo
+console.log("📂 Current Server Directory:", __dirname);
 
-// Agar chota 'p' wala folder nahi mila, to Bada 'P' try karo
-if (!fs.existsSync(publicPath)) {
-    publicPath = path.join(__dirname, 'Public');
+// List of possible places where 'index.html' might be hiding
+const potentialPaths = [
+    path.join(__dirname, 'public'),   // standard lowercase
+    path.join(__dirname, 'Public'),   // Capitalized
+    path.join(__dirname, 'client'),   // common name
+    __dirname                         // Maybe it's in the root?
+];
+
+let publicPath = null;
+
+// Find the first path that actually contains 'index.html'
+for (const tryPath of potentialPaths) {
+    const checkFile = path.join(tryPath, 'index.html');
+    if (fs.existsSync(checkFile)) {
+        publicPath = tryPath;
+        console.log(`✅ FOUND GAME AT: ${publicPath}`);
+        break;
+    }
 }
 
-// Final Check: Kya folder mila?
-if (fs.existsSync(publicPath)) {
-    console.log(`✅ Folder found! Serving files from: ${publicPath}`);
+// Setup Express to serve the game
+if (publicPath) {
     app.use(express.static(publicPath));
+    
+    app.get('/', (req, res) => {
+        res.sendFile(path.join(publicPath, 'index.html'));
+    });
 } else {
-    console.error("❌ CRITICAL ERROR: Na 'public' mila na 'Public'. Folder name check karo!");
+    // If game still not found, show Debug Info on screen
+    console.error("❌ CRITICAL: index.html nowhere to be found.");
+    
+    app.get('/', (req, res) => {
+        let fileList = "Unable to list files";
+        try { fileList = JSON.stringify(fs.readdirSync(__dirname)); } catch(e){}
+
+        res.send(`
+            <div style="font-family: monospace; padding: 20px; background: #333; color: #fff;">
+                <h1>⚠️ Error: Game Not Found</h1>
+                <p>Server is running, but I can't find <b>index.html</b>.</p>
+                <hr>
+                <h3>I looked in these places:</h3>
+                <ul>${potentialPaths.map(p => `<li>${p}</li>`).join('')}</ul>
+                <hr>
+                <h3>Files actually present in root (${__dirname}):</h3>
+                <p>${fileList}</p>
+                <hr>
+                <p><b>Solution:</b> Ensure you uploaded a folder named 'public' containing 'index.html' to GitHub.</p>
+            </div>
+        `);
+    });
 }
 
 const server = http.createServer(app);
@@ -33,17 +72,6 @@ const io = new Server(server, {
     cors: {
         origin: "*", 
         methods: ["GET", "POST"]
-    }
-});
-
-// ✅ FIX: Root URL par ab sahi path se file uthayega
-app.get('/', (req, res) => {
-    const indexPath = path.join(publicPath, 'index.html');
-    
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        res.send(`<h1>Error 404</h1><p>index.html nahi mila is folder mein: ${publicPath}</p>`);
     }
 });
 
