@@ -329,7 +329,7 @@
         // Initialize socket if available, otherwise mock it to prevent crash
         let socket;
         if (typeof io !== 'undefined') {
-            socket = io();
+            socket = io("https://aero-flight.onrender.com");
         } else {
             console.warn("Socket.io not found. Multiplayer features will not work.");
             socket = { emit: () => {}, on: () => {} }; // Mock object
@@ -1628,3 +1628,4 @@
     </script>
 </body>
 </html>
+
