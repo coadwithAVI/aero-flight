@@ -8,13 +8,16 @@ const fs = require('fs');
 // ---------------------------------------------------------
 // 1. SMART FILE FINDER (ENOENT Error Fix)
 // ---------------------------------------------------------
-// Check karo ki 'index.html' public folder me hai ya bahar root me
-const publicDir = path.join(__dirname, 'public');
+// ✅ FIX: 'Public' ka 'P' bada kar diya hai (Folder name ke hisaab se)
+const publicDir = path.join(__dirname, 'Public');
 const rootDir = __dirname;
 let finalPath = rootDir;
 
+// Debugging ke liye print karwaya
+console.log("Checking Public folder at:", publicDir);
+
 if (fs.existsSync(path.join(publicDir, 'index.html'))) {
-    console.log("📂 File found in 'public' folder.");
+    console.log("📂 File found in 'Public' folder.");
     finalPath = publicDir;
 } else if (fs.existsSync(path.join(rootDir, 'index.html'))) {
     console.log("📂 File found in root folder.");
