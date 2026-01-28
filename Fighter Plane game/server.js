@@ -6,6 +6,11 @@ const cors = require('cors');
 const app = express();
 app.use(cors()); // Allow requests from anywhere
 
+// ✅ FIX: Root Route add kiya taaki "Cannot GET /" error na aaye
+app.get('/', (req, res) => {
+    res.send('Aero Flight Server is Running! 🚀');
+});
+
 const server = http.createServer(app);
 
 // Socket.io Setup with CORS enabled for Render
@@ -154,7 +159,12 @@ io.on('connection', (socket) => {
         }
     };
 
-    socket.on('leaveRoom', handleDisconnect);
+    socket.on('leaveRoom', ({ room }) => {
+        // Explicitly leave the socket.io room
+        if (room) socket.leave(room);
+        handleDisconnect();
+    });
+    
     socket.on('disconnect', handleDisconnect);
 });
 
