@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sky Pilot - Singleplayer</title>
+  <title>Sky Pilot - Advanced AI</title>
   
   <!-- THREE.JS LIBRARY -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -49,6 +49,7 @@
 
     /* FPS */
     #fps-counter { background: rgba(0,0,0,0.5); color: #00ff00; padding: 5px 10px; border-radius: 5px; font-family: monospace; font-weight: bold; font-size: 12px; pointer-events: none; margin-bottom: 5px; }
+    #ai-state-debug { background: rgba(0,0,0,0.5); color: #ff00ff; padding: 5px 10px; border-radius: 5px; font-family: monospace; font-weight: bold; font-size: 10px; pointer-events: none; margin-top: 5px; white-space: pre-wrap; display:none; }
 
     /* Pause Button */
     .pause-btn { background: rgba(0,0,0,0.6); color: white; border: 2px solid white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; transition: 0.2s; }
@@ -94,6 +95,8 @@
     <div class="hud-top">
       <div class="left-hud">
         <div id="fps-counter">FPS: 0</div>
+        <!-- Debug AI State display (hidden by default) -->
+        <div id="ai-state-debug"></div>
         <div class="bar-container">
           <div class="bar-label health-label">HEALTH</div>
           <div class="bar-bg"><div id="health-fill"></div></div>
@@ -122,14 +125,14 @@
     <!-- MOBILE CONTROLS -->
     <div class="mobile-controls">
         <div class="control-group dpad">
-            <div class="mob-btn btn-up" ontouchstart="setKey('up', true)" ontouchend="setKey('up', false)">▲</div>
-            <div class="mob-btn btn-left" ontouchstart="setKey('left', true)" ontouchend="setKey('left', false)">◀</div>
-            <div class="mob-btn btn-down" ontouchstart="setKey('down', true)" ontouchend="setKey('down', false)">▼</div>
-            <div class="mob-btn btn-right" ontouchstart="setKey('right', true)" ontouchend="setKey('right', false)">▶</div>
+            <div class="mob-btn btn-up" ontouchstart="setAction('up', true)" ontouchend="setAction('up', false)">▲</div>
+            <div class="mob-btn btn-left" ontouchstart="setAction('left', true)" ontouchend="setAction('left', false)">◀</div>
+            <div class="mob-btn btn-down" ontouchstart="setAction('down', true)" ontouchend="setAction('down', false)">▼</div>
+            <div class="mob-btn btn-right" ontouchstart="setAction('right', true)" ontouchend="setAction('right', false)">▶</div>
         </div>
         <div class="control-group" style="flex-direction: column; justify-content: flex-end;">
-            <div class="mob-btn mob-btn-rect mob-fire" ontouchstart="setKey('fire', true)" ontouchend="setKey('fire', false)">FIRE</div>
-            <div class="mob-btn mob-btn-rect mob-boost" ontouchstart="setKey('boost', true)" ontouchend="setKey('boost', false)">BOOST</div>
+            <div class="mob-btn mob-btn-rect mob-fire" ontouchstart="setAction('fire', true)" ontouchend="setAction('fire', false)">FIRE</div>
+            <div class="mob-btn mob-btn-rect mob-boost" ontouchstart="setAction('boost', true)" ontouchend="setAction('boost', false)">BOOST</div>
         </div>
     </div>
   </div>
@@ -138,7 +141,9 @@
   <div id="start-screen" class="screen">
     <div class="menu-box">
       <h1>SKY PILOT</h1>
+      <p style="color:#00d2ff; letter-spacing:1px; margin-bottom:20px;">ADVANCED ENEMY AI UPDATE</p>
       <button class="action-btn" onclick="startSinglePlayer()">LAUNCH MISSION</button>
+      <!-- ✅ RESTORED BACK TO MENU BUTTON -->
       <button class="action-btn secondary-btn" onclick="window.location.href='index.html'">BACK TO MENU</button>
     </div>
   </div>
@@ -164,24 +169,17 @@
 <script>
   document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
 
-  // --- 🔥 AUTO-SYNC SETTINGS FROM STORAGE ---
-  // Default bindings
+  // --- 🔥 SETTINGS ---
   let bindings = { up: 'w', down: 's', left: 'a', right: 'd', boost: ' ', fire: 'shift' };
-  
-  // Try loading new bindings
   const savedBinds = localStorage.getItem('skyPilot_bindings');
-  if (savedBinds) {
-      try { bindings = JSON.parse(savedBinds); } catch(e){}
-  }
-
-  // Load Audio Toggle State (Default ON if nothing saved)
+  if (savedBinds) { try { bindings = JSON.parse(savedBinds); } catch(e){} }
   let isMusicOn = localStorage.getItem('skyPilot_music') !== 'OFF';
   let isSoundOn = localStorage.getItem('skyPilot_sfx') !== 'OFF';
 
   // --- CONFIG ---
   const TERRAIN_COLORS = { WATER: 0x1E90FF, SAND: 0xEEDD82, GRASS: 0x556B2F, ROCK: 0x808080, SNOW: 0xFFFFFF };
-  const NORMAL_SPEED = 6.5; const BOOST_SPEED  = 14.5; const TURN_SPEED = 0.05; const LIFT_SPEED = 3.5;
-  const RINGS_PER_LAP = 4; const TOTAL_LAPS = 2; const TOTAL_RINGS_WIN = RINGS_PER_LAP * TOTAL_LAPS;
+  const NORMAL_SPEED = 10; const BOOST_SPEED  = 20; const TURN_SPEED = 0.05; const LIFT_SPEED = 3.5;
+  const RINGS_PER_LAP = 5; const TOTAL_LAPS = 3; const TOTAL_RINGS_WIN = RINGS_PER_LAP * TOTAL_LAPS;
 
   let scene, camera, renderer, planeRig, planeMesh, guideArrow;
   let enemies = [], repairKits = [], rings = [], ringWaypoints = [];
@@ -189,7 +187,11 @@
   let bullets = [], isPlaying = false, isPaused = false;
   let boostLevel = 100; const BOOST_DRAIN = 0.8; const BOOST_REFILL = 0.3;
   let health = 100; const COLLISION_DAMAGE = 0.6;
-  let lastFireTime = 0; const FIRE_RATE = 100;
+  let lastFireTime = 0; const FIRE_RATE = 150;
+
+  // PLAYER VELOCITY TRACKING FOR AI
+  let playerPrevPos = new THREE.Vector3();
+  let playerVelocity = new THREE.Vector3();
 
   let playerStats = { name: "PLAYER", rings: 0, progress: 0 };
   let enemyStats = [
@@ -205,164 +207,102 @@
   const minimapCanvas = document.getElementById('minimap-canvas'); const minimapCtx = minimapCanvas.getContext('2d');
   let audioCtx, boostOsc, boostGain, boostNoise, boostNoiseGain, noiseNode, noiseGain;
 
+  // --- AUDIO SYSTEM (Minified for brevity) ---
   const AudioSys = {
     init: function() {
       if (audioCtx) return;
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
       const scrapeBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
-      const sData = scrapeBuffer.getChannelData(0);
-      for(let i=0; i<sData.length; i++) sData[i] = Math.random() * 2 - 1;
-
+      const sData = scrapeBuffer.getChannelData(0); for(let i=0; i<sData.length; i++) sData[i] = Math.random() * 2 - 1;
       noiseNode = audioCtx.createBufferSource(); noiseNode.buffer = scrapeBuffer; noiseNode.loop = true;
-      noiseGain = audioCtx.createGain(); noiseGain.gain.value = 0;
-      noiseNode.connect(noiseGain); noiseGain.connect(audioCtx.destination); noiseNode.start();
-
+      noiseGain = audioCtx.createGain(); noiseGain.gain.value = 0; noiseNode.connect(noiseGain); noiseGain.connect(audioCtx.destination); noiseNode.start();
       boostOsc = audioCtx.createOscillator(); boostOsc.type = 'triangle'; boostOsc.frequency.value = 200;
-      boostGain = audioCtx.createGain(); boostGain.gain.value = 0;
-      boostOsc.connect(boostGain); boostGain.connect(audioCtx.destination); boostOsc.start();
-
+      boostGain = audioCtx.createGain(); boostGain.gain.value = 0; boostOsc.connect(boostGain); boostGain.connect(audioCtx.destination); boostOsc.start();
       boostNoise = audioCtx.createBufferSource(); boostNoise.buffer = scrapeBuffer; boostNoise.loop = true;
       const f = audioCtx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1000;
-      boostNoiseGain = audioCtx.createGain(); boostNoiseGain.gain.value = 0;
-      boostNoise.connect(f); f.connect(boostNoiseGain); boostNoiseGain.connect(audioCtx.destination); boostNoise.start();
-
-      // ✅ SYNC MUSIC START
+      boostNoiseGain = audioCtx.createGain(); boostNoiseGain.gain.value = 0; boostNoise.connect(f); f.connect(boostNoiseGain); boostNoiseGain.connect(audioCtx.destination); boostNoise.start();
       if (isMusicOn) this.startNewMusic();
     },
-
     updateContinuousAudio: function(isBoosting, isDamaging) {
-      // ✅ SYNC SFX CHECK
-      if(!audioCtx || !isSoundOn) {
-        if(audioCtx) {
-          boostGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
-          boostNoiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
-          noiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
-        }
-        return;
-      }
+      if(!audioCtx || !isSoundOn) { if(audioCtx) { boostGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); boostNoiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); noiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); } return; }
       const now = audioCtx.currentTime;
-
-      if (isBoosting) {
-        boostOsc.frequency.setTargetAtTime(600, now, 0.5); boostGain.gain.setTargetAtTime(0.15, now, 0.1); boostNoiseGain.gain.setTargetAtTime(0.3, now, 0.1);
-      } else {
-        boostOsc.frequency.setTargetAtTime(200, now, 0.5); boostGain.gain.setTargetAtTime(0, now, 0.2); boostNoiseGain.gain.setTargetAtTime(0, now, 0.2);
-      }
-      const targetVol = isDamaging ? 0.4 : 0;
-      noiseGain.gain.setTargetAtTime(targetVol, now, 0.1);
+      if (isBoosting) { boostOsc.frequency.setTargetAtTime(600, now, 0.5); boostGain.gain.setTargetAtTime(0.15, now, 0.1); boostNoiseGain.gain.setTargetAtTime(0.3, now, 0.1); } 
+      else { boostOsc.frequency.setTargetAtTime(200, now, 0.5); boostGain.gain.setTargetAtTime(0, now, 0.2); boostNoiseGain.gain.setTargetAtTime(0, now, 0.2); }
+      noiseGain.gain.setTargetAtTime(isDamaging ? 0.4 : 0, now, 0.1);
     },
-
-    playGun: function() {
-      if(!audioCtx || !isSoundOn) return; // ✅ SFX CHECK
-      const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-      osc.type = 'square'; osc.frequency.setValueAtTime(800, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.15);
-      gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-      osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.2);
-    },
-
-    playExplosion: function() {
-      if(!audioCtx || !isSoundOn) return; // ✅ SFX CHECK
-      const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-      osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-      gain.gain.setValueAtTime(0.5, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-      osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.5);
-    },
-
-    playRepair: function() {
-      if(!audioCtx || !isSoundOn) return; // ✅ SFX CHECK
-      const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-      osc.type = 'sine'; osc.frequency.setValueAtTime(400, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 0.2);
-      gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-      osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.3);
-    },
-
-    playRing: function() {
-      if(!audioCtx || !isSoundOn) return; // ✅ SFX CHECK
-      const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-      osc.type = 'sine'; osc.frequency.setValueAtTime(1200, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(1800, audioCtx.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.2, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-      osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.5);
-    },
-
-    startNewMusic: function() {
-      if (this.isPlayingMusic) return;
-      this.isPlayingMusic = true;
-      const bassNotes = [87.31, 87.31, 87.31, 87.31, 98.00, 98.00, 110.00, 130.81]; let noteIdx = 0; let nextNoteTime = audioCtx.currentTime;
-      const schedule = () => {
-        if (!this.isPlayingMusic || !audioCtx) return;
-        if (nextNoteTime < audioCtx.currentTime - 0.2) nextNoteTime = audioCtx.currentTime;
-
-        while (nextNoteTime < audioCtx.currentTime + 0.1) {
-          if (isMusicOn) { // ✅ MUSIC CHECK
-            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-            osc.type = 'sawtooth'; const filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 600;
-            osc.frequency.value = bassNotes[noteIdx % bassNotes.length];
-            gain.gain.setValueAtTime(0.12, nextNoteTime); gain.gain.exponentialRampToValueAtTime(0.01, nextNoteTime + 0.2);
-            osc.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
-            osc.start(nextNoteTime); osc.stop(nextNoteTime + 0.25);
-          }
-          nextNoteTime += 0.2; noteIdx++;
-        }
-        setTimeout(schedule, 50);
-      };
-      schedule();
-    },
-
-    stopAll: function() {
-      this.isPlayingMusic = false;
-      try { if(noiseNode) noiseNode.stop(); } catch(e){}
-      try { if(boostOsc) boostOsc.stop(); } catch(e){}
-      try { if(boostNoise) boostNoise.stop(); } catch(e){}
-      if(audioCtx) audioCtx.close();
-      audioCtx = null;
-    }
+    playGun: function() { if(!audioCtx || !isSoundOn) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'square'; osc.frequency.setValueAtTime(800, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.15); gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.2); },
+    playExplosion: function() { if(!audioCtx || !isSoundOn) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); gain.gain.setValueAtTime(0.5, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.5); },
+    playRepair: function() { if(!audioCtx || !isSoundOn) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(400, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 0.2); gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.3); },
+    playRing: function() { if(!audioCtx || !isSoundOn) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(1200, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(1800, audioCtx.currentTime + 0.1); gain.gain.setValueAtTime(0.2, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.5); },
+    startNewMusic: function() { if (this.isPlayingMusic) return; this.isPlayingMusic = true; const bassNotes = [87.31, 87.31, 87.31, 87.31, 98.00, 98.00, 110.00, 130.81]; let noteIdx = 0; let nextNoteTime = audioCtx.currentTime; const schedule = () => { if (!this.isPlayingMusic || !audioCtx) return; if (nextNoteTime < audioCtx.currentTime - 0.2) nextNoteTime = audioCtx.currentTime; while (nextNoteTime < audioCtx.currentTime + 0.1) { if (isMusicOn) { const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sawtooth'; const filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 600; osc.frequency.value = bassNotes[noteIdx % bassNotes.length]; gain.gain.setValueAtTime(0.12, nextNoteTime); gain.gain.exponentialRampToValueAtTime(0.01, nextNoteTime + 0.2); osc.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination); osc.start(nextNoteTime); osc.stop(nextNoteTime + 0.25); } nextNoteTime += 0.2; noteIdx++; } setTimeout(schedule, 50); }; schedule(); },
+    stopAll: function() { this.isPlayingMusic = false; try { if(noiseNode) noiseNode.stop(); if(boostOsc) boostOsc.stop(); if(boostNoise) boostNoise.stop(); } catch(e){} if(audioCtx) audioCtx.close(); audioCtx = null; }
   };
 
-  // ---- INPUT ----
+  // ---- ✅ BUG FIX 1: CLEAN INPUT ABSTRACTION ----
+  // Helper to set logical action state directly
+  function setAction(action, state) {
+    activeKeys[action] = state;
+  }
+  
+  function isActionActive(actionId) { 
+    // Now we check the logical action name (e.g., 'boost') instead of the key char
+    return !!activeKeys[actionId]; 
+  }
+
+  // Input Listeners
   window.addEventListener('keydown', (e) => {
     if(e.key === "Escape") { togglePause(); return; }
     if(isPaused) return;
     const k = e.key.toLowerCase();
-    // Use Loaded Bindings
-    if(k === bindings.up || k === 'arrowup') activeKeys[k] = true;
-    if(k === bindings.down || k === 'arrowdown') activeKeys[k] = true;
-    if(k === bindings.left || k === 'arrowleft') activeKeys[k] = true;
-    if(k === bindings.right || k === 'arrowright') activeKeys[k] = true;
-    if(k === bindings.boost) activeKeys[k] = true;
-    if(k === bindings.fire) activeKeys[k] = true;
+    
+    // Map physical keys to LOGICAL actions
+    if(k === bindings.up || k === 'arrowup') setAction('up', true);
+    if(k === bindings.down || k === 'arrowdown') setAction('down', true);
+    if(k === bindings.left || k === 'arrowleft') setAction('left', true);
+    if(k === bindings.right || k === 'arrowright') setAction('right', true);
+    
+    // Boost: Check binding OR Spacebar code explicitly
+    if(k === bindings.boost || (bindings.boost === ' ' && e.code === 'Space')) setAction('boost', true);
+    
+    // ✅ IMPROVED FIRE (Shift Check)
+    if(k === bindings.fire || (bindings.fire === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) setAction('fire', true);
   });
 
   window.addEventListener('keyup', (e) => {
     const k = e.key.toLowerCase();
-    if(k === bindings.up || k === 'arrowup') activeKeys[k] = false;
-    if(k === bindings.down || k === 'arrowdown') activeKeys[k] = false;
-    if(k === bindings.left || k === 'arrowleft') activeKeys[k] = false;
-    if(k === bindings.right || k === 'arrowright') activeKeys[k] = false;
-    if(k === bindings.boost) activeKeys[k] = false;
-    if(k === bindings.fire) activeKeys[k] = false;
+    
+    if(k === bindings.up || k === 'arrowup') setAction('up', false);
+    if(k === bindings.down || k === 'arrowdown') setAction('down', false);
+    if(k === bindings.left || k === 'arrowleft') setAction('left', false);
+    if(k === bindings.right || k === 'arrowright') setAction('right', false);
+    
+    if(k === bindings.boost || (bindings.boost === ' ' && e.code === 'Space')) setAction('boost', false);
+    
+    // ✅ IMPROVED FIRE (Shift Check)
+    if(k === bindings.fire || (bindings.fire === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) setAction('fire', false);
   });
 
-  function isActionActive(actionId) {
-    if (actionId === 'up') return activeKeys[bindings.up] || activeKeys['arrowup'];
-    if (actionId === 'down') return activeKeys[bindings.down] || activeKeys['arrowdown'];
-    if (actionId === 'left') return activeKeys[bindings.left] || activeKeys['arrowleft'];
-    if (actionId === 'right') return activeKeys[bindings.right] || activeKeys['arrowright'];
-    return activeKeys[bindings[actionId]];
-  }
-
-  // --- MOBILE INPUT HELPER ---
-  function setKey(action, state) {
-      let key = bindings[action];
-      activeKeys[key] = state;
-  }
-
-  window.addEventListener("touchend", () => { setKey("up", false); setKey("down", false); setKey("left", false); setKey("right", false); setKey("fire", false); setKey("boost", false); });
-  window.addEventListener("touchcancel", () => { setKey("up", false); setKey("down", false); setKey("left", false); setKey("right", false); setKey("fire", false); setKey("boost", false); });
+  // Mobile controls now call setAction directly (see HTML)
+  window.addEventListener("touchend", () => { 
+    ["up","down","left","right","fire","boost"].forEach(k => setAction(k, false)); 
+  });
 
   // ---- UI ----
   function updateLeaderboard() {
     const list = document.getElementById('leaderboard-list'); if(!list) return; list.innerHTML = "";
+    
+    // ✅ BUG FIX 2: FORCE SYNC STATS
+    // Ensure leaderboard uses the actual object progress, in case ringCollected skipped a frame
     let racers = [playerStats, ...enemyStats].filter(r => r.name === "PLAYER" || (r.obj && r.obj.userData.alive));
+    
+    // Sync logic
+    racers = racers.map(r => {
+        if(r.name !== "PLAYER" && r.obj) {
+            r.rings = r.obj.userData.progress;
+        }
+        return r;
+    });
+
     racers.sort((a, b) => b.rings - a.rings);
     racers.forEach((r, i) => {
       const row = document.createElement("div"); row.className = "lb-row";
@@ -386,7 +326,10 @@
       if (playerStats.rings >= TOTAL_RINGS_WIN) winner = { win: true, name: "PLAYER" };
     } else {
       const eStat = enemyStats.find(e => e.name === collectorName);
-      if(eStat) { eStat.rings++; if(eStat.rings >= TOTAL_RINGS_WIN) winner = { win: false, name: eStat.name }; }
+      if(eStat && eStat.obj) {
+        eStat.rings = eStat.obj.userData.progress;
+        if(eStat.rings >= TOTAL_RINGS_WIN) winner = { win: false, name: eStat.name };
+      }
     }
     updateLeaderboard();
     if (winner) { if (winner.win) endGame(true, "Race Champion!"); else endGame(false, `${winner.name} Won the Race!`); }
@@ -410,9 +353,16 @@
     container.innerHTML = ''; container.appendChild(renderer.domElement);
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); scene.add(hemiLight);
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 200, 50); dirLight.castShadow = true; scene.add(dirLight);
-    playerStats.rings = 0; playerStats.progress = 0; enemyStats.forEach(e => e.rings = 0); enemiesAliveCount = 4; health = 100; boostLevel = 100;
+    
+    playerStats.rings = 0; playerStats.progress = 0; 
+    enemyStats.forEach(e => e.rings = 0); enemiesAliveCount = 4; health = 100; boostLevel = 100;
+    
     generateTerrain(); generateOcean(); createPlaneSystem(); createGuideArrow(); createRepairKits(); createRings(); createEnemies();
     updateRingVisuals(); updateLeaderboard();
+    
+    // Init Player tracking
+    playerPrevPos.copy(planeRig.position);
+    
     isPlaying = true; isPaused = false; animate();
   }
 
@@ -454,8 +404,45 @@
 
   function createPlaneSystem() { planeRig = new THREE.Group(); planeRig.position.set(0, 400, 800); scene.add(planeRig); planeMesh = createPlaneMesh(0x555555); planeRig.add(planeMesh); const glowGeo = new THREE.ConeGeometry(3, 10, 8); glowGeo.rotateX(Math.PI / 2); const glowMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, transparent: true, opacity: 0 }); const glow = new THREE.Mesh(glowGeo, glowMat); glow.position.set(0, 0, 20); glow.name = "EngineGlow"; planeMesh.add(glow); }
 
+  // ✅ STEP 1: ENEMY PERSONALITY & SETUP
   function createEnemies() {
-    for(let i=0; i<4; i++) { const enemy = new THREE.Group(); const mesh = createPlaneMesh(0xaa0000); enemy.add(mesh); const offsetX = (i - 1.5) * 200; enemy.position.set(offsetX, 400, 400); const spd = NORMAL_SPEED * (0.95 + Math.random() * 0.1); enemy.userData = { alive: true, health: 300, speed: spd, progress: 0, ringLocked: false, lastShot: 0, boostUntil: 0 }; scene.add(enemy); enemies.push(enemy); enemyStats[i].obj = enemy; }
+    for(let i=0; i<4; i++) { 
+      const enemy = new THREE.Group(); 
+      const mesh = createPlaneMesh(0xaa0000); 
+      enemy.add(mesh); 
+      const offsetX = (i - 1.5) * 200; 
+      enemy.position.set(offsetX, 400, 400); 
+      
+      // ✅ BUG FIX 4: Set Name on Object (for "Shot Down by...")
+      enemy.name = enemyStats[i].name;
+
+      // Personality Traits
+      const aiStats = {
+        aggression: 0.3 + Math.random() * 0.7, // 0.3 to 1.0 (How likely to attack)
+        greed: 0.3 + Math.random() * 0.7,      // 0.3 to 1.0 (How focused on rings)
+        coward: 0.2 + Math.random() * 0.6,     // 0.2 to 0.8 (How likely to retreat at low health)
+        aim: 0.5 + Math.random() * 0.5,        // 0.5 to 1.0 (Predictive aim accuracy)
+        dodge: 0.3 + Math.random() * 0.7       // 0.3 to 1.0 (Reaction to bullets)
+      };
+
+      enemy.userData = { 
+        alive: true, 
+        health: 300, 
+        speed: NORMAL_SPEED, 
+        progress: 0, 
+        ringLocked: false, 
+        lastShot: 0, 
+        boostUntil: 0,
+        ai: aiStats,
+        state: "RACE", // RACE, HUNT, EVADE, RETREAT
+        stateTimer: 0,
+        dodgeTimer: 0
+      }; 
+      
+      scene.add(enemy); 
+      enemies.push(enemy); 
+      enemyStats[i].obj = enemy; 
+    }
   }
 
   function createGuideArrow() { const group = new THREE.Group(); const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 }); const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 15, 8), mat); cylinder.rotation.x = Math.PI / 2; cylinder.position.z = -7.5; const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 8, 8), mat); cone.rotation.x = Math.PI / 2; group.add(cylinder, cone); guideArrow = group; scene.add(guideArrow); }
@@ -466,6 +453,25 @@
 
   function createRepairKits() { const kitGroupPrototype = new THREE.Group(); const boxGeo = new THREE.BoxGeometry(60, 60, 60); const boxMat = new THREE.MeshPhongMaterial({ color: 0x00aa00, emissive: 0x003300, shininess: 30 }); const box = new THREE.Mesh(boxGeo, boxMat); kitGroupPrototype.add(box); const crossMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); const vBar = new THREE.Mesh(new THREE.BoxGeometry(20, 70, 20), crossMat); const hBar = new THREE.Mesh(new THREE.BoxGeometry(70, 20, 20), crossMat); const dBar = new THREE.Mesh(new THREE.BoxGeometry(20, 20, 70), crossMat); kitGroupPrototype.add(vBar, hBar, dBar); const positions = [{ x: 1000, z: -3000 }, { x: -2000, z: -6000 }, { x: 500, z: -9000 }]; positions.forEach((loc) => { const groundY = getTerrainHeight(loc.x, loc.z); const y = Math.max(300, groundY + 200); const kit = kitGroupPrototype.clone(); kit.position.set(loc.x, y, loc.z); kit.userData = { active: true, respawnTime: 0 }; scene.add(kit); repairKits.push(kit); }); }
 
+  // ✅ STEP 4: PREDICTIVE AIM (Helper Function)
+  function calculateLeadAim(shooterPos, target, bulletSpeed, accuracy) {
+    const dist = shooterPos.distanceTo(target.position);
+    const timeToImpact = dist / bulletSpeed;
+    
+    // Calculate predicted position based on current velocity
+    const predictedPos = target.position.clone().add(playerVelocity.clone().multiplyScalar(timeToImpact));
+    
+    // Apply accuracy error (Personality trait)
+    const errorMagnitude = (1.0 - accuracy) * 100; // Lower aim = higher error
+    const errorOffset = new THREE.Vector3(
+      (Math.random() - 0.5) * errorMagnitude,
+      (Math.random() - 0.5) * errorMagnitude,
+      (Math.random() - 0.5) * errorMagnitude
+    );
+    
+    return predictedPos.add(errorOffset);
+  }
+
   function spawnBullet() {
     AudioSys.playGun(); let target = null; let minDist = Infinity; const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(planeRig.quaternion);
     enemies.forEach(e => { if(!e.userData.alive) return; const toEnemy = new THREE.Vector3().subVectors(e.position, planeRig.position); const dist = toEnemy.length(); if(dist < 8000 && forward.dot(toEnemy.normalize()) > 0.7 && dist < minDist) { minDist = dist; target = e; } });
@@ -473,62 +479,272 @@
     offsets.forEach(offset => { const bullet = new THREE.Mesh(bulletGeo, bulletMat); bullet.position.copy(planeRig.position); const wingX = Math.cos(planeRig.rotation.y) * offset; const wingZ = Math.sin(planeRig.rotation.y) * -offset; bullet.position.x += wingX; bullet.position.z += wingZ; scene.add(bullet); const v = new THREE.Vector3(0,0,-1).applyQuaternion(planeRig.quaternion).multiplyScalar(25); bullets.push({ mesh: bullet, velocity: v, target: target, life: 150 }); });
   }
 
-  function spawnEnemyBullet(enemy, targetPos) { const bulletGeo = new THREE.SphereGeometry(4, 8, 8); const bulletMat = new THREE.MeshBasicMaterial({ color: 0xff0000 }); const bullet = new THREE.Mesh(bulletGeo, bulletMat); bullet.position.copy(enemy.position); scene.add(bullet); const direction = new THREE.Vector3().subVectors(targetPos, enemy.position).normalize(); direction.x += (Math.random() - 0.5) * 0.05; direction.y += (Math.random() - 0.5) * 0.05; direction.z += (Math.random() - 0.5) * 0.05; const v = direction.multiplyScalar(40); bullets.push({ mesh: bullet, velocity: v, life: 400, isEnemy: true, owner: enemy }); if (isSoundOn && Math.random() < 0.3) AudioSys.playGun(); }
+  function spawnEnemyBullet(enemy, targetPos) { 
+    const bulletGeo = new THREE.SphereGeometry(4, 8, 8); const bulletMat = new THREE.MeshBasicMaterial({ color: 0xff0000 }); 
+    const bullet = new THREE.Mesh(bulletGeo, bulletMat); bullet.position.copy(enemy.position); scene.add(bullet); 
+    const direction = new THREE.Vector3().subVectors(targetPos, enemy.position).normalize(); 
+    // Small inherent spread
+    direction.x += (Math.random() - 0.5) * 0.02; direction.y += (Math.random() - 0.5) * 0.02; direction.z += (Math.random() - 0.5) * 0.02; 
+    const v = direction.multiplyScalar(40); 
+    bullets.push({ mesh: bullet, velocity: v, life: 220, isEnemy: true, owner: enemy }); 
+    if (isSoundOn && Math.random() < 0.3) AudioSys.playGun(); 
+  }
 
   function drawMinimap() { if(!minimapCtx || !planeRig) return; minimapCtx.clearRect(0, 0, 140, 140); const cx = 70, cy = 70; const range = 4000; const scale = 60 / range; minimapCtx.save(); minimapCtx.translate(cx, cy); minimapCtx.rotate(-planeRig.rotation.y + Math.PI); minimapCtx.beginPath(); minimapCtx.moveTo(0, -6); minimapCtx.lineTo(-4, 4); minimapCtx.lineTo(4, 4); minimapCtx.fillStyle = "#00ff00"; minimapCtx.fill(); minimapCtx.restore(); function drawDot(obj, color, size) { if(!obj || !obj.visible) return; const dx = obj.position.x - planeRig.position.x; const dz = obj.position.z - planeRig.position.z; let px = dx * scale; let py = dz * scale; const dist = Math.sqrt(px*px + py*py); if (dist > 65) { const ratio = 65 / dist; px *= ratio; py *= ratio; } minimapCtx.beginPath(); minimapCtx.arc(cx + px, cy + py, size, 0, Math.PI * 2); minimapCtx.fillStyle = color; minimapCtx.fill(); } if(currentRingObj) drawDot(currentRingObj, "#ffd700", 4); enemies.forEach(e => { if(e.userData.alive) drawDot(e, "#ff0000", 3); }); }
 
   function animate() {
-    if (!isPlaying || isPaused) return; frameCount++; const t = performance.now(); if (t - lastFrameTime >= 1000) { if (fpsElem) fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastFrameTime = t; }
+    if (!isPlaying || isPaused) return; 
+    frameCount++; const t = performance.now(); 
+    if (t - lastFrameTime >= 1000) { if (fpsElem) fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastFrameTime = t; }
+    
     const now = Date.now();
+
+    // UPDATE PLAYER VELOCITY FOR AI PREDICTION
+    playerVelocity.subVectors(planeRig.position, playerPrevPos);
+    playerVelocity.clampLength(0, 50);
+    playerPrevPos.copy(planeRig.position);
+
+    // --- ENEMY AI LOOP ---
     enemies.forEach((e, idx) => {
       if(!e.userData.alive) return;
-      let closestTarget = null; let minDist = Infinity;
-      const distToPlayer = e.position.distanceTo(planeRig.position); if (distToPlayer < 10000) { closestTarget = planeRig; minDist = distToPlayer; }
-      enemies.forEach(other => { if (other !== e && other.userData.alive) { const d = e.position.distanceTo(other.position); if (d < minDist) { minDist = d; closestTarget = other; } } });
-      let isDodging = false;
-      for (let b of bullets) { if (b.mesh.position.distanceTo(e.position) < 500) { const toEnemy = e.position.clone().sub(b.mesh.position).normalize(); const bulletDir = b.velocity.clone().normalize(); if (bulletDir.dot(toEnemy) > 0.6) { isDodging = true; break; } } }
-      if (isDodging) { e.rotation.z += 0.1; e.translateY(2); e.translateX(Math.sin(now * 0.01) * 2); e.translateZ(-e.userData.speed * 1.2); } else {
-        let targetPosVec; if (closestTarget && minDist < 2000) targetPosVec = closestTarget.position.clone(); else { let targetIdx = e.userData.progress % RINGS_PER_LAP; const wp = ringWaypoints[targetIdx]; if (wp) targetPosVec = new THREE.Vector3(wp.x, wp.y, wp.z); }
-        if (targetPosVec) {
-          const forwardDir = new THREE.Vector3(0,0,-1).applyQuaternion(e.quaternion); const lookAheadPoint = e.position.clone().add(forwardDir.clone().multiplyScalar(400)); const terrainH_ahead = getTerrainHeight(lookAheadPoint.x, lookAheadPoint.z);
-          if (lookAheadPoint.y < terrainH_ahead + 250) targetPosVec.y = Math.max(targetPosVec.y, terrainH_ahead + 400);
-          const dummy = new THREE.Object3D(); dummy.position.copy(e.position); dummy.lookAt(targetPosVec); dummy.rotateY(Math.PI); e.quaternion.slerp(dummy.quaternion, 0.04);
-          const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(e.quaternion); const desired = targetPosVec.clone().sub(e.position).normalize(); const turnComponent = fwd.cross(desired).y; const targetRoll = turnComponent * 20; e.rotation.z = THREE.MathUtils.lerp(e.rotation.z, targetRoll, 0.05);
-          if (now > e.userData.boostUntil) if (Math.random() < 0.005) e.userData.boostUntil = now + 2000;
-          let speed = e.userData.speed; if (now < e.userData.boostUntil) speed *= 1.5; e.translateZ(-speed);
-        }
+      
+      const ai = e.userData.ai;
+      const distToPlayer = e.position.distanceTo(planeRig.position);
+      
+      // Check for incoming threats (Bullets)
+      let incomingThreat = false;
+      for (let b of bullets) { 
+        if (!b.isEnemy && b.mesh.position.distanceTo(e.position) < 800) { 
+           // Simple dot product check to see if bullet is moving towards enemy
+           const toEnemy = e.position.clone().sub(b.mesh.position).normalize();
+           const bulletDir = b.velocity.clone().normalize();
+           if(bulletDir.dot(toEnemy) > 0.8) { incomingThreat = true; break; }
+        } 
       }
-      if (closestTarget) { const distToTarget = e.position.distanceTo(closestTarget.position); if (distToTarget < 10000) { if (now - (e.userData.lastShot || 0) > 2000) { spawnEnemyBullet(e, closestTarget.position); e.userData.lastShot = now; } } }
-      const currentH = getTerrainHeight(e.position.x, e.position.z); if(e.position.y < currentH + 80) { e.position.y = currentH + 80; e.rotation.x -= 0.05; }
-      let targetIdx = e.userData.progress % RINGS_PER_LAP; const wp = ringWaypoints[targetIdx];
-      if (wp) { const targetPosVec = new THREE.Vector3(wp.x, wp.y, wp.z); const dist = e.position.distanceTo(targetPosVec); if (!e.userData.ringLocked && dist < 180) { e.userData.ringLocked = true; setTimeout(() => e.userData.ringLocked = false, 700); e.userData.progress++; enemyStats[idx].rings = e.userData.progress; ringCollected(enemyStats[idx].name); } }
+
+      // ✅ STEP 2 & 3: STATE DECISION (State Machine)
+      // Default return to RACE
+      let nextState = "RACE";
+
+      // 🛑 AI FIX A: Priority Order Corrected
+      if (e.userData.dodgeTimer > 0) {
+          nextState = "EVADE";
+          e.userData.dodgeTimer--;
+      } else if (e.userData.stateTimer > 0) {
+          e.userData.stateTimer--;
+          nextState = e.userData.state;
+      } else {
+          // Fresh decision logic
+          
+          if (incomingThreat && Math.random() < ai.dodge) {
+            nextState = "EVADE";
+            e.userData.dodgeTimer = 60; 
+          } else if (e.userData.health < 60 && Math.random() < ai.coward) {
+            nextState = "RETREAT";
+          } else {
+            // Opportunistic Attack logic
+            const playerIsWinning = playerStats.rings > e.userData.progress;
+            const opportunity = (distToPlayer < 3000); 
+            
+            if ((playerIsWinning || opportunity) && Math.random() < ai.aggression) {
+               nextState = "HUNT";
+            } else if (ai.greed > 0.7) {
+               nextState = "RACE";
+            }
+          }
+          
+          // 🛑 AI FIX C: Integer Timer
+          e.userData.stateTimer = 60 + Math.floor(Math.random() * 60);
+      }
+
+      e.userData.state = nextState;
+
+      // --- EXECUTE STATE ---
+      let targetPosVec = null;
+      let desiredSpeed = e.userData.speed;
+      let shooting = false;
+
+      // Get Race Waypoint (Common for RACE & RETREAT fallback)
+      let targetIdx = e.userData.progress % RINGS_PER_LAP;
+      const wp = ringWaypoints[targetIdx];
+      
+      // ✅ BUG FIX 3: WP Crash Fix
+      if (!wp) return; // Prevent crash if waypoint is undefined
+
+      const raceTarget = new THREE.Vector3(wp.x, wp.y, wp.z);
+
+      if (nextState === "RACE") {
+          targetPosVec = raceTarget;
+          
+          // ✅ STEP 5: RUBBER BANDING
+          // If behind player, speed up. If ahead, maybe slow down/play safe.
+          if (e.userData.progress < playerStats.progress) {
+             desiredSpeed *= 1.4; // Catch up
+          } else if (e.userData.progress > playerStats.progress + 2) {
+             desiredSpeed *= 0.9; // Slow down slightly
+          }
+
+      } else if (nextState === "HUNT") {
+          targetPosVec = calculateLeadAim(e.position, planeRig, 40, ai.aim); // Aim at player
+          shooting = true;
+          desiredSpeed *= 1.1; // Attack speed
+
+      } else if (nextState === "RETREAT") {
+          // Fly UP and away from player
+          const awayFromPlayer = e.position.clone().sub(planeRig.position).normalize();
+          targetPosVec = e.position.clone().add(awayFromPlayer.multiplyScalar(2000));
+          targetPosVec.y = 800; // Go high
+          desiredSpeed *= 1.3; // Run fast
+
+      } else if (nextState === "EVADE") {
+          // ✅ STEP 6: EVASIVE MANEUVERS
+          // Barrel roll logic is visual (rotation.z), movement is erratic
+          targetPosVec = e.position.clone().add(new THREE.Vector3(
+              (Math.random()-0.5) * 500,
+              (Math.random()-0.5) * 500,
+              500 // 🛑 AI FIX B: Use +500 to move generally forward relative to orientation
+          ).applyQuaternion(e.quaternion));
+          
+          e.rotation.z = (e.rotation.z + 0.2) % (Math.PI * 2);
+          desiredSpeed *= 1.2;
+      }
+
+      // --- MOVEMENT PHYSICS ---
+      
+      // 1. Terrain Avoidance (Anticipation)
+      const forwardDir = new THREE.Vector3(0,0,-1).applyQuaternion(e.quaternion);
+      const sensorPos = e.position.clone().add(forwardDir.clone().multiplyScalar(500));
+      const terrainH_ahead = getTerrainHeight(sensorPos.x, sensorPos.z);
+      
+      let pitchForce = 0;
+      if (sensorPos.y < terrainH_ahead + 250) {
+          pitchForce = 0.06; // Hard Pull up
+      }
+
+      // 2. Turn towards target
+      if (targetPosVec && nextState !== "EVADE") {
+          const dummy = new THREE.Object3D(); 
+          dummy.position.copy(e.position); 
+          dummy.lookAt(targetPosVec); 
+          dummy.rotateY(Math.PI); // Fix model orientation
+          
+          // Smooth steering based on state (HUNT needs sharper turns)
+          const turnRate = (nextState === "HUNT") ? 0.05 : 0.03;
+          e.quaternion.slerp(dummy.quaternion, turnRate);
+          
+          // ✅ BUG FIX 3: MOVEMENT STABILITY
+          // Prevent the "death roll" where AI stays flipped and dives into terrain
+          // Stabilize roll towards 0 (level flight) whenever not evading
+          e.rotation.z = THREE.MathUtils.lerp(e.rotation.z, 0, 0.05);
+      }
+
+      // Apply Pitch Force (Terrain Avoidance)
+      e.rotation.x = THREE.MathUtils.lerp(e.rotation.x, 0, 0.02);
+      e.rotation.x = THREE.MathUtils.clamp(e.rotation.x - pitchForce, -0.6, 0.6);
+
+      // Apply Speed
+      e.translateZ(-desiredSpeed);
+
+      // --- SHOOTING ---
+      if (shooting && distToPlayer < 5000) { // Increased range check
+          // Raycast check: Is player actually in front?
+          const toTarget = planeRig.position.clone().sub(e.position).normalize();
+          const dot = forwardDir.dot(toTarget);
+          
+          // 🛑 AI FIX: Widened firing angle (0.9 -> 0.85)
+          if (dot > 0.85 && (now - (e.userData.lastShot || 0) > 1500)) {
+              // Aim is already calculated in targetPosVec, but we need raw position for bullet spawn
+              // We pass the PREDICTED position to the bullet spawn logic
+              spawnEnemyBullet(e, targetPosVec);
+              e.userData.lastShot = now;
+          }
+      }
+
+      // Height Correction (Safety Net)
+      const currentH = getTerrainHeight(e.position.x, e.position.z); 
+      if(e.position.y < currentH + 80) { e.position.y = currentH + 80; e.rotation.x -= 0.05; }
+      
+      // Ring Logic
+      if (wp) { 
+        const ringPos = new THREE.Vector3(wp.x, wp.y, wp.z); 
+        const dist = e.position.distanceTo(ringPos); 
+        if (!e.userData.ringLocked && dist < 180) { 
+            e.userData.ringLocked = true; 
+            setTimeout(() => e.userData.ringLocked = false, 700); 
+            e.userData.progress++; 
+            // ✅ BUG FIX 1 (Part 2): Remove manual stats update, let ringCollected handle it
+            // enemyStats[idx].rings = e.userData.progress; // Removed this line
+            ringCollected(enemyStats[idx].name); 
+        } 
+      }
     });
+
+    // --- PLAYER ACTION ---
     if (isActionActive('fire')) { if (now - lastFireTime > FIRE_RATE) { spawnBullet(); lastFireTime = now; } }
+    
+    // BULLET UPDATE & COLLISION
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i]; b.mesh.position.add(b.velocity); b.life--;
-      const gh = getTerrainHeight(b.mesh.position.x, b.mesh.position.z); if (b.mesh.position.y < gh + 10) { scene.remove(b.mesh); bullets.splice(i, 1); continue; }
-      if (b.isEnemy) {
-        if (b.mesh.position.distanceTo(planeRig.position) < 80) { health -= 6; AudioSys.playExplosion(); if (health <= 0) { health = 0; endGame(false, "Shot Down!"); } scene.remove(b.mesh); bullets.splice(i, 1); continue; }
-        let hitEnemy = false; for (let e of enemies) { if (e !== b.owner && e.userData.alive && b.mesh.position.distanceTo(e.position) < 80) { e.userData.health -= 10; AudioSys.playExplosion(); if(e.userData.health <= 0) { e.userData.alive = false; e.visible = false; enemiesAliveCount--; if(enemiesAliveCount === 0) endGame(true, "Enemy Resistance Neutralized"); } hitEnemy = true; break; } } if (hitEnemy) { scene.remove(b.mesh); bullets.splice(i, 1); continue; }
-      } else {
-        if(b.target && b.target.userData.alive) { const dir = new THREE.Vector3().subVectors(b.target.position, b.mesh.position).normalize(); b.velocity.lerp(dir.multiplyScalar(20), 0.1); }
-        let hit = false; for(let e of enemies) { if(e.userData.alive && b.mesh.position.distanceTo(e.position) < 80) { e.userData.health -= 25; AudioSys.playExplosion(); if(e.userData.health <= 0) { e.userData.alive = false; e.visible = false; enemiesAliveCount--; if(enemiesAliveCount === 0) endGame(true, "Enemy Resistance Neutralized"); } hit = true; break; } } if(hit) { scene.remove(b.mesh); bullets.splice(i, 1); continue; }
+      const gh = getTerrainHeight(b.mesh.position.x, b.mesh.position.z); 
+      
+      if (b.mesh.position.y < gh + 10 || b.life <= 0) { 
+          scene.remove(b.mesh); 
+          b.mesh.geometry.dispose(); b.mesh.material.dispose(); // ✅ MEMORY FIX
+          bullets.splice(i, 1); 
+          continue; 
       }
-      if (b.life <= 0) { scene.remove(b.mesh); bullets.splice(i, 1); }
+      
+      if (b.isEnemy) {
+        if (b.mesh.position.distanceTo(planeRig.position) < 80) { 
+            health -= 8; AudioSys.playExplosion(); 
+            // ✅ BUG FIX 4: Use owner.name
+            if (health <= 0) { health = 0; endGame(false, "Shot Down by " + (b.owner.name || "Enemy")); } 
+            scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose();
+            bullets.splice(i, 1); continue; 
+        }
+        // Enemy friendly fire check (optional, kept simple for now)
+      } else {
+        // Player Bullet vs Enemy
+        if(b.target && b.target.userData.alive) { const dir = new THREE.Vector3().subVectors(b.target.position, b.mesh.position).normalize(); b.velocity.lerp(dir.multiplyScalar(20), 0.1); }
+        let hit = false; 
+        for(let e of enemies) { 
+            if(e.userData.alive && b.mesh.position.distanceTo(e.position) < 80) { 
+                e.userData.health -= 25; AudioSys.playExplosion(); 
+                // AI Reaction to damage: Instant Evasion
+                e.userData.dodgeTimer = 90; 
+                e.userData.state = "EVADE";
+                
+                if(e.userData.health <= 0) { 
+                    e.userData.alive = false; e.visible = false; enemiesAliveCount--; 
+                    if(enemiesAliveCount === 0) endGame(true, "Ace Combatant: All Enemies Down"); 
+                } 
+                hit = true; break; 
+            } 
+        } 
+        if(hit) { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); bullets.splice(i, 1); continue; }
+      }
     }
-    let currentSpeed = NORMAL_SPEED; let isBoosting = false; let engineGlow = planeMesh.getObjectByName("EngineGlow");
-    if (isActionActive('boost') && boostLevel > 0) { currentSpeed = BOOST_SPEED; isBoosting = true; boostLevel -= BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0; if(engineGlow) engineGlow.material.opacity = 0.8; } else { if (boostLevel < 100) boostLevel += BOOST_REFILL; if(engineGlow) engineGlow.material.opacity = 0; }
+
+    let currentSpeed = NORMAL_SPEED; let engineGlow = planeMesh.getObjectByName("EngineGlow");
+    if (isActionActive('boost') && boostLevel > 0) { currentSpeed = BOOST_SPEED; boostLevel -= BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0; if(engineGlow) engineGlow.material.opacity = 0.8; } else { if (boostLevel < 100) boostLevel += BOOST_REFILL; if(engineGlow) engineGlow.material.opacity = 0; }
     document.getElementById('boost-fill').style.width = boostLevel + '%';
     planeRig.translateZ(-currentSpeed);
     if (isActionActive('left')) { planeRig.rotation.y += TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); } else if (isActionActive('right')) { planeRig.rotation.y -= TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); } else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
     if (isActionActive('up')) { planeRig.position.y += LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.5, 0.1); } else if (isActionActive('down')) { planeRig.position.y -= LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.5, 0.1); } else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
-    const groundHeight = getTerrainHeight(planeRig.position.x, planeRig.position.z); let isDamaging = false; if (planeRig.position.y < groundHeight + 15) { planeRig.position.y = groundHeight + 15; health -= COLLISION_DAMAGE; isDamaging = true; if (health <= 0) { health = 0; endGame(false, "Crashed"); } }
-    AudioSys.updateContinuousAudio(isBoosting, isDamaging);
+    
+    const groundHeight = getTerrainHeight(planeRig.position.x, planeRig.position.z); let isDamaging = false; 
+    if (planeRig.position.y < groundHeight + 15) { planeRig.position.y = groundHeight + 15; health -= COLLISION_DAMAGE; isDamaging = true; if (health <= 0) { health = 0; endGame(false, "Crashed into Terrain"); } }
+    AudioSys.updateContinuousAudio(isActionActive('boost'), isDamaging);
     document.getElementById('health-fill').style.width = health + '%';
     planeMesh.rotation.z = visualRoll; planeMesh.rotation.x = visualPitch;
     const targetCamPos = new THREE.Vector3(0, 100, 300).applyMatrix4(planeRig.matrixWorld);
     camera.position.lerp(targetCamPos, 0.1); camera.lookAt(planeRig.position);
-    if (currentRingObj) { guideArrow.visible = true; guideArrow.position.copy(planeRig.position); guideArrow.position.y += 60; guideArrow.lookAt(currentRingObj.position); if (planeRig.position.distanceTo(currentRingObj.position) < 100 && !currentRingObj.userData.locked) { currentRingObj.userData.locked = true; ringCollected("PLAYER"); } } else guideArrow.visible = false;
+    
+    if (currentRingObj) { 
+        guideArrow.visible = true; guideArrow.position.copy(planeRig.position); guideArrow.position.y += 60; guideArrow.lookAt(currentRingObj.position); 
+        if (planeRig.position.distanceTo(currentRingObj.position) < 100 && !currentRingObj.userData.locked) { currentRingObj.userData.locked = true; ringCollected("PLAYER"); } 
+    } else guideArrow.visible = false;
+    
     repairKits.forEach(kit => { if (kit.userData.active) { kit.rotation.y += 0.02; if (planeRig.position.distanceTo(kit.position) < 80) { kit.userData.active = false; kit.visible = false; kit.userData.respawnTime = Date.now() + 30000; health += 30; if(health > 100) health = 100; AudioSys.playRepair(); } } else if (Date.now() > kit.userData.respawnTime) { kit.userData.active = true; kit.visible = true; } });
     rings.forEach(r => r.rotation.z += 0.01);
     drawMinimap();
