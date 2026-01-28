@@ -4,14 +4,39 @@ const http = require('http');
 const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server);
-const path = require('path'); // Added path module
+const path = require('path');
+const fs = require('fs'); // File System module for debugging
 
-// 1. Static Files Serve Karo (Current Directory se)
+// --- DEBUGGING LOGS (Render logs me check karna) ---
+console.log("🔹 SERVER STARTED");
+console.log("🔹 Current Directory (__dirname):", __dirname);
+
+try {
+    const files = fs.readdirSync(__dirname);
+    console.log("🔹 FILES PRESENT ON SERVER:", files);
+    
+    if (!files.includes('index.html')) {
+        console.error("❌ CRITICAL ERROR: index.html is MISSING from this folder!");
+    } else {
+        console.log("✅ index.html found successfully.");
+    }
+} catch (err) {
+    console.error("❌ Error listing files:", err);
+}
+// ----------------------------------------------------
+
+// 1. Static Files Serve Karo
 app.use(express.static(__dirname));
 
-// 2. Explicit Root Route (Fix for Cannot GET /)
+// 2. Explicit Root Route with Safety Check
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    const filePath = path.join(__dirname, 'index.html');
+    
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send("<h1>Error 404: Game File Not Found</h1><p>Check Render Logs. index.html is missing on server.</p>");
+    }
 });
 
 // Game State
@@ -135,6 +160,7 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(3000, () => {
-    console.log('✅ SERVER RUNNING ON: http://localhost:3000');
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`✅ SERVER RUNNING ON PORT: ${PORT}`);
 });
