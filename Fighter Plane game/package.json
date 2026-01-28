@@ -1,16 +1,24 @@
 {
-  "name": "aero-flight-multiplayer",
+  "name": "sky-pilot-multiplayer",
   "version": "1.0.0",
-  "description": "Multiplayer Flight Game",
+  "description": "Multiplayer Sky Pilot Game",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.7.2"
+    "socket.io": "^4.7.4"
   },
   "engines": {
-    "node": "20.x"
-  }
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "game",
+    "multiplayer",
+    "socket.io",
+    "three.js"
+  ],
+  "author": "",
+  "license": "ISC"
 }
