@@ -7,35 +7,46 @@ const io = new Server(server);
 const path = require('path');
 const fs = require('fs'); // File System module for debugging
 
-// --- DEBUGGING LOGS (Render logs me check karna) ---
+// --- PATH CONFIGURATION ---
+// User confirmed structure: 
+// Root: server.js
+// Subfolder: Public/ (contains index.html, etc.)
+const publicPath = path.join(__dirname, 'Public');
+
+// --- DEBUGGING LOGS ---
 console.log("🔹 SERVER STARTED");
-console.log("🔹 Current Directory (__dirname):", __dirname);
+console.log("🔹 Root Directory:", __dirname);
+console.log("🔹 Public Directory Target:", publicPath);
 
 try {
-    const files = fs.readdirSync(__dirname);
-    console.log("🔹 FILES PRESENT ON SERVER:", files);
-    
-    if (!files.includes('index.html')) {
-        console.error("❌ CRITICAL ERROR: index.html is MISSING from this folder!");
+    if (fs.existsSync(publicPath)) {
+        const files = fs.readdirSync(publicPath);
+        console.log("🔹 FILES IN PUBLIC FOLDER:", files);
+        
+        if (!files.includes('index.html')) {
+            console.error("❌ CRITICAL ERROR: index.html is MISSING inside 'Public' folder!");
+        } else {
+            console.log("✅ index.html found inside 'Public' folder.");
+        }
     } else {
-        console.log("✅ index.html found successfully.");
+        console.error("❌ CRITICAL ERROR: 'Public' folder does not exist!");
     }
 } catch (err) {
-    console.error("❌ Error listing files:", err);
+    console.error("❌ Error accessing folders:", err);
 }
 // ----------------------------------------------------
 
-// 1. Static Files Serve Karo
-app.use(express.static(__dirname));
+// 1. Static Files Serve Karo (Public folder se)
+app.use(express.static(publicPath));
 
 // 2. Explicit Root Route with Safety Check
 app.get('/', (req, res) => {
-    const filePath = path.join(__dirname, 'index.html');
+    const filePath = path.join(publicPath, 'index.html');
     
     if (fs.existsSync(filePath)) {
         res.sendFile(filePath);
     } else {
-        res.status(404).send("<h1>Error 404: Game File Not Found</h1><p>Check Render Logs. index.html is missing on server.</p>");
+        res.status(404).send("<h1>Error 404: Game File Not Found</h1><p>Server looked in: " + publicPath + "</p>");
     }
 });
 
