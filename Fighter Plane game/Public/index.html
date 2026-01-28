@@ -239,7 +239,7 @@
     <!-- LOADING OVERLAY -->
     <div id="loading-overlay" class="hidden">
         <div class="spinner"></div>
-        <h2 style="color:#fff;">CONNECTING TO SERVER...</h2>
+        <h2 style="color:#fff;">CONNECTING...</h2>
     </div>
 
     <!-- MAIN MENU -->
@@ -264,7 +264,7 @@
 
         <div style="margin-top:15px;"></div>
 
-        <input id="mp-room-code" placeholder="Enter Room Code e.g. abcd" style="margin-top:10px; padding: 12px; width: 80%; border-radius: 5px; border: none; background: rgba(255,255,255,0.1); color: #fff; font-size: 16px; font-weight: bold; text-align: center;">
+        <input id="mp-room-code" placeholder="Enter Room Code (e.g. ABCD)" style="margin-top:10px; padding: 12px; width: 80%; border-radius: 5px; border: none; background: rgba(255,255,255,0.1); color: #fff; font-size: 16px; font-weight: bold; text-align: center; text-transform: uppercase;">
         <button id="btn-join" class="action-btn secondary-btn" onclick="mpJoinRoom()">JOIN ROOM</button>
 
         <button class="action-btn secondary-btn" onclick="showStartMenu()">BACK</button>
@@ -344,8 +344,10 @@
           isHost: false,
           inLobby: false,
           playerName: null,
+          action: null // 'create' or 'join'
         };
-        const otherPlayers = {}; // Store other players' meshes
+        const otherPlayers = {}; // Store other players' info { id, name, mesh, x,y,z }
+        let lobbyTimer = null; // Timer for lobby expiry
         
         // ============================================
         // ✅ FIX: SOCKET INITIALIZATION & DEBUG LOGS
@@ -397,22 +399,33 @@
           initGame(); 
         }
 
-        // ✅ FIX: CREATE ROOM SAFETY CHECK & LOGIC FIX 2
+        // 5-Minute Timer Logic
+        function startLobbyTimer() {
+            if(lobbyTimer) clearTimeout(lobbyTimer);
+            lobbyTimer = setTimeout(() => {
+                // FIX 3: Timer should only work for host
+                if(mp.inLobby && mp.isHost && !isPlaying) {
+                    alert("Lobby timeout (5 mins). Closing room.");
+                    mpLeaveLobby();
+                }
+            }, 5 * 60 * 1000); // 5 Minutes
+        }
+
+        // ✅ FIX: CREATE ROOM
         function mpCreateRoom() {
           gameMode = "multi";
+          mp.action = "create";
 
           // FIX: Check if socket is actually connected before sending
           if (!socket || !socket.connected) {
             alert("Server se connect nahi hua. 2 sec wait karke dobara try karo. (Check Console for errors)");
-            console.log("Socket status:", socket ? socket.connected : "No socket");
             return;
           }
 
           mp.playerName = prompt("Enter your name:", "PLAYER") || "PLAYER";
           showLoading(true); // Show loading
           
-          // FIX 2: Client now generates ID and uses standard 'joinRoom' 
-          // because server does not support lobby 'mp_create_room'
+          // GENERATE RANDOM CODE
           mp.roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
           console.log("Creating/Joining room:", mp.roomId);
           alert("Room Created! Share Code: " + mp.roomId);
@@ -420,20 +433,24 @@
           // FIX (Bug 1): Sending object { room, name }
           socket.emit("joinRoom", { room: mp.roomId, name: mp.playerName });
           
-          // FIX (Bug 2): Manually showing lobby screen since server won't emit 'mp_room_created'
+          // Use timeout to simulate server response for creation, 
+          // as we assume we are the first one.
           setTimeout(() => {
               showLoading(false);
-              mp.isHost = true; // Assumed since created
+              mp.isHost = true; 
               mp.inLobby = true;
               document.getElementById("lobby-room-id").innerText = mp.roomId;
               showScreen("lobby-screen");
               document.getElementById("host-start-btn").classList.remove("hidden");
               refreshLobbyUI();
+              startLobbyTimer();
           }, 500);
         }
 
+        // ✅ FIX: JOIN ROOM WITH VALIDATION
         function mpJoinRoom() {
           gameMode = "multi";
+          mp.action = "join";
           
            // FIX: Connection check for join too
           if (!socket || !socket.connected) {
@@ -443,48 +460,55 @@
 
           mp.playerName = prompt("Enter your name:", "PLAYER") || "PLAYER";
 
-          const room = (document.getElementById("mp-room-code").value || "").trim();
+          const rawCode = document.getElementById("mp-room-code").value;
+          const room = rawCode.trim().toUpperCase(); // FORCE UPPERCASE
+          
           if (!room) { alert("Enter Room Code"); return; }
 
+          mp.roomId = room;
           showLoading(true);
 
           // FIX (Bug 1): Sending object { room, name }
           socket.emit("joinRoom", { room: room, name: mp.playerName });
-          mp.roomId = room;
           
-          // FIX (Bug 2): Manually showing lobby screen
+          // Timeout Safety: If server logic fails or empty
           setTimeout(() => {
-              showLoading(false);
-              mp.isHost = false; 
-              mp.inLobby = true;
-              document.getElementById("lobby-room-id").innerText = mp.roomId;
-              showScreen("lobby-screen");
-              document.getElementById("host-start-btn").classList.add("hidden");
-              refreshLobbyUI();
-          }, 500);
+              if(!mp.inLobby) {
+                  showLoading(false);
+                  alert("Connection Timed Out. Server didn't respond or Room doesn't exist.");
+                  mpLeaveLobby();
+              }
+          }, 8000);
         }
 
         function mpLeaveLobby() {
+          if(lobbyTimer) clearTimeout(lobbyTimer);
           if (!mp.roomId) return showStartMenu();
           
           // Cleanup other players
           Object.values(otherPlayers).forEach(p => {
-             if (scene) scene.remove(p);
-             disposeHierarchy(p);
+             if (scene && p.mesh) scene.remove(p.mesh);
+             // disposeHierarchy not needed for small objects usually but good practice
+             if(p.mesh) disposeHierarchy(p.mesh);
           });
           for (let k in otherPlayers) delete otherPlayers[k];
 
-          //socket.emit("mp_leave_room", { roomId: mp.roomId }); 
-          // Note: Standard servers usually handle disconnect automatically
+          // FIX 4: Check connection before emit
+          if (socket && socket.connected) {
+              socket.emit("leaveRoom", { room: mp.roomId });
+          }
+          
           mp.roomId = null;
           mp.isHost = false;
           mp.inLobby = false;
+          mp.action = null;
           showStartMenu();
         }
 
-        // Host start game (Dead code if lobby bypassed, but kept for structure)
+        // Host start game
         function mpHostStartGame() {
           if (!mp.isHost) { alert("Only host can start."); return; }
+          if(lobbyTimer) clearTimeout(lobbyTimer);
           // FIX: Emit 'startGame' with both room and roomId for safety
           socket.emit("startGame", { room: mp.roomId, roomId: mp.roomId }); 
         }
@@ -503,8 +527,10 @@
             // Add others
             let i = 2;
             Object.keys(otherPlayers).forEach(id => {
+                const p = otherPlayers[id];
                 const row = document.createElement("div");
-                row.textContent = `${i}. RIVAL PILOT`; // Generic name as server doesn't send names
+                // FIX 5: Show names if available
+                row.textContent = `${i}. ${p.name || "RIVAL PILOT"}`; 
                 row.style.color = "#ddd";
                 list.appendChild(row);
                 i++;
@@ -564,6 +590,15 @@
           showLoading(false);
         });
 
+        // FIX 3: Room validation listeners
+        socket.on("roomNotFound", () => {
+            if (mp.action === 'join') {
+                showLoading(false);
+                alert("Invalid Room Code! Room does not exist or has expired.");
+                mpLeaveLobby();
+            }
+        });
+
         // Listen for 'startGame' or 'gameStarted' (safest approach)
         const handleGameStart = () => {
             showScreen("countdown-screen");
@@ -579,6 +614,20 @@
         // FIX 3: Handling currentPlayers to start game and map ID correctly
         socket.on('currentPlayers', (players) => {
             
+            const playerIds = Object.keys(players);
+            
+            // ✅ VALIDATION LOGIC: Check if room exists
+            if (mp.action === 'join' && !mp.inLobby) {
+                // FIX 2: Removed aggressive check (<=1) to prevent false reject
+                // Just enter lobby
+                mp.inLobby = true;
+                mp.isHost = false;
+                showLoading(false);
+                document.getElementById("lobby-room-id").innerText = mp.roomId;
+                showScreen("lobby-screen");
+                document.getElementById("host-start-btn").classList.add("hidden");
+            }
+
             // FIX: Remove stale players (ghosts)
             Object.keys(otherPlayers).forEach(existingId => {
                 if (!players[existingId]) {
@@ -586,7 +635,7 @@
                 }
             });
 
-            Object.keys(players).forEach((id) => {
+            playerIds.forEach((id) => {
                 // FIX 3: Use key 'id' instead of property .playerId
                 if (id === socket.id) return;
                 
@@ -618,35 +667,56 @@
         // FIX 5: Handling playerMoved data mismatch
         socket.on('playerMoved', (playerInfo) => {
             // Server sends object with .id property
-            const p = otherPlayers[playerInfo.id];
-            if (p) {
-                p.position.set(playerInfo.x, playerInfo.y, playerInfo.z);
+            const pEntry = otherPlayers[playerInfo.id];
+            if (pEntry && pEntry.mesh) {
+                const mesh = pEntry.mesh;
+                mesh.position.set(playerInfo.x, playerInfo.y, playerInfo.z);
                 
                 // Fix: Sync using Quaternion for smoothness
                 if (playerInfo.quaternion) {
-                    p.quaternion.set(playerInfo.quaternion.x, playerInfo.quaternion.y, playerInfo.quaternion.z, playerInfo.quaternion.w);
+                    mesh.quaternion.set(playerInfo.quaternion.x, playerInfo.quaternion.y, playerInfo.quaternion.z, playerInfo.quaternion.w);
                 } else {
                     // Fallback to Euler if server sends old format
-                    p.rotation.set(playerInfo.rotation.x, playerInfo.rotation.y, playerInfo.rotation.z);
+                    mesh.rotation.set(playerInfo.rotation.x, playerInfo.rotation.y, playerInfo.rotation.z);
                 }
             }
         });
 
         function addOtherPlayer(playerInfo) {
-            if (!scene) return;
-            if (otherPlayers[playerInfo.playerId]) return; // ✅ prevent duplicates
+            // FIX 5 & 8: Store data even if scene missing (Lobby phase)
+            let pEntry = otherPlayers[playerInfo.playerId];
+            if (!pEntry) {
+                pEntry = { 
+                    playerId: playerInfo.playerId, 
+                    name: playerInfo.name, 
+                    mesh: null, 
+                    x: playerInfo.x || 0, 
+                    y: playerInfo.y || 0, 
+                    z: playerInfo.z || 0 
+                };
+                otherPlayers[playerInfo.playerId] = pEntry;
+            } else {
+                // Update name if changed
+                if(playerInfo.name) pEntry.name = playerInfo.name;
+            }
 
-            // Create a plane mesh for other players (Reuse createPlaneMesh but maybe different color)
-            const otherPlayer = createPlaneMesh(0x00ff00); // Green for allies
-            otherPlayer.position.set(playerInfo.x, playerInfo.y, playerInfo.z);
-            scene.add(otherPlayer);
-            otherPlayers[playerInfo.playerId] = otherPlayer;
+            // Create mesh if scene exists and mesh doesn't
+            // FIX 4: Strict guard to prevent duplication
+            if (scene && !pEntry.mesh) {
+                const mesh = createPlaneMesh(0x00ff00); // Green for allies
+                mesh.position.set(pEntry.x, pEntry.y, pEntry.z);
+                scene.add(mesh);
+                pEntry.mesh = mesh;
+            }
         }
 
         function removeOtherPlayer(playerId) {
-            if (otherPlayers[playerId]) {
-                disposeHierarchy(otherPlayers[playerId]); // Clean up memory
-                scene.remove(otherPlayers[playerId]);
+            const pEntry = otherPlayers[playerId];
+            if (pEntry) {
+                if(pEntry.mesh && scene) {
+                    scene.remove(pEntry.mesh);
+                    disposeHierarchy(pEntry.mesh);
+                }
                 delete otherPlayers[playerId];
             }
         }
@@ -1074,8 +1144,20 @@
             }
             rings = []; repairKits = []; enemies = []; bullets = []; ringWaypoints = [];
             // CLEAR other players
-            Object.values(otherPlayers).forEach(p => { scene.remove(p); disposeHierarchy(p); });
-            for(let k in otherPlayers) delete otherPlayers[k];
+            // FIX: Only clear meshes, keep data in MP
+            if (gameMode === 'multi') {
+                Object.values(otherPlayers).forEach(p => { 
+                    if(p.mesh && scene) scene.remove(p.mesh);
+                    if(p.mesh) disposeHierarchy(p.mesh);
+                    p.mesh = null;
+                });
+            } else {
+                Object.values(otherPlayers).forEach(p => { 
+                    if(p.mesh && scene) scene.remove(p.mesh);
+                    if(p.mesh) disposeHierarchy(p.mesh);
+                });
+                for(let k in otherPlayers) delete otherPlayers[k];
+            }
 
             scene = new THREE.Scene(); scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 2000, 10000);
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
@@ -1095,6 +1177,12 @@
             // Only create enemies in single player mode
             if (gameMode !== "multi") {
                 createEnemies();
+            } else {
+                // FIX: Recreate MP meshes
+                Object.keys(otherPlayers).forEach(id => {
+                    const pEntry = otherPlayers[id];
+                    addOtherPlayer(pEntry);
+                });
             }
 
             updateRingVisuals(); updateLeaderboard();
@@ -1382,7 +1470,8 @@
             
             // Show other players on minimap
             Object.values(otherPlayers).forEach(p => {
-                drawDot(p, "#0000ff", 3); // Blue for other players
+                // FIX: use p.mesh if exists
+                if(p.mesh) drawDot(p.mesh, "#0000ff", 3); 
             });
 
             if(currentRingObj) {
@@ -1542,7 +1631,8 @@
             }
 
             // --- PLAYER & BULLETS ---
-            if (isActionActive('fire')) {
+            // FIX 7: Disable firing in MP because damage sync isn't implemented
+            if (isActionActive('fire') && gameMode !== "multi") {
                 if (now - lastFireTime > FIRE_RATE) { spawnBullet(); lastFireTime = now; }
             }
 
@@ -1614,7 +1704,7 @@
                 currentSpeed = BOOST_SPEED; isBoosting = true;
                 boostLevel -= BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0;
                 if(engineGlow) engineGlow.material.opacity = 0.8;
-                camera.position.x += (Math.random() - 0.5) * 2;
+                // FIX 6: Removed duplicate camera shake here
             } else {
                 if (boostLevel < 100) boostLevel += BOOST_REFILL;
                 if(engineGlow) engineGlow.material.opacity = 0;
