@@ -1,181 +1,152 @@
 const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const path = require('path'); 
-const fs = require('fs');
-
 const app = express();
-app.use(cors()); 
-
-// ---------------------------------------------------------
-// 1. SMART FILE FINDER (Auto-Detect Folder)
-// ---------------------------------------------------------
-console.log("📂 Current Server Directory:", __dirname);
-
-// List of possible places where 'index.html' might be hiding
-const potentialPaths = [
-    path.join(__dirname, 'public'),   // standard lowercase
-    path.join(__dirname, 'Public'),   // Capitalized
-    path.join(__dirname, 'client'),   // common name
-    __dirname                         // Maybe it's in the root?
-];
-
-let publicPath = null;
-
-// Find the first path that actually contains 'index.html'
-for (const tryPath of potentialPaths) {
-    const checkFile = path.join(tryPath, 'index.html');
-    if (fs.existsSync(checkFile)) {
-        publicPath = tryPath;
-        console.log(`✅ FOUND GAME AT: ${publicPath}`);
-        break;
-    }
-}
-
-// Setup Express to serve the game
-if (publicPath) {
-    app.use(express.static(publicPath));
-    
-    app.get('/', (req, res) => {
-        res.sendFile(path.join(publicPath, 'index.html'));
-    });
-} else {
-    // If game still not found, show Debug Info on screen
-    console.error("❌ CRITICAL: index.html nowhere to be found.");
-    
-    app.get('/', (req, res) => {
-        let fileList = "Unable to list files";
-        try { fileList = JSON.stringify(fs.readdirSync(__dirname)); } catch(e){}
-
-        res.send(`
-            <div style="font-family: monospace; padding: 20px; background: #333; color: #fff;">
-                <h1>⚠️ Error: Game Not Found</h1>
-                <p>Server is running, but I can't find <b>index.html</b>.</p>
-                <hr>
-                <h3>I looked in these places:</h3>
-                <ul>${potentialPaths.map(p => `<li>${p}</li>`).join('')}</ul>
-                <hr>
-                <h3>Files actually present in root (${__dirname}):</h3>
-                <p>${fileList}</p>
-                <hr>
-                <p><b>Solution:</b> Ensure you uploaded a folder named 'public' containing 'index.html' to GitHub.</p>
-            </div>
-        `);
-    });
-}
-
+const http = require('http');
 const server = http.createServer(app);
+const { Server } = require("socket.io");
+const io = new Server(server);
 
-// Socket.io Setup
-const io = new Server(server, {
-    cors: {
-        origin: "*", 
-        methods: ["GET", "POST"]
-    }
-});
+// Folder ki saari files (index.html, game-manager.js etc) serve karo
+app.use(express.static(__dirname));
 
-// Store Game State
-const players = {}; 
-const rooms = {};   
+// Game State
+// rooms = { "ROOMCODE": { hostId: "socketid", players: [] } }
+let rooms = {}; 
 
 io.on('connection', (socket) => {
-    console.log(`✅ New Connection: ${socket.id}`);
+    console.log('A user connected:', socket.id);
 
-    // --- 1. JOIN ROOM LOGIC ---
-    socket.on('joinRoom', ({ room, name }) => {
-        try {
-            if (!room || !name) return;
-            const roomCode = room.trim().toUpperCase(); 
-            socket.join(roomCode);
+    // 1. CREATE ROOM
+    socket.on('mp_create_room', ({ name }) => {
+        const roomId = Math.random().toString(36).substring(2, 6).toUpperCase(); // e.g., "A1B2"
+        
+        rooms[roomId] = {
+            hostId: socket.id,
+            players: []
+        };
 
-            let isHost = false;
-            if (!rooms[roomCode]) {
-                rooms[roomCode] = { hostId: socket.id, isPlaying: false };
-                isHost = true;
-                console.log(`🏠 Room Created: ${roomCode} by ${name}`);
-            }
+        const playerObj = { id: socket.id, name: name, isHost: true };
+        rooms[roomId].players.push(playerObj);
 
-            players[socket.id] = {
-                id: socket.id,
-                name: name,
-                room: roomCode,
-                isHost: isHost,
-                x: 0, y: 400, z: 0,
-                quaternion: { x: 0, y: 0, z: 0, w: 1 }
-            };
+        socket.join(roomId);
 
-            const roomPlayers = {};
-            Object.values(players).forEach(p => {
-                if (p.room === roomCode) roomPlayers[p.id] = p;
+        // Client ko batao room ban gaya
+        socket.emit('mp_room_created', { 
+            roomId, 
+            players: rooms[roomId].players, 
+            hostId: socket.id 
+        });
+        
+        // Initial setup for game syncing
+        socket.emit('currentPlayers', {}); 
+    });
+
+    // 2. JOIN ROOM
+    socket.on('mp_join_room', ({ roomId, name }) => {
+        roomId = roomId.toUpperCase(); // Case insensitive
+        const room = rooms[roomId];
+
+        if (room) {
+            const playerObj = { id: socket.id, name: name, isHost: false };
+            room.players.push(playerObj);
+            socket.join(roomId);
+
+            // Joining player ko batao success
+            socket.emit('mp_room_joined', {
+                roomId,
+                players: room.players,
+                hostId: room.hostId
             });
 
-            socket.emit('currentPlayers', roomPlayers);
-            socket.to(roomCode).emit('newPlayer', { id: socket.id, player: players[socket.id] });
-            console.log(`➕ ${name} joined ${roomCode}`);
+            // Baaki sabko batao naya banda aaya (Lobby Update)
+            io.to(roomId).emit('mp_lobby_update', {
+                roomId,
+                players: room.players,
+                hostId: room.hostId
+            });
 
-        } catch (error) {
-            console.error("Join Error:", error);
+            // GAMEPLAY SYNC:
+            // 1. Send existing players to NEW player
+            let currentPlayersObj = {};
+            room.players.forEach(p => {
+                if(p.id !== socket.id) currentPlayersObj[p.id] = { playerId: p.id, ...p };
+            });
+            socket.emit('currentPlayers', currentPlayersObj);
+
+            // 2. Send NEW player to everyone else
+            socket.to(roomId).emit('newPlayer', { playerId: socket.id, name: name });
+
+        } else {
+            socket.emit('mp_error', 'Room not found!');
         }
     });
 
-    // --- 2. PLAYER MOVEMENT SYNC ---
+    // 3. START GAME
+    socket.on('mp_start_game', ({ roomId }) => {
+        if (rooms[roomId] && rooms[roomId].hostId === socket.id) {
+            io.to(roomId).emit('mp_game_starting');
+        }
+    });
+
+    // 4. MOVEMENT SYNC (Sabse Important)
     socket.on('playerMovement', (movementData) => {
-        const player = players[socket.id];
-        if (player && movementData.room === player.room) {
-            player.x = movementData.x;
-            player.y = movementData.y;
-            player.z = movementData.z;
-            player.quaternion = movementData.quaternion;
-
-            socket.to(player.room).emit('playerMoved', {
-                id: socket.id,
-                x: player.x,
-                y: player.y,
-                z: player.z,
-                quaternion: player.quaternion
+        // Data format: { roomId, x, y, z, quaternion: {x,y,z,w} }
+        const { roomId } = movementData;
+        if (roomId) {
+            // Is player ka data baaki sabko bhejo (except sender)
+            socket.to(roomId).emit('playerMoved', {
+                playerId: socket.id,
+                x: movementData.x,
+                y: movementData.y,
+                z: movementData.z,
+                quaternion: movementData.quaternion,
+                rotation: movementData.rotation // fallback
             });
         }
     });
 
-    // --- 3. START GAME ---
-    socket.on('startGame', ({ room }) => {
-        const roomCode = room ? room.trim().toUpperCase() : null;
-        if (roomCode && rooms[roomCode] && rooms[roomCode].hostId === socket.id) {
-            rooms[roomCode].isPlaying = true;
-            io.to(roomCode).emit('gameStarted');
-        }
-    });
-
-    // --- 4. LEAVE LOGIC ---
+    // 5. LEAVE / DISCONNECT
     const handleDisconnect = () => {
-        const player = players[socket.id];
-        if (player) {
-            const roomCode = player.room;
-            delete players[socket.id];
-            io.to(roomCode).emit('playerDisconnected', socket.id);
+        // Find which room the player was in
+        for (const roomId in rooms) {
+            const room = rooms[roomId];
+            const playerIndex = room.players.findIndex(p => p.id === socket.id);
 
-            if (rooms[roomCode] && rooms[roomCode].hostId === socket.id) {
-                const remainingIds = Object.keys(players).filter(id => players[id].room === roomCode);
-                if (remainingIds.length > 0) {
-                    rooms[roomCode].hostId = remainingIds[0];
-                    players[remainingIds[0]].isHost = true;
+            if (playerIndex !== -1) {
+                // Remove player
+                room.players.splice(playerIndex, 1);
+                
+                // Notify others to remove mesh
+                io.to(roomId).emit('playerDisconnected', socket.id);
+
+                if (room.players.length === 0) {
+                    // Room empty, delete it
+                    delete rooms[roomId];
                 } else {
-                    delete rooms[roomCode];
+                    // Update Lobby
+                    // Agar Host chala gaya, assign new host (optional, abhi bas first player banega)
+                    if (room.hostId === socket.id) {
+                        room.hostId = room.players[0].id;
+                        room.players[0].isHost = true;
+                    }
+
+                    io.to(roomId).emit('mp_lobby_update', {
+                        roomId,
+                        players: room.players,
+                        hostId: room.hostId
+                    });
                 }
+                break; // Player found and handled
             }
         }
     };
 
-    socket.on('leaveRoom', ({ room }) => {
-        if (room) socket.leave(room);
+    socket.on('mp_leave_room', handleDisconnect);
+    socket.on('disconnect', () => {
+        console.log('User disconnected:', socket.id);
         handleDisconnect();
     });
-    
-    socket.on('disconnect', handleDisconnect);
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+server.listen(3000, () => {
+    console.log('✅ SERVER RUNNING ON: http://localhost:3000');
 });
