@@ -2,13 +2,29 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const path = require('path'); // ✅ NEW: Path module add kiya
+const path = require('path'); 
+const fs = require('fs'); // ✅ NEW: File System module add kiya check karne ke liye
 
 const app = express();
 app.use(cors()); 
 
-// ✅ FIX: Ab server 'public' folder se files dhundega
-app.use(express.static(path.join(__dirname, 'public')));
+// ---------------------------------------------------------
+// 1. SMART FOLDER DETECTION (Fix for 'public' vs 'Public')
+// ---------------------------------------------------------
+let publicPath = path.join(__dirname, 'public'); // Pehle chota 'p' try karo
+
+// Agar chota 'p' wala folder nahi mila, to Bada 'P' try karo
+if (!fs.existsSync(publicPath)) {
+    publicPath = path.join(__dirname, 'Public');
+}
+
+// Final Check: Kya folder mila?
+if (fs.existsSync(publicPath)) {
+    console.log(`✅ Folder found! Serving files from: ${publicPath}`);
+    app.use(express.static(publicPath));
+} else {
+    console.error("❌ CRITICAL ERROR: Na 'public' mila na 'Public'. Folder name check karo!");
+}
 
 const server = http.createServer(app);
 
@@ -20,10 +36,15 @@ const io = new Server(server, {
     }
 });
 
-// ✅ FIX: Root URL par ab Game (index.html) khulega
+// ✅ FIX: Root URL par ab sahi path se file uthayega
 app.get('/', (req, res) => {
-    // Agar index.html public folder me hai to wo dikhao
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    const indexPath = path.join(publicPath, 'index.html');
+    
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.send(`<h1>Error 404</h1><p>index.html nahi mila is folder mein: ${publicPath}</p>`);
+    }
 });
 
 // Store Game State
