@@ -1,50 +1,50 @@
 /**
- * SKY PILOT - GLOBAL GAME CONFIGURATION
- * * Ye file Singleplayer aur Multiplayer dono ke rules ko sync rakhti hai.
- * Kisi bhi value ko yahan change karne par poore game mein update ho jayega.
+ * SKY PILOT - GLOBAL CONFIGURATION (Version 2.0 - Optimized)
+ * Ye file game ke physics, rules aur visuals ka "Single Source of Truth" hai.
+ * Multiplayer aur Singleplayer dono isi ko refer karenge.
  */
 
-// --- 🎯 RINGS & RACE RULES ---
-// Total 12 rings ka race track (1 Lap)
-const RINGS_PER_LAP = 12;
-const TOTAL_RINGS_WIN = 12; 
+// --- 🌍 WORLD & RINGS ---
+const RINGS_PER_LAP = 12;      // Race track mein total rings
+const TOTAL_RINGS_WIN = 12;    // Win karne ke liye kitni chahiye
+const WORLD_SIZE = 50000;      // Map ka total size
+const FOG_DENSITY = 0.00015;   // Performance ke liye fog limit
 
-// --- ✈️ FLIGHT PHYSICS ---
-// Speed values 'Units per Second' ke logic par based hain (DT scaled)
-const NORMAL_SPEED = 5;  
-const BOOST_SPEED  = 10;  
-const TURN_SPEED   = 0.03;
-const LIFT_SPEED   = 5;
+// --- ✈️ PHYSICS & MOVEMENT (Delta-Time Based) ---
+// Note: Ye values ab per-second basis par hain (Not per-frame)
+const NORMAL_SPEED = 300;      // Units per second
+const BOOST_SPEED  = 600;      // Boost speed per second
+const TURN_SPEED   = 2.0;      // Rotation speed (Radians per second)
+const LIFT_SPEED   = 150;      // Ascent/Descent speed
 
-// --- 🔥 COMBAT & DAMAGE ---
-const FIRE_RATE = 120;       // Shots ke beech ka gap (ms)
-const COLLISION_DAMAGE = 8;  // Zameen se takrane par damage
-const BOOST_DRAIN = 0.5;     // Boost khali hone ki speed
-const BOOST_REFILL = 0.1;    // Boost wapas bharne ki speed
+// --- 🔥 COMBAT & HEALTH ---
+const FIRE_RATE = 150;         // Milliseconds between shots
+const COLLISION_DAMAGE = 20;   // Zameen se takkar ka damage
+const BULLET_SPEED = 1200;     // Bullet speed units/sec
+const MAX_HEALTH = 100;
+const MAX_BOOST = 100;
+const BOOST_DRAIN = 25;        // Boost drain per second
+const BOOST_REFILL = 10;       // Refill per second
 
-// --- 🌍 TERRAIN VISUALS ---
-// Standardized colors for all game environments
+// --- 🎨 VISUAL PALETTE (Low Poly Art Style) ---
 const TERRAIN_COLORS = {
-  SAND: 0xC2B280,
-  GRASS: 0x228B22,
-  ROCK: 0x666666,
-  SNOW: 0xFFFFFF,
-  WATER: 0x0033aa
+  SAND:  0xE6C288, // Warm Sand
+  GRASS: 0x567D46, // Muted Green
+  ROCK:  0x5A5A5A, // Dark Grey
+  SNOW:  0xFFFFFF, // Pure White
+  WATER: 0x1E90FF, // Deep Sky Blue (Low opacity)
+  SKY:   0x87CEEB  // Sky Background
 };
 
-// Global export safety for various script environments
+// --- 🛠️ EXPORT LOGIC ---
 if (typeof window !== 'undefined') {
     window.SKY_CONFIG = {
-        RINGS_PER_LAP,
-        TOTAL_RINGS_WIN,
-        NORMAL_SPEED,
-        BOOST_SPEED,
-        TURN_SPEED,
-        LIFT_SPEED,
-        FIRE_RATE,
-        COLLISION_DAMAGE,
-        BOOST_DRAIN,
-        BOOST_REFILL,
+        RINGS_PER_LAP, TOTAL_RINGS_WIN, WORLD_SIZE, FOG_DENSITY,
+        NORMAL_SPEED, BOOST_SPEED, TURN_SPEED, LIFT_SPEED,
+        FIRE_RATE, COLLISION_DAMAGE, BULLET_SPEED,
+        MAX_HEALTH, MAX_BOOST, BOOST_DRAIN, BOOST_REFILL,
         TERRAIN_COLORS
     };
+} else if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { RINGS_PER_LAP, TOTAL_RINGS_WIN }; // Server sirf rules leta hai
 }
