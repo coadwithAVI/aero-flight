@@ -287,6 +287,12 @@
 
   document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
 
+  // --- SHARED BULLET ASSETS (Performance Optimization) ---
+  const BULLET_GEO = new THREE.SphereGeometry(2, 8, 8);
+  const BULLET_MAT_MY = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+  const BULLET_MAT_ENEMY = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+  const BULLET_SPEED = 8000; // Units per second (approx 130 * 60)
+
   // --- SEEDED RNG ---
   let gameSeed = 12345;
   function seededRandom() {
@@ -311,6 +317,11 @@
       socket = { emit() {}, on() {} }; 
   }
 
+  // --- OPTIMIZATION VARS (FIX 1) ---
+  let lastRender = 0;
+  const FPS_CAP = 60;
+  const FRAME_TIME = 1000 / FPS_CAP;
+
   // --- SCREEN HELPERS ---
   function showScreen(id) { document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden")); const el = document.getElementById(id); if (el) el.classList.remove("hidden"); }
   function lobbyRenderPlayers(players) { const list = document.getElementById("lobby-player-list"); list.innerHTML = ""; players.forEach((p, i) => { const row = document.createElement("div"); row.textContent = `${i+1}. ${p.name}${p.isHost ? " (HOST)" : ""}`; list.appendChild(row); }); }
@@ -329,7 +340,24 @@
       socket.emit("mp_join_room", { roomId: room, name: mp.playerName }); 
   }
 
-  function mpLeaveLobby() { if (!mp.roomId) return showScreen("mp-menu-screen"); Object.values(otherPlayers).forEach(p => { if (scene) scene.remove(p); disposeHierarchy(p); }); for (let k in otherPlayers) delete otherPlayers[k]; socket.emit("mp_leave_room", { roomId: mp.roomId }); mp.roomId = null; mp.isHost = false; mp.inLobby = false; showScreen("mp-menu-screen"); }
+  function mpLeaveLobby() { 
+      if (!mp.roomId) return showScreen("mp-menu-screen"); 
+      Object.values(otherPlayers).forEach(p => { 
+          if (scene) scene.remove(p); 
+          disposeHierarchy(p); 
+      }); 
+      for (let k in otherPlayers) delete otherPlayers[k]; 
+      
+      // Cleanup lobby data
+      for (let k in playersData) delete playersData[k];
+      for (let k in allScores) delete allScores[k];
+
+      socket.emit("mp_leave_room", { roomId: mp.roomId }); 
+      mp.roomId = null; 
+      mp.isHost = false; 
+      mp.inLobby = false; 
+      showScreen("mp-menu-screen"); 
+  }
   
   function mpHostStartGame() { 
       if (!mp.isHost) return; 
@@ -546,7 +574,18 @@
     stopAll: function() { if(audioCtx) audioCtx.close(); audioCtx = null; }
   };
 
-  function togglePause() { if(!isPlaying) return; isPaused = !isPaused; const pauseScreen = document.getElementById('pause-screen'); if(isPaused) pauseScreen.classList.remove('hidden'); else { pauseScreen.classList.add('hidden'); requestAnimationFrame(animate); } }
+  function togglePause() { 
+      if (!isPlaying) return;
+      isPaused = !isPaused;
+      const pauseScreen = document.getElementById("pause-screen");
+
+      if (isPaused) {
+        pauseScreen.classList.remove("hidden");
+      } else {
+        pauseScreen.classList.add("hidden");
+        requestAnimationFrame(animate);
+      }
+  }
   
   // --- INPUT HANDLING ---
   window.addEventListener('keydown', (e) => { 
@@ -583,6 +622,18 @@
   }
   function setKey(action, state) { let key = GameManager.data.bindings[action]; activeKeys[key] = state; }
   
+  // Fix 7: Auto-pause & Resume
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      isPaused = true;
+    } else {
+      if (isPlaying) {
+        isPaused = false;
+        requestAnimationFrame(animate);
+      }
+    }
+  });
+
   function updateLeaderboard() { 
       const list = document.getElementById('leaderboard-list'); 
       if(!list) return; 
@@ -619,11 +670,24 @@
   
   function initGame() {
     const container = document.getElementById('game-container'); 
+    
+    // 🔥 Clean up old bullets safely before scene clear
+    // FIX applied here
+    if (scene) {
+        bullets.forEach(b => {
+            if (b && b.mesh) {
+                scene.remove(b.mesh);
+                b.mesh.userData = {}; // Clear references
+            }
+        });
+    }
+    bullets.length = 0; // Clear array
+
     // FIX F & E: SAFE DISPOSAL
     if (scene) { 
         rings.forEach(r => disposeHierarchy(r));
         repairKits.forEach(k => disposeHierarchy(k));
-        bullets.forEach(b => disposeHierarchy(b.mesh));
+        // bullets are handled above
         Object.values(otherPlayers).forEach(p => disposeHierarchy(p));
         
         // Dispose terrain/ocean specifically
@@ -636,35 +700,50 @@
     rings = []; repairKits = []; bullets = []; ringWaypoints = [];
     
     scene = new THREE.Scene(); 
-    scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 2000, 10000); 
+    // Fix 4: Fog
+    scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 1500, 7000); 
     
     // ✅ FIX: Iterate through stored player data to spawn mesh
     for (let pid in playersData) { 
         if(pid !== socket.id) addOtherPlayer(playersData[pid]); 
     }
 
-    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000); renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.shadowMap.enabled = true; container.innerHTML = ""; container.appendChild(renderer.domElement);
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); scene.add(hemiLight); const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 200, 50); dirLight.castShadow = true; scene.add(dirLight);
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000); 
+    renderer = new THREE.WebGLRenderer({ antialias: true }); 
+    renderer.setSize(window.innerWidth, window.innerHeight); 
+    // Fix 2: Pixel Ratio
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); 
+    // Fix 3: Shadows OFF
+    renderer.shadowMap.enabled = false; 
+    container.innerHTML = ""; container.appendChild(renderer.domElement);
+    
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); scene.add(hemiLight); const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 200, 50); 
+    // dirLight.castShadow = true; // Removed per shadow optimization
+    scene.add(dirLight);
     
     playerStats = { name: mp.playerName || "PLAYER", rings: 0, progress: 0 }; 
     if(allScores[socket.id]) allScores[socket.id].rings = 0;
     
     health = 100; boostLevel = 100;
     
+    // 🔥 Reset lastRender to avoid massive dt spike
+    lastRender = performance.now();
+
     generateTerrain(); generateOcean(); createPlaneSystem(); createGuideArrow(); createRepairKits(); createRings(); updateRingVisuals(); updateLeaderboard(); isPlaying = true; isPaused = false; animate();
   }
 
   function fireBullet() {
       AudioSys.playGun();
-      const geo = new THREE.SphereGeometry(2, 8, 8);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
-      const bullet = new THREE.Mesh(geo, mat);
+      // SHARED ASSET REUSE
+      const bullet = new THREE.Mesh(BULLET_GEO, BULLET_MAT_MY);
       bullet.position.copy(planeRig.position);
       bullet.quaternion.copy(planeRig.quaternion);
       bullet.translateZ(-10); 
-      const velocity = new THREE.Vector3(0, 0, -150);
+      // Velocity in units per second (BULLET_SPEED = 8000)
+      const velocity = new THREE.Vector3(0, 0, -BULLET_SPEED);
       velocity.applyQuaternion(planeRig.quaternion);
-      bullet.userData = { velocity: velocity, life: 60, isMine: true }; 
+      // Life in Seconds (1.5s)
+      bullet.userData = { velocity: velocity, life: 1.5, isMine: true }; 
       scene.add(bullet);
       bullets.push({ mesh: bullet });
       
@@ -678,14 +757,15 @@
 
   function spawnNetworkBullet(startPos, quaternion, shooterId) {
       AudioSys.playGun();
-      const geo = new THREE.SphereGeometry(2, 8, 8);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xff0000 }); 
-      const bullet = new THREE.Mesh(geo, mat);
+      // SHARED ASSET REUSE
+      const bullet = new THREE.Mesh(BULLET_GEO, BULLET_MAT_ENEMY);
       bullet.position.copy(startPos);
       bullet.quaternion.copy(quaternion);
-      const velocity = new THREE.Vector3(0, 0, -150);
+      // Velocity in units per second
+      const velocity = new THREE.Vector3(0, 0, -BULLET_SPEED);
       velocity.applyQuaternion(quaternion);
-      bullet.userData = { velocity: velocity, life: 60, isMine: false, shooterId: shooterId }; 
+      // Life in Seconds
+      bullet.userData = { velocity: velocity, life: 1.5, isMine: false, shooterId: shooterId }; 
       scene.add(bullet);
       bullets.push({ mesh: bullet });
   }
@@ -703,9 +783,13 @@
   function getTerrainHeight(x, z) { let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; return y - 50; }
   
   function generateTerrain() { 
-      const geometry = new THREE.PlaneGeometry(50000, 50000, 200, 200); geometry.rotateX(-Math.PI / 2); const positions = geometry.attributes.position; const colors = []; for (let i = 0; i < positions.count; i++) { const x = positions.getX(i); const z = positions.getZ(i); let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; positions.setY(i, y); const color = new THREE.Color(); if (y < -50) color.setHex(TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(TERRAIN_COLORS.ROCK); else color.setHex(TERRAIN_COLORS.SNOW); colors.push(color.r, color.g, color.b); } geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true }); 
+      // Fix 5: Optimize Geometry
+      const geometry = new THREE.PlaneGeometry(50000, 50000, 120, 120); 
+      geometry.rotateX(-Math.PI / 2); const positions = geometry.attributes.position; const colors = []; for (let i = 0; i < positions.count; i++) { const x = positions.getX(i); const z = positions.getZ(i); let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; positions.setY(i, y); const color = new THREE.Color(); if (y < -50) color.setHex(TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(TERRAIN_COLORS.ROCK); else color.setHex(TERRAIN_COLORS.SNOW); colors.push(color.r, color.g, color.b); } geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true }); 
       terrainMesh = new THREE.Mesh(geometry, mat); // FIX F: Track mesh
-      terrainMesh.position.y = -50; terrainMesh.receiveShadow = true; scene.add(terrainMesh); 
+      terrainMesh.position.y = -50; 
+      // terrainMesh.receiveShadow = true; // Shadows disabled
+      scene.add(terrainMesh); 
   }
   function generateOcean() { 
       const geo = new THREE.PlaneGeometry(50000, 50000); geo.rotateX(-Math.PI / 2); const mat = new THREE.MeshBasicMaterial({ color: TERRAIN_COLORS.WATER, transparent: true, opacity: 0.6 }); 
@@ -764,7 +848,24 @@
   function drawMinimap() { if(!minimapCtx || !planeRig) return; minimapCtx.clearRect(0, 0, 140, 140); const cx = 70, cy = 70; const range = 4000; const scale = 60 / range; minimapCtx.save(); minimapCtx.translate(cx, cy); minimapCtx.rotate(-planeRig.rotation.y + Math.PI); minimapCtx.beginPath(); minimapCtx.moveTo(0, -6); minimapCtx.lineTo(-4, 4); minimapCtx.lineTo(4, 4); minimapCtx.fillStyle = "#00ff00"; minimapCtx.fill(); minimapCtx.restore(); function drawDot(obj, color, size) { if(!obj || !obj.visible) return; const dx = obj.position.x - planeRig.position.x; const dz = obj.position.z - planeRig.position.z; let px = dx * scale; let py = dz * scale; const dist = Math.sqrt(px*px + py*py); if (dist > 65) { const ratio = 65 / dist; px *= ratio; py *= ratio; } minimapCtx.beginPath(); minimapCtx.arc(cx + px, cy + py, size, 0, Math.PI * 2); minimapCtx.fillStyle = color; minimapCtx.fill(); } if(currentRingObj) drawDot(currentRingObj, "#ffd700", 4); Object.values(otherPlayers).forEach(p => drawDot(p, "#ff0000", 3)); }
   
   function animate() {
-    if (!isPlaying || isPaused) return; frameCount++; const t = performance.now(); if (t - lastFrameTime >= 1000) { if (fpsElem) fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastFrameTime = t; }
+    if (!isPlaying || isPaused) return;
+
+    // Fix 1: FPS Cap
+    const nowPerf = performance.now();
+    if (nowPerf - lastRender < FRAME_TIME) {
+        requestAnimationFrame(animate);
+        return;
+    }
+    // Calculate DT (capped at 0.1s to prevent huge jumps)
+    const dt = Math.min((nowPerf - lastRender) / 1000, 0.1);
+    lastRender = nowPerf;
+
+    frameCount++; 
+    if (nowPerf - lastFrameTime >= 1000) { 
+        if (fpsElem) fpsElem.innerText = "FPS: " + frameCount; 
+        frameCount = 0; 
+        lastFrameTime = nowPerf; 
+    }
     const now = Date.now(); 
     
     // Fire Bullets
@@ -773,13 +874,22 @@
     // Bullet Updates
     for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
-        b.mesh.position.add(b.mesh.userData.velocity);
-        b.mesh.userData.life--;
-        if (b.mesh.userData.life <= 0) { scene.remove(b.mesh); b.mesh.geometry.dispose(); bullets.splice(i, 1); continue; }
+        
+        // Move bullet based on time, not frame
+        b.mesh.position.addScaledVector(b.mesh.userData.velocity, dt);
+        b.mesh.userData.life -= dt; // Decrease life by seconds
+
+        if (b.mesh.userData.life <= 0) { 
+            // Dispose optimization (Shared Materials/Geometry -> DO NOT DISPOSE)
+            scene.remove(b.mesh); 
+            bullets.splice(i, 1); 
+            continue; 
+        }
         
         if (!b.mesh.userData.isMine) {
-            if (b.mesh.position.distanceTo(planeRig.position) < 15) {
-                scene.remove(b.mesh);
+            // Fix 6: Squared distance check
+            if (planeRig && b.mesh.position.distanceToSquared(planeRig.position) < 225) { // 15*15
+                scene.remove(b.mesh); // Shared Materials -> DO NOT DISPOSE
                 bullets.splice(i, 1);
                 
                 health -= 10;
@@ -837,7 +947,7 @@
             if (!kit.userData.lastClaimTs) kit.userData.lastClaimTs = 0;
             if (now - kit.userData.lastClaimTs > 1000) {
                 kit.userData.lastClaimTs = now;
-                kit.visible = false; // Optimistic hide
+                // Remove optimistic hide to prevent desync
                 if (mp.roomId) {
                     socket.emit('mp_claim_kit', { roomId: mp.roomId, kitIndex: kit.userData.id });
                 }
