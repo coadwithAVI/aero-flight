@@ -11,7 +11,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   
   <!-- Global Managers & Config -->
-  <!-- ✅ Fix 1: Exact filenames and ensuring config is loaded first -->
+  <!-- ✅ Fix: Exact filenames and ensuring config is loaded first -->
   <script src="game-config.js"></script>
   <script src="game-manager.js"></script>
   <script src="sfx-manager.js"></script>
@@ -24,7 +24,7 @@
     #ui-layer {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       pointer-events: none;
-      /* ✅ Fix 8: Hide UI initially (Lobby/Countdown) */
+      /* ✅ Hide UI initially (Lobby/Countdown) */
       display: none; 
       flex-direction: column; justify-content: space-between;
       padding: 20px; box-sizing: border-box;
@@ -291,24 +291,13 @@
   </div>
 
 <script>
-  // --- LOAD FROM GLOBAL CONFIG ---
-  const { 
-      RINGS_PER_LAP, 
-      TOTAL_RINGS_WIN, 
-      NORMAL_SPEED, 
-      BOOST_SPEED, 
-      TURN_SPEED, 
-      LIFT_SPEED, 
-      FIRE_RATE, 
-      COLLISION_DAMAGE, 
-      BOOST_DRAIN, 
-      BOOST_REFILL, 
-      TERRAIN_COLORS 
-  } = window.SKY_CONFIG || {
+  // ✅ FIX: Use namespaced Config object to avoid SyntaxError with globals
+  const Cfg = window.SKY_CONFIG || {
       // Fallback
       RINGS_PER_LAP: 12, TOTAL_RINGS_WIN: 12, NORMAL_SPEED: 5, BOOST_SPEED: 10,
       TURN_SPEED: 0.03, LIFT_SPEED: 5, FIRE_RATE: 120, COLLISION_DAMAGE: 8,
-      BOOST_DRAIN: 0.5, BOOST_REFILL: 0.1, TERRAIN_COLORS: { SAND: 0xeebb88, GRASS: 0x55aa55, ROCK: 0x666666, SNOW: 0xffffff, WATER: 0x004488 }
+      BOOST_DRAIN: 0.5, BOOST_REFILL: 0.1, BULLET_SPEED_PLAYER: 25, BULLET_SPEED_ENEMY: 40,
+      TERRAIN_COLORS: { SAND: 0xeebb88, GRASS: 0x55aa55, ROCK: 0x666666, SNOW: 0xffffff, WATER: 0x004488 }
   };
 
   const WORLD_LIMIT = 24500; 
@@ -377,7 +366,8 @@
   function showScreen(id) { document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden")); const el = document.getElementById(id); if (el) el.classList.remove("hidden"); }
   function lobbyRenderPlayers(players) { const list = document.getElementById("lobby-player-list"); list.innerHTML = ""; players.forEach((p, i) => { const row = document.createElement("div"); row.textContent = `${i+1}. ${p.name}${p.isHost ? " (HOST)" : ""}`; list.appendChild(row); }); }
    
-  function mpCreateRoom() { 
+  // ✅ Expose these functions to window scope for HTML onclick
+  window.mpCreateRoom = function() { 
       if (typeof SFXManager !== 'undefined') SFXManager.init(); 
       if (typeof MusicManager !== 'undefined') MusicManager.init();
       // ✅ Fix 9: Empty Name Bug Fix
@@ -385,7 +375,7 @@
       socket.emit("mp_create_room", { name: mp.playerName }); 
   }
    
-  function mpJoinRoom() { 
+  window.mpJoinRoom = function() { 
       if (typeof SFXManager !== 'undefined') SFXManager.init(); 
       if (typeof MusicManager !== 'undefined') MusicManager.init();
       mp.playerName = (prompt("Enter your name:", "ROOKIE") || "").trim() || "ROOKIE"; 
@@ -394,7 +384,7 @@
       socket.emit("mp_join_room", { roomId: room, name: mp.playerName }); 
   }
 
-  function mpLeaveLobby() { 
+  window.mpLeaveLobby = function() { 
       if (!mp.roomId) return showScreen("mp-menu-screen"); 
       // ✅ Fix 8: Hide UI on leave
       document.getElementById("ui-layer").style.display = "none";
@@ -416,7 +406,7 @@
   }
    
   // ✅ Fix 18: Audio init on start
-  function mpHostStartGame() { 
+  window.mpHostStartGame = function() { 
       if (typeof SFXManager !== 'undefined') SFXManager.init(); 
       if (!mp.isHost) return; 
       const seed = Math.floor(Math.random() * 100000);
@@ -607,7 +597,7 @@
   let lastFrameTime = performance.now(); let frameCount = 0; const fpsElem = document.getElementById('fps-counter');
   const minimapCanvas = document.getElementById('minimap-canvas'); const minimapCtx = minimapCanvas.getContext('2d');
 
-  function togglePause() { 
+  window.togglePause = function() { 
       if (!isPlaying) return;
       isPaused = !isPaused;
       const pauseScreen = document.getElementById("pause-screen");
@@ -697,7 +687,7 @@
           nameSpan.innerText = `${index+1}. ${s.name}`; 
           const scoreSpan = document.createElement('span'); 
           scoreSpan.className = 'lb-score'; 
-          scoreSpan.innerText = `${s.rings}/${TOTAL_RINGS_WIN}`; 
+          scoreSpan.innerText = `${s.rings}/${Cfg.TOTAL_RINGS_WIN}`; 
           row.appendChild(nameSpan); 
           row.appendChild(scoreSpan); 
           list.appendChild(row); 
@@ -800,7 +790,7 @@
       bullet.position.copy(planeRig.position);
       bullet.quaternion.copy(planeRig.quaternion);
       bullet.translateZ(-10); 
-      const velocity = new THREE.Vector3(0, 0, -BULLET_SPEED);
+      const velocity = new THREE.Vector3(0, 0, -Cfg.BULLET_SPEED_PLAYER);
       velocity.applyQuaternion(planeRig.quaternion);
       bullet.userData = { velocity: velocity, life: 1.5, isMine: true }; 
       scene.add(bullet);
@@ -819,7 +809,7 @@
       const bullet = new THREE.Mesh(BULLET_GEO, BULLET_MAT_ENEMY);
       bullet.position.copy(startPos);
       bullet.quaternion.copy(quaternion);
-      const velocity = new THREE.Vector3(0, 0, -BULLET_SPEED);
+      const velocity = new THREE.Vector3(0, 0, -Cfg.BULLET_SPEED_ENEMY);
       velocity.applyQuaternion(quaternion);
       bullet.userData = { velocity: velocity, life: 1.5, isMine: false, shooterId: shooterId }; 
       scene.add(bullet);
@@ -844,13 +834,13 @@
    
   function generateTerrain() { 
       const geometry = new THREE.PlaneGeometry(50000, 50000, 120, 120); 
-      geometry.rotateX(-Math.PI / 2); const positions = geometry.attributes.position; const colors = []; for (let i = 0; i < positions.count; i++) { const x = positions.getX(i); const z = positions.getZ(i); let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; positions.setY(i, y); const color = new THREE.Color(); if (y < -50) color.setHex(TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(TERRAIN_COLORS.ROCK); else color.setHex(TERRAIN_COLORS.SNOW); colors.push(color.r, color.g, color.b); } geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true }); 
+      geometry.rotateX(-Math.PI / 2); const positions = geometry.attributes.position; const colors = []; for (let i = 0; i < positions.count; i++) { const x = positions.getX(i); const z = positions.getZ(i); let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; positions.setY(i, y); const color = new THREE.Color(); if (y < -50) color.setHex(Cfg.TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(Cfg.TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(Cfg.TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(Cfg.TERRAIN_COLORS.ROCK); else color.setHex(Cfg.TERRAIN_COLORS.SNOW); colors.push(color.r, color.g, color.b); } geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true }); 
       terrainMesh = new THREE.Mesh(geometry, mat); 
       terrainMesh.position.y = -50; 
       scene.add(terrainMesh); 
   }
   function generateOcean() { 
-      const geo = new THREE.PlaneGeometry(50000, 50000); geo.rotateX(-Math.PI / 2); const mat = new THREE.MeshBasicMaterial({ color: TERRAIN_COLORS.WATER, transparent: true, opacity: 0.6 }); 
+      const geo = new THREE.PlaneGeometry(50000, 50000); geo.rotateX(-Math.PI / 2); const mat = new THREE.MeshBasicMaterial({ color: Cfg.TERRAIN_COLORS.WATER, transparent: true, opacity: 0.6 }); 
       oceanMesh = new THREE.Mesh(geo, mat); 
       oceanMesh.position.y = -80; scene.add(oceanMesh); 
   }
@@ -859,7 +849,7 @@
   function createGuideArrow() { const group = new THREE.Group(); const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 }); const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 15, 8), mat); cylinder.rotation.x = Math.PI / 2; cylinder.position.z = -7.5; const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 8, 8), mat); cone.rotation.x = Math.PI / 2; group.add(cylinder, cone); guideArrow = group; scene.add(guideArrow); }
    
   function updateRingVisuals() { 
-      const currentTargetIdx = playerStats.progress % RINGS_PER_LAP; 
+      const currentTargetIdx = playerStats.progress % Cfg.RINGS_PER_LAP; 
       rings.forEach((r, i) => { 
           r.visible = (i === currentTargetIdx);
           if (i === currentTargetIdx) { 
@@ -867,9 +857,9 @@
               r.material.color.setHex(0xffd700); 
           } 
       }); 
-      // ✅ Fix 5: Safe assignment after loop (Direct Access for reliability)
+      // ✅ Fix 5: Safe assignment after loop
       currentRingObj = rings[currentTargetIdx] || null;
-      // Note: We don't unlock here because server confirmation does that
+      if (currentRingObj) currentRingObj.userData.locked = false;
   }
    
   function createRepairKits() { 
@@ -923,7 +913,7 @@
     }
     const now = Date.now(); 
     
-    if (isActionActive('fire') && now - lastFireTime > FIRE_RATE) { lastFireTime = now; fireBullet(); }
+    if (isActionActive('fire') && now - lastFireTime > Cfg.FIRE_RATE) { lastFireTime = now; fireBullet(); }
 
     for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
@@ -931,9 +921,10 @@
         b.mesh.userData.life -= dt; 
 
         if (b.mesh.userData.life <= 0) { 
-            // ✅ Fix 6: Safe bullet disposal (browser compatible)
+            // ✅ Fix 5: Memory Leak Bullet Disposal (Fix 4: Browser Compatibility)
+            // ✅ Fix 6: Safe removal via parent check
             if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
-            // ✅ Fix 3: Clear references without disposing shared geometry
+            // ✅ Fix 4: Clear Memory references (optional but good)
             b.mesh.userData = {};
             bullets.splice(i, 1); 
             continue; 
@@ -951,22 +942,22 @@
         }
     }
 
-    let currentSpeed = NORMAL_SPEED; let isBoosting = false; 
-    if (isActionActive('boost') && boostLevel > 0) { currentSpeed = BOOST_SPEED; isBoosting = true; boostLevel -= BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0; } else { if (boostLevel < 100) boostLevel += BOOST_REFILL; } document.getElementById('boost-fill').style.width = boostLevel + '%';
+    let currentSpeed = Cfg.NORMAL_SPEED; let isBoosting = false; 
+    if (isActionActive('boost') && boostLevel > 0) { currentSpeed = Cfg.BOOST_SPEED; isBoosting = true; boostLevel -= Cfg.BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0; } else { if (boostLevel < 100) boostLevel += Cfg.BOOST_REFILL; } document.getElementById('boost-fill').style.width = boostLevel + '%';
     planeRig.translateZ(-currentSpeed);
 
     // Boundary Clamp for Local Player
     planeRig.position.x = THREE.MathUtils.clamp(planeRig.position.x, -WORLD_LIMIT, WORLD_LIMIT);
     planeRig.position.z = THREE.MathUtils.clamp(planeRig.position.z, -WORLD_LIMIT, WORLD_LIMIT);
     
-    if (isActionActive('left')) { planeRig.rotation.y += TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); } else if (isActionActive('right')) { planeRig.rotation.y -= TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); } else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
-    if (isActionActive('up')) { planeRig.position.y += LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.5, 0.1); } else if (isActionActive('down')) { planeRig.position.y -= LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.5, 0.1); } else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
+    if (isActionActive('left')) { planeRig.rotation.y += Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); } else if (isActionActive('right')) { planeRig.rotation.y -= Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); } else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
+    if (isActionActive('up')) { planeRig.position.y += Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.5, 0.1); } else if (isActionActive('down')) { planeRig.position.y -= Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.5, 0.1); } else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
     
     const groundHeight = getTerrainHeight(planeRig.position.x, planeRig.position.z); let isDamaging = false; 
     if (planeRig.position.y < groundHeight + 15) { 
         planeRig.position.y = groundHeight + 15;
         if (now - lastCrashTime > 500) {
-            health -= COLLISION_DAMAGE; 
+            health -= Cfg.COLLISION_DAMAGE; 
             isDamaging = true; 
             lastCrashTime = now;
             if (health <= 0) { respawnPlayer(); } 
