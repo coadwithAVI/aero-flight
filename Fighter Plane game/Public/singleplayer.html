@@ -9,7 +9,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   
   <!-- Global Audio Managers & Config -->
-  <!-- ✅ Fix 1: Using 'game-config.js' to match your actual filename -->
+  <!-- ✅ Fix: Ensure config loads first -->
   <script src="game-config.js"></script>
   <script src="game-manager.js"></script>
   <script src="sfx-manager.js"></script>
@@ -65,7 +65,7 @@
     #minimap-container { position: absolute; bottom: 20px; left: 20px; width: 140px; height: 140px; background: rgba(0,10,30,0.8); border: 2px solid #00d2ff; border-radius: 50%; overflow: hidden; pointer-events: none; box-shadow: 0 0 15px rgba(0,210,255,0.3); }
     #minimap-canvas { width: 100%; height: 100%; }
 
-    /* MOBILE CONTROLS (Updated with ontouchcancel) */
+    /* MOBILE CONTROLS */
     .mobile-controls { display: none; position: absolute; bottom: 20px; width: 100%; padding: 0 20px; box-sizing: border-box; justify-content: space-between; pointer-events: none; z-index: 100; }
     @media (max-width: 1024px) { .mobile-controls { display: flex; } }
     .control-group { pointer-events: auto; display: flex; gap: 10px; }
@@ -126,7 +126,7 @@
       <canvas id="minimap-canvas" width="140" height="140"></canvas>
     </div>
 
-    <!-- MOBILE CONTROLS (Updated with ontouchcancel) -->
+    <!-- MOBILE CONTROLS -->
     <div class="mobile-controls">
         <div class="control-group dpad">
             <div class="mob-btn btn-up" 
@@ -188,36 +188,27 @@
   </div>
 
 <script>
-  // --- 🔥 LOAD CONFIG (Safe Fallbacks) ---
-  const { 
-      RINGS_PER_LAP, 
-      TOTAL_RINGS_WIN, 
-      NORMAL_SPEED, 
-      BOOST_SPEED, 
-      TURN_SPEED, 
-      LIFT_SPEED, 
-      FIRE_RATE, 
-      COLLISION_DAMAGE, 
-      BOOST_DRAIN, 
-      BOOST_REFILL, 
-      BULLET_SPEED_PLAYER, 
-      BULLET_SPEED_ENEMY,  
-      TERRAIN_COLORS 
-  } = window.SKY_CONFIG || {
-      // Fallback defaults if config fails
-      RINGS_PER_LAP: 12, TOTAL_RINGS_WIN: 12, NORMAL_SPEED: 5, BOOST_SPEED: 10,
-      TURN_SPEED: 0.03, LIFT_SPEED: 5, FIRE_RATE: 120, COLLISION_DAMAGE: 8,
-      BOOST_DRAIN: 0.5, BOOST_REFILL: 0.1, 
-      BULLET_SPEED_PLAYER: 25, BULLET_SPEED_ENEMY: 40,
+  // ✅ FIX: Use namespaced Config object to avoid SyntaxError with globals
+  const Cfg = window.SKY_CONFIG || {
+      RINGS_PER_LAP: 12, 
+      TOTAL_RINGS_WIN: 12, 
+      NORMAL_SPEED: 5, 
+      BOOST_SPEED: 10,
+      TURN_SPEED: 0.03, 
+      LIFT_SPEED: 5, 
+      FIRE_RATE: 120, 
+      COLLISION_DAMAGE: 8,
+      BOOST_DRAIN: 0.5, 
+      BOOST_REFILL: 0.1, 
+      BULLET_SPEED_PLAYER: 25, 
+      BULLET_SPEED_ENEMY: 40,
       TERRAIN_COLORS: { SAND: 0xeebb88, GRASS: 0x55aa55, ROCK: 0x666666, SNOW: 0xffffff, WATER: 0x004488 }
   };
   
   const WORLD_LIMIT = 24500; 
 
   let scene, camera, renderer, planeRig, planeMesh, guideArrow;
-  
-  // ✅ Fix 3: Global variables for meshes to prevent memory leaks on restart
-  let terrainMesh, oceanMesh;
+  let terrainMesh, oceanMesh; // Global for disposal
   
   let enemies = [], repairKits = [], rings = [], ringWaypoints = [];
   let currentRingObj = null;
@@ -225,9 +216,7 @@
   let boostLevel = 100; 
   let health = 100; 
   let lastFireTime = 0; 
-  // ✅ Fix 4 & 5: Debounce timers
   let lastCrashTime = 0;
-  // ✅ Fix 3 (Player side): Use Index instead of Time for ring collection
   let playerLastRingIndex = -1;
 
   // PLAYER VELOCITY TRACKING FOR AI
@@ -247,31 +236,28 @@
   let lastFrameTime = performance.now(); let frameCount = 0; const fpsElem = document.getElementById('fps-counter');
   const minimapCanvas = document.getElementById('minimap-canvas'); const minimapCtx = minimapCanvas.getContext('2d');
 
-  // ---- ✅ Fix 2: Robust Helper function to safely get bindings ----
+  // ---- Robust Helper function to safely get bindings ----
   function getBindings() {
-      // Crash safety check: verifies window.GameManager AND its data property
       if (window.GameManager && window.GameManager.data && window.GameManager.data.bindings) {
           return window.GameManager.data.bindings;
       }
-      // Fallback bindings if manager fails
       return { up:'w', down:'s', left:'a', right:'d', boost:' ', fire:'shift' };
   }
 
   // ---- INPUT HANDLING ----
   function setKey(action, state) { 
-      // Mobile controls
       const binds = getBindings();
       
-      // ✅ Fix 1: Handle space/shift explicitly for mobile touch
+      // Handle space/shift explicitly for mobile touch
       if(action === "boost") {
         activeKeys[binds.boost] = state;
-        activeKeys["Space"] = state;  // extra safe
+        activeKeys["Space"] = state; 
         return;
       }
       if(action === "fire") {
         activeKeys[binds.fire] = state;
-        activeKeys["shift"] = state; // Lowercase safe
-        activeKeys["Shift"] = state; // Titlecase safe
+        activeKeys["Shift"] = state;
+        activeKeys["shift"] = state;
         return;
       }
 
@@ -279,7 +265,6 @@
       activeKeys[key] = state;
   }
 
-  // Input Listeners
   window.addEventListener('keydown', (e) => {
     if(e.key === "Escape") { togglePause(); return; }
     if(isPaused) return;
@@ -314,7 +299,7 @@
       if (actionId === 'left') return activeKeys[binds.left] || activeKeys['arrowleft']; 
       if (actionId === 'right') return activeKeys[binds.right] || activeKeys['arrowright']; 
       
-      // ✅ FINAL FIX 1: Robust Mobile Check
+      // Robust Check for Boost/Fire
       if (actionId === 'boost') {
         return activeKeys[binds.boost] || activeKeys[" "] || activeKeys["Space"];
       }
@@ -340,7 +325,7 @@
     racers.forEach((r, i) => {
       const row = document.createElement("div"); row.className = "lb-row";
       const n = document.createElement("span"); n.className = "lb-name"; if(r.name === "PLAYER") n.classList.add("lb-player"); if(i === 0) n.classList.add("lb-rank-1"); n.innerText = `${i+1}. ${r.name}`;
-      const s = document.createElement("span"); s.className = "lb-score"; s.innerText = `${r.rings}/${TOTAL_RINGS_WIN}`;
+      const s = document.createElement("span"); s.className = "lb-score"; s.innerText = `${r.rings}/${Cfg.TOTAL_RINGS_WIN}`;
       row.appendChild(n); row.appendChild(s); list.appendChild(row);
     });
   }
@@ -359,12 +344,12 @@
     let winner = null;
     if (collectorName === "PLAYER") {
       playerStats.rings++; playerStats.progress++; updateRingVisuals();
-      if (playerStats.rings >= TOTAL_RINGS_WIN) winner = { win: true, name: "PLAYER" };
+      if (playerStats.rings >= Cfg.TOTAL_RINGS_WIN) winner = { win: true, name: "PLAYER" };
     } else {
       const eStat = enemyStats.find(e => e.name === collectorName);
       if(eStat && eStat.obj) {
         eStat.rings = eStat.obj.userData.progress;
-        if(eStat.rings >= TOTAL_RINGS_WIN) winner = { win: false, name: eStat.name };
+        if(eStat.rings >= Cfg.TOTAL_RINGS_WIN) winner = { win: false, name: eStat.name };
       }
     }
     updateLeaderboard();
@@ -372,13 +357,16 @@
   }
 
   function disposeHierarchy(obj) {
-    if (!obj) return; if (obj.children) obj.children.forEach(disposeHierarchy); if (obj.geometry) obj.geometry.dispose();
+    if (!obj) return; if (obj.children) [...obj.children].forEach(disposeHierarchy); if (obj.geometry) obj.geometry.dispose();
     if (obj.material) { if (Array.isArray(obj.material)) { obj.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); }); } else { if(obj.material.map) obj.material.map.dispose(); obj.material.dispose(); } }
   }
 
-  function startSinglePlayer() { initGame(); }
+  // ✅ Expose start function globally so HTML button can find it
+  window.startSinglePlayer = function() { 
+    initGame(); 
+  }
 
-  // ✅ Fix 6: Touch Lock for Gameplay (Once-only lock)
+  // Touch Lock for Gameplay
   let touchLocked = false;
   function preventTouch(e) { e.preventDefault(); }
   function lockTouchScroll() {
@@ -388,9 +376,8 @@
   }
 
   function initGame() {
-    // Lock touch only when game starts
     lockTouchScroll();
-
+    
     // Safe Init for Audio
     if (typeof SFXManager !== 'undefined') SFXManager.init(); 
     if (typeof MusicManager !== 'undefined') MusicManager.init();
@@ -398,29 +385,22 @@
     document.getElementById('start-screen').classList.add('hidden');
     const container = document.getElementById('game-container');
     
-    // ✅ Fix 3 & 7: Memory Leak Prevention & Renderer Disposal
+    // Memory Leak Prevention
     if (scene) { 
         rings.forEach(r => { scene.remove(r); disposeHierarchy(r); }); 
         bullets.forEach(b => { scene.remove(b.mesh); disposeHierarchy(b.mesh); }); 
         repairKits.forEach(k => { scene.remove(k); disposeHierarchy(k); }); 
         enemies.forEach(e => { scene.remove(e); disposeHierarchy(e); });
         
-        // Dispose global meshes properly
         if (terrainMesh) { scene.remove(terrainMesh); disposeHierarchy(terrainMesh); }
         if (oceanMesh) { scene.remove(oceanMesh); disposeHierarchy(oceanMesh); }
-        
-        // ✅ Fix 4: Removed explicit scene.clear() to avoid removing lights or breaking refs
-        // We already manually cleaned up above
     }
 
     if (renderer) {
-      // Remove from DOM first
-      if(renderer.domElement && renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
-      
       renderer.dispose();
-      // ✅ FINAL FIX 2: Force context loss
-      if (renderer.forceContextLoss) renderer.forceContextLoss();
+      if(renderer.forceContextLoss) renderer.forceContextLoss();
       renderer.context = null;
+      if(renderer.domElement && renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
       renderer.domElement = null;
     }
     
@@ -433,7 +413,6 @@
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 200, 50); dirLight.castShadow = true; scene.add(dirLight);
     
     playerStats = { name: "PLAYER", rings: 0, progress: 0 }; 
-    // Reset player ring tracking
     playerLastRingIndex = -1;
     
     enemyStats.forEach(e => e.rings = 0); enemiesAliveCount = 4; health = 100; boostLevel = 100;
@@ -455,11 +434,10 @@
       const x = positions.getX(i); const z = positions.getZ(i);
       let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200;
       if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; positions.setY(i, y);
-      const color = new THREE.Color(); if (y < -50) color.setHex(TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(TERRAIN_COLORS.ROCK); else color.setHex(TERRAIN_COLORS.SNOW); colors.push(color.r, color.g, color.b);
+      const color = new THREE.Color(); if (y < -50) color.setHex(Cfg.TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(Cfg.TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(Cfg.TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(Cfg.TERRAIN_COLORS.ROCK); else color.setHex(Cfg.TERRAIN_COLORS.SNOW); colors.push(color.r, color.g, color.b);
     }
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals();
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true });
-    // ✅ Fix 3: Store in global variable
     terrainMesh = new THREE.Mesh(geometry, mat); 
     terrainMesh.position.y = -50; 
     terrainMesh.receiveShadow = true; scene.add(terrainMesh);
@@ -467,8 +445,7 @@
 
   function generateOcean() {
     const geo = new THREE.PlaneGeometry(50000, 50000); geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({ color: TERRAIN_COLORS.WATER, transparent: true, opacity: 0.6 });
-    // ✅ Fix 3: Store in global variable
+    const mat = new THREE.MeshBasicMaterial({ color: Cfg.TERRAIN_COLORS.WATER, transparent: true, opacity: 0.6 });
     oceanMesh = new THREE.Mesh(geo, mat); 
     oceanMesh.position.y = -80; scene.add(oceanMesh);
   }
@@ -501,9 +478,8 @@
         aim: 0.5 + Math.random() * 0.5,
         dodge: 0.3 + Math.random() * 0.7
       };
-      // ✅ Fix 3: Added lastRingIndex to prevent double counting
       enemy.userData = { 
-        alive: true, health: 300, speed: NORMAL_SPEED, progress: 0, ringLocked: false, lastShot: 0, boostUntil: 0, ai: aiStats, state: "RACE", stateTimer: 0, dodgeTimer: 0,
+        alive: true, health: 300, speed: Cfg.NORMAL_SPEED, progress: 0, ringLocked: false, lastShot: 0, boostUntil: 0, ai: aiStats, state: "RACE", stateTimer: 0, dodgeTimer: 0,
         lastRingIndex: -1
       }; 
       scene.add(enemy); 
@@ -514,9 +490,9 @@
 
   function createGuideArrow() { const group = new THREE.Group(); const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 }); const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 15, 8), mat); cylinder.rotation.x = Math.PI / 2; cylinder.position.z = -7.5; const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 8, 8), mat); cone.rotation.x = Math.PI / 2; group.add(cylinder, cone); guideArrow = group; scene.add(guideArrow); }
 
-  function createRings() { for(let i=0; i<RINGS_PER_LAP; i++) { const angle = i * (Math.PI * 2 / RINGS_PER_LAP); const x = Math.sin(angle) * 12000; const z = Math.cos(angle) * -12000; const groundY = getTerrainHeight(x, z); const y = Math.max(500, groundY + 400); ringWaypoints.push({x, y, z}); const geo = new THREE.TorusGeometry(80, 10, 16, 50); const mat = new THREE.MeshPhongMaterial({ color: 0xFFD700, emissive: 0xffaa00, shininess: 100 }); const ring = new THREE.Mesh(geo, mat); ring.position.set(x, y, z); ring.rotation.y = Math.random() * Math.PI; ring.userData.locked = false; scene.add(ring); rings.push(ring); } }
+  function createRings() { for(let i=0; i<Cfg.RINGS_PER_LAP; i++) { const angle = i * (Math.PI * 2 / Cfg.RINGS_PER_LAP); const x = Math.sin(angle) * 12000; const z = Math.cos(angle) * -12000; const groundY = getTerrainHeight(x, z); const y = Math.max(500, groundY + 400); ringWaypoints.push({x, y, z}); const geo = new THREE.TorusGeometry(80, 10, 16, 50); const mat = new THREE.MeshPhongMaterial({ color: 0xFFD700, emissive: 0xffaa00, shininess: 100 }); const ring = new THREE.Mesh(geo, mat); ring.position.set(x, y, z); ring.rotation.y = Math.random() * Math.PI; ring.userData.locked = false; scene.add(ring); rings.push(ring); } }
 
-  function updateRingVisuals() { const currentTargetIdx = playerStats.progress % RINGS_PER_LAP; rings.forEach((r, i) => { if (i === currentTargetIdx) { r.material.emissive.setHex(0xffaa00); r.material.color.setHex(0xffd700); r.visible = true; currentRingObj = r; currentRingObj.userData.locked = false; } else { r.visible = false; } }); }
+  function updateRingVisuals() { const currentTargetIdx = playerStats.progress % Cfg.RINGS_PER_LAP; rings.forEach((r, i) => { if (i === currentTargetIdx) { r.material.emissive.setHex(0xffaa00); r.material.color.setHex(0xffd700); r.visible = true; currentRingObj = r; currentRingObj.userData.locked = false; } else { r.visible = false; } }); }
 
   function createRepairKits() { const kitGroupPrototype = new THREE.Group(); const boxGeo = new THREE.BoxGeometry(60, 60, 60); const boxMat = new THREE.MeshPhongMaterial({ color: 0x00aa00, emissive: 0x003300, shininess: 30 }); const box = new THREE.Mesh(boxGeo, boxMat); kitGroupPrototype.add(box); const crossMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); const vBar = new THREE.Mesh(new THREE.BoxGeometry(20, 70, 20), crossMat); const hBar = new THREE.Mesh(new THREE.BoxGeometry(70, 20, 20), crossMat); const dBar = new THREE.Mesh(new THREE.BoxGeometry(20, 20, 70), crossMat); kitGroupPrototype.add(vBar, hBar, dBar); const positions = [{ x: 1000, z: -3000 }, { x: -2000, z: -6000 }, { x: 500, z: -9000 }]; positions.forEach((loc) => { const groundY = getTerrainHeight(loc.x, loc.z); const y = Math.max(300, groundY + 200); const kit = kitGroupPrototype.clone(); kit.position.set(loc.x, y, loc.z); kit.userData = { active: true, respawnTime: 0 }; scene.add(kit); repairKits.push(kit); }); }
 
@@ -537,8 +513,8 @@
     enemies.forEach(e => { if(!e.userData.alive) return; const toEnemy = new THREE.Vector3().subVectors(e.position, planeRig.position); const dist = toEnemy.length(); if(dist < 8000 && forward.dot(toEnemy.normalize()) > 0.7 && dist < minDist) { minDist = dist; target = e; } });
     const bulletGeo = new THREE.SphereGeometry(2, 8, 8); const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 }); const offsets = [-12, 12];
     offsets.forEach(offset => { const bullet = new THREE.Mesh(bulletGeo, bulletMat); bullet.position.copy(planeRig.position); const wingX = Math.cos(planeRig.rotation.y) * offset; const wingZ = Math.sin(planeRig.rotation.y) * -offset; bullet.position.x += wingX; bullet.position.z += wingZ; scene.add(bullet); 
-    // ✅ Fix 2: Centralized Speed BULLET_SPEED_PLAYER
-    const v = new THREE.Vector3(0,0,-1).applyQuaternion(planeRig.quaternion).multiplyScalar(BULLET_SPEED_PLAYER); 
+    // ✅ Fix: Use Cfg object
+    const v = new THREE.Vector3(0,0,-1).applyQuaternion(planeRig.quaternion).multiplyScalar(Cfg.BULLET_SPEED_PLAYER); 
     bullets.push({ mesh: bullet, velocity: v, target: target, life: 150 }); });
   }
 
@@ -547,8 +523,8 @@
     const bullet = new THREE.Mesh(bulletGeo, bulletMat); bullet.position.copy(enemy.position); scene.add(bullet); 
     const direction = new THREE.Vector3().subVectors(targetPos, enemy.position).normalize(); 
     direction.x += (Math.random() - 0.5) * 0.02; direction.y += (Math.random() - 0.5) * 0.02; direction.z += (Math.random() - 0.5) * 0.02; 
-    // ✅ Fix 1: Centralized Speed BULLET_SPEED_ENEMY
-    const v = direction.multiplyScalar(BULLET_SPEED_ENEMY); 
+    // ✅ Fix: Use Cfg object
+    const v = direction.multiplyScalar(Cfg.BULLET_SPEED_ENEMY); 
     bullets.push({ mesh: bullet, velocity: v, life: 220, isEnemy: true, owner: enemy }); 
     const sfxEnabled = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
     if (sfxEnabled && Math.random() < 0.3 && typeof SFXManager !== 'undefined') SFXManager.playGun(sfxEnabled); 
@@ -558,6 +534,13 @@
 
   function animate() {
     if (!isPlaying || isPaused) return; 
+    
+    // Safety check for rig
+    if(!planeRig) {
+        requestAnimationFrame(animate);
+        return;
+    }
+
     frameCount++; const t = performance.now(); 
     if (t - lastFrameTime >= 1000) { if (fpsElem) fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastFrameTime = t; }
     const now = Date.now();
@@ -577,16 +560,11 @@
       else { if (incomingThreat && Math.random() < ai.dodge) { nextState = "EVADE"; e.userData.dodgeTimer = 60; } else if (e.userData.health < 60 && Math.random() < ai.coward) { nextState = "RETREAT"; } else { if ((playerStats.rings > e.userData.progress || distToPlayer < 3000) && Math.random() < ai.aggression) { nextState = "HUNT"; } else if (ai.greed > 0.7) { nextState = "RACE"; } } e.userData.stateTimer = 60 + Math.floor(Math.random() * 60); }
       e.userData.state = nextState;
       let targetPosVec = null; let desiredSpeed = e.userData.speed; let shooting = false;
-      let targetIdx = e.userData.progress % RINGS_PER_LAP; const wp = ringWaypoints[targetIdx];
+      let targetIdx = e.userData.progress % Cfg.RINGS_PER_LAP; const wp = ringWaypoints[targetIdx];
       if (!wp) return;
       const raceTarget = new THREE.Vector3(wp.x, wp.y, wp.z);
       if (nextState === "RACE") { targetPosVec = raceTarget; if (e.userData.progress < playerStats.progress) { desiredSpeed *= 1.4; } else if (e.userData.progress > playerStats.progress + 2) { desiredSpeed *= 0.9; } }
-      else if (nextState === "HUNT") { 
-          // ✅ Fix 1: Use BULLET_SPEED_ENEMY
-          targetPosVec = calculateLeadAim(e.position, planeRig, BULLET_SPEED_ENEMY, ai.aim); 
-          shooting = true; 
-          desiredSpeed *= 1.1; 
-      }
+      else if (nextState === "HUNT") { targetPosVec = calculateLeadAim(e.position, planeRig, Cfg.BULLET_SPEED_ENEMY, ai.aim); shooting = true; desiredSpeed *= 1.1; }
       else if (nextState === "RETREAT") { const awayFromPlayer = e.position.clone().sub(planeRig.position).normalize(); targetPosVec = e.position.clone().add(awayFromPlayer.multiplyScalar(2000)); targetPosVec.y = 800; desiredSpeed *= 1.3; }
       else if (nextState === "EVADE") { targetPosVec = e.position.clone().add(new THREE.Vector3((Math.random()-0.5)*500,(Math.random()-0.5)*500,500).applyQuaternion(e.quaternion)); e.rotation.z = (e.rotation.z + 0.2) % (Math.PI * 2); desiredSpeed *= 1.2; }
       const forwardDir = new THREE.Vector3(0,0,-1).applyQuaternion(e.quaternion); const sensorPos = e.position.clone().add(forwardDir.clone().multiplyScalar(500)); const terrainH_ahead = getTerrainHeight(sensorPos.x, sensorPos.z);
@@ -602,7 +580,7 @@
       if (shooting && distToPlayer < 5000) { const toTarget = planeRig.position.clone().sub(e.position).normalize(); const dot = forwardDir.dot(toTarget); if (dot > 0.85 && (now - (e.userData.lastShot || 0) > 1500)) { spawnEnemyBullet(e, targetPosVec); e.userData.lastShot = now; } }
       const currentH = getTerrainHeight(e.position.x, e.position.z); if(e.position.y < currentH + 80) { e.position.y = currentH + 80; e.rotation.x -= 0.05; }
       
-      // ✅ Fix 3: Improved Ring Collection Logic
+      // ✅ Fix: Use progress unique index logic like player
       if (wp) { 
           const ringPos = new THREE.Vector3(wp.x, wp.y, wp.z); 
           const dist = e.position.distanceTo(ringPos); 
@@ -615,23 +593,29 @@
       }
     });
 
-    if (isActionActive('fire')) { if (now - lastFireTime > FIRE_RATE) { spawnBullet(); lastFireTime = now; } }
+    if (isActionActive('fire')) { if (now - lastFireTime > Cfg.FIRE_RATE) { spawnBullet(); lastFireTime = now; } }
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i]; b.mesh.position.add(b.velocity); b.life--;
       const gh = getTerrainHeight(b.mesh.position.x, b.mesh.position.z); 
-      if (b.mesh.position.y < gh + 10 || b.life <= 0) { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); bullets.splice(i, 1); continue; }
+      if (b.mesh.position.y < gh + 10 || b.life <= 0) { 
+          // ✅ Fix: Browser compatible removal
+          if(b.mesh.parent) b.mesh.parent.remove(b.mesh); 
+          b.mesh.geometry.dispose(); 
+          b.mesh.material.dispose(); 
+          bullets.splice(i, 1); 
+          continue; 
+      }
       const sfxEnabled = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
-      if (b.isEnemy) { if (b.mesh.position.distanceTo(planeRig.position) < 80) { health -= 8; if (typeof SFXManager !== 'undefined') SFXManager.playExplosion(sfxEnabled); if (health <= 0) { health = 0; endGame(false, "Shot Down by " + (b.owner.name || "Enemy")); } scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); bullets.splice(i, 1); continue; } }
+      if (b.isEnemy) { if (b.mesh.position.distanceTo(planeRig.position) < 80) { health -= 8; if (typeof SFXManager !== 'undefined') SFXManager.playExplosion(sfxEnabled); if (health <= 0) { health = 0; endGame(false, "Shot Down by " + (b.owner.name || "Enemy")); } if(b.mesh.parent) b.mesh.parent.remove(b.mesh); bullets.splice(i, 1); continue; } }
       else { 
-        // ✅ Fix 2: Use BULLET_SPEED_PLAYER
-        if(b.target && b.target.userData.alive) { const dir = new THREE.Vector3().subVectors(b.target.position, b.mesh.position).normalize(); b.velocity.lerp(dir.multiplyScalar(BULLET_SPEED_PLAYER), 0.1); }
+        if(b.target && b.target.userData.alive) { const dir = new THREE.Vector3().subVectors(b.target.position, b.mesh.position).normalize(); b.velocity.lerp(dir.multiplyScalar(Cfg.BULLET_SPEED_PLAYER), 0.1); }
         let hit = false; for(let e of enemies) { if(e.userData.alive && b.mesh.position.distanceTo(e.position) < 80) { e.userData.health -= 25; if (typeof SFXManager !== 'undefined') SFXManager.playExplosion(sfxEnabled); e.userData.dodgeTimer = 90; e.userData.state = "EVADE"; if(e.userData.health <= 0) { e.userData.alive = false; e.visible = false; enemiesAliveCount--; if(enemiesAliveCount === 0) endGame(true, "Ace Combatant: All Enemies Down"); } hit = true; break; } }
-        if(hit) { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); bullets.splice(i, 1); continue; }
+        if(hit) { if(b.mesh.parent) b.mesh.parent.remove(b.mesh); bullets.splice(i, 1); continue; }
       }
     }
 
-    let currentSpeed = NORMAL_SPEED; let engineGlow = planeMesh.getObjectByName("EngineGlow");
-    if (isActionActive('boost') && boostLevel > 0) { currentSpeed = BOOST_SPEED; boostLevel -= BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0; if(engineGlow) engineGlow.material.opacity = 0.8; } else { if (boostLevel < 100) boostLevel += BOOST_REFILL; if(engineGlow) engineGlow.material.opacity = 0; }
+    let currentSpeed = Cfg.NORMAL_SPEED; let engineGlow = planeMesh.getObjectByName("EngineGlow");
+    if (isActionActive('boost') && boostLevel > 0) { currentSpeed = Cfg.BOOST_SPEED; boostLevel -= Cfg.BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0; if(engineGlow) engineGlow.material.opacity = 0.8; } else { if (boostLevel < 100) boostLevel += Cfg.BOOST_REFILL; if(engineGlow) engineGlow.material.opacity = 0; }
     document.getElementById('boost-fill').style.width = boostLevel + '%';
     planeRig.translateZ(-currentSpeed);
 
@@ -639,15 +623,16 @@
     planeRig.position.x = THREE.MathUtils.clamp(planeRig.position.x, -WORLD_LIMIT, WORLD_LIMIT);
     planeRig.position.z = THREE.MathUtils.clamp(planeRig.position.z, -WORLD_LIMIT, WORLD_LIMIT);
 
-    if (isActionActive('left')) { planeRig.rotation.y += TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); } else if (isActionActive('right')) { planeRig.rotation.y -= TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); } else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
-    if (isActionActive('up')) { planeRig.position.y += LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.5, 0.1); } else if (isActionActive('down')) { planeRig.position.y -= LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.5, 0.1); } else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
+    if (isActionActive('left')) { planeRig.rotation.y += Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); } else if (isActionActive('right')) { planeRig.rotation.y -= Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); } else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
+    if (isActionActive('up')) { planeRig.position.y += Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.5, 0.1); } else if (isActionActive('down')) { planeRig.position.y -= Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.5, 0.1); } else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
     const groundHeight = getTerrainHeight(planeRig.position.x, planeRig.position.z); let isDamaging = false; 
-    // ✅ Fix 5: Player Crash Damage Debounce
+    
+    // ✅ Fix: Crash Damage Debounce
     if (planeRig.position.y < groundHeight + 15) { 
         planeRig.position.y = groundHeight + 15; 
         
         if (now - lastCrashTime > 500) {
-            health -= COLLISION_DAMAGE; 
+            health -= Cfg.COLLISION_DAMAGE; 
             isDamaging = true; 
             lastCrashTime = now;
             
@@ -667,15 +652,15 @@
     const targetCamPos = new THREE.Vector3(0, 100, 300).applyMatrix4(planeRig.matrixWorld);
     camera.position.lerp(targetCamPos, 0.1); camera.lookAt(planeRig.position);
     
-    // ✅ Fix 4: Player Ring Collection Index Check - Using PROGRESS check instead of Time Debounce
+    // ✅ Fix: Player Ring Collection Index Check
     if (currentRingObj) { 
         guideArrow.visible = true; 
         guideArrow.position.copy(planeRig.position); 
         guideArrow.position.y += 60; 
         guideArrow.lookAt(currentRingObj.position); 
         
+        const currentTargetIdx = playerStats.progress % Cfg.RINGS_PER_LAP;
         if (planeRig.position.distanceTo(currentRingObj.position) < 100) { 
-            // 🛑 BUG #3 FIX: Use 'progress' as unique ID instead of index
             if (playerLastRingIndex !== playerStats.progress) {
                 playerLastRingIndex = playerStats.progress;
                 ringCollected("PLAYER"); 
@@ -695,7 +680,6 @@
   function endGame(win, reason) { 
     isPlaying = false; 
     
-    // Silence audio safely
     if (typeof MusicManager !== 'undefined') MusicManager.stop();
     if (typeof SFXManager !== 'undefined') {
         SFXManager.updateContinuous(false, false, false); 
