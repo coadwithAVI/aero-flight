@@ -375,8 +375,14 @@
   
   // FIX H: BUFFERED INTERPOLATION RECEPTION (Corrected for Server Time)
   socket.on("playerMoved", (playerInfo) => { 
-      if (!otherPlayers[playerInfo.playerId]) { if(scene) addOtherPlayer(playerInfo); return; }
-      const p = otherPlayers[playerInfo.playerId]; 
+      // FIX: Robust ID handling to ensure Joiner sees Host
+      const id = playerInfo.playerId || playerInfo.id;
+      if (!id) return;
+      playerInfo.playerId = id; // Normalize ID
+
+      // If mesh doesn't exist (e.g. Joiner hasn't spawned Host yet), create it
+      if (!otherPlayers[id]) { if(scene) addOtherPlayer(playerInfo); return; }
+      const p = otherPlayers[id]; 
       
       const snapshot = {
           time: playerInfo.ts || Date.now(), // FIX C: Use server timestamp if available
@@ -604,7 +610,9 @@
   function ringCollected() { 
       AudioSys.playRing();
       // FIX B: Don't set rings locally (cheatable). Request validation.
-      socket.emit('mp_claim_ring', { roomId: mp.roomId, ringIndex: playerStats.progress % RINGS_PER_LAP });
+      if (mp.roomId) {
+          socket.emit('mp_claim_ring', { roomId: mp.roomId, ringIndex: playerStats.progress % RINGS_PER_LAP });
+      }
   }
 
   function disposeHierarchy(obj) { if (!obj) return; if (obj.children) obj.children.forEach(disposeHierarchy); if (obj.geometry) obj.geometry.dispose(); if (obj.material) { if (Array.isArray(obj.material)) obj.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); }); else { if(obj.material.map) obj.material.map.dispose(); obj.material.dispose(); } } }
@@ -886,4 +894,3 @@
 </script>
 </body>
 </html>
-
