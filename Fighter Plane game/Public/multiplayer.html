@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sky Pilot - Multiplayer</title>
+  <!-- Favicon Fix (Console error hatane ke liye) -->
+  <link rel="icon" href="data:,">
 
   <!-- Socket.IO client -->
   <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
@@ -270,8 +272,7 @@
 <script>
   document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
 
-  // 🛡️ FIX: GameManager Fallback
-  // Agar game-manager.js load nahi hua, toh default settings use karega
+  // 🛡️ FIX: GameManager Fallback with Safety
   const GM = (window.GameManager && GameManager.data) ? GameManager : { 
       data: { 
           music: true, 
@@ -280,20 +281,12 @@
       } 
   };
 
-  // --- SHARED BULLET ASSETS (Performance Optimization) ---
+  // --- SHARED ASSETS ---
   const BULLET_GEO = new THREE.SphereGeometry(2, 8, 8);
   const BULLET_MAT_MY = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
   const BULLET_MAT_ENEMY = new THREE.MeshBasicMaterial({ color: 0xff0000 });
   const BULLET_SPEED = 8000; 
-  // 🔧 FIX 6: Global Reuse Vector
-  const TMP_VEC3 = new THREE.Vector3();
-
-  // --- SEEDED RNG ---
-  let gameSeed = 12345;
-  function seededRandom() {
-    gameSeed = (gameSeed * 9301 + 49297) % 233280;
-    return gameSeed / 233280;
-  }
+  const TMP_VEC3 = new THREE.Vector3(); // Global Reuse
 
   // --- MP STATE ---
   let gameMode = "multi";
@@ -319,7 +312,16 @@
 
   // --- SCREEN HELPERS ---
   function showScreen(id) { document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden")); const el = document.getElementById(id); if (el) el.classList.remove("hidden"); }
-  function lobbyRenderPlayers(players) { const list = document.getElementById("lobby-player-list"); list.innerHTML = ""; players.forEach((p, i) => { const row = document.createElement("div"); row.textContent = `${i+1}. ${p.name}${p.isHost ? " (HOST)" : ""}`; list.appendChild(row); }); }
+  
+  function lobbyRenderPlayers(players) { 
+      const list = document.getElementById("lobby-player-list"); 
+      list.innerHTML = ""; 
+      players.forEach((p, i) => { 
+          const row = document.createElement("div"); 
+          row.textContent = `${i+1}. ${p.name}${p.isHost ? " (HOST) 👑" : ""}`; 
+          list.appendChild(row); 
+      }); 
+  }
   
   function mpCreateRoom() { 
       AudioSys.init(); 
@@ -337,19 +339,13 @@
 
   function mpLeaveLobby() { 
       if (!mp.roomId) return showScreen("mp-menu-screen"); 
-      Object.values(otherPlayers).forEach(p => { 
-          if (scene) scene.remove(p); 
-          disposeHierarchy(p); 
-      }); 
+      Object.values(otherPlayers).forEach(p => { if (scene) scene.remove(p); disposeHierarchy(p); }); 
       for (let k in otherPlayers) delete otherPlayers[k]; 
-      
       for (let k in playersData) delete playersData[k];
       for (let k in allScores) delete allScores[k];
 
       socket.emit("mp_leave_room", { roomId: mp.roomId }); 
-      mp.roomId = null; 
-      mp.isHost = false; 
-      mp.inLobby = false; 
+      mp.roomId = null; mp.isHost = false; mp.inLobby = false; 
       showScreen("mp-menu-screen"); 
   }
   
@@ -364,13 +360,31 @@
 
   // --- SOCKET EVENTS ---
   socket.on("connect", () => console.log("Connected:", socket.id));
-  socket.on("mp_room_created", ({ roomId, players, hostId }) => { mp.roomId = roomId; mp.isHost = (socket.id === hostId); mp.inLobby = true; document.getElementById("lobby-room-id").innerText = roomId; lobbyRenderPlayers(players); document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); showScreen("lobby-screen"); });
-  socket.on("mp_room_joined", ({ roomId, players, hostId }) => { mp.roomId = roomId; mp.isHost = (socket.id === hostId); mp.inLobby = true; document.getElementById("lobby-room-id").innerText = roomId; lobbyRenderPlayers(players); document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); showScreen("lobby-screen"); });
-  socket.on("mp_lobby_update", ({ roomId, players, hostId }) => { if (mp.roomId !== roomId) return; mp.isHost = (socket.id === hostId); lobbyRenderPlayers(players); document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); });
+  
+  // Update Lobby for Joiner and Host
+  socket.on("mp_room_created", ({ roomId, players, hostId }) => { updateLobbyUI(roomId, players, hostId); });
+  socket.on("mp_room_joined", ({ roomId, players, hostId }) => { updateLobbyUI(roomId, players, hostId); });
+  
+  // 🔴 FIX: Lobby Update Handler
+  socket.on("mp_lobby_update", ({ roomId, players, hostId }) => { 
+      console.log("Lobby Update Received:", players); // Debug
+      if (mp.roomId === roomId) updateLobbyUI(roomId, players, hostId);
+  });
+
+  function updateLobbyUI(roomId, players, hostId) {
+      mp.roomId = roomId;
+      mp.isHost = (socket.id === hostId); 
+      mp.inLobby = true; 
+      document.getElementById("lobby-room-id").innerText = roomId; 
+      lobbyRenderPlayers(players); 
+      document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); 
+      showScreen("lobby-screen");
+  }
+
   socket.on("mp_error", (msg) => alert(msg || "Multiplayer error"));
   
   socket.on("mp_game_starting", (data) => { 
-      if(data && data.seed) gameSeed = data.seed;
+      if(data && data.seed) gameSeed = data.seed; // Sync Seed
       showScreen("countdown-screen"); 
       mpCountdownThenStart(); 
   });
@@ -413,7 +427,6 @@
       
       if (!p.userData.buffer) p.userData.buffer = [];
       p.userData.buffer.push(snapshot);
-      
       if (p.userData.buffer.length > 5) p.userData.buffer.shift();
   });
 
@@ -446,11 +459,7 @@
       if (repairKits[kitIndex]) {
           repairKits[kitIndex].visible = false;
           repairKits[kitIndex].userData.active = false;
-          
-          if(collectorId === socket.id) {
-              health += 30; if(health > 100) health = 100; 
-              AudioSys.playRepair(); 
-          }
+          if(collectorId === socket.id) { health += 30; if(health > 100) health = 100; AudioSys.playRepair(); }
       }
   });
 
@@ -464,7 +473,6 @@
   function addOtherPlayer(playerInfo) { 
       const id = playerInfo.playerId || playerInfo.id;
       if (!id) return;
-      
       playerInfo.playerId = id;
       playersData[id] = playerInfo;
 
@@ -477,7 +485,6 @@
           otherPlayer.position.set(x, y, z);
           scene.add(otherPlayer); 
           otherPlayers[id] = otherPlayer; 
-          
           if (!allScores[id]) allScores[id] = { name: playerInfo.name || "Pilot", rings: 0 };
       }
   }
@@ -495,8 +502,8 @@
   let lastFrameTime = performance.now(); let frameCount = 0; const fpsElem = document.getElementById('fps-counter');
   const minimapCanvas = document.getElementById('minimap-canvas'); const minimapCtx = minimapCanvas.getContext('2d');
   let audioCtx, boostOsc, boostGain, boostNoise, boostNoiseGain, noiseNode, noiseGain;
+  let gameSeed = 12345;
 
-  // --- AUDIO SYSTEM (Connected to GameManager) ---
   const AudioSys = {
     init: function() { 
         if (audioCtx) return; 
@@ -517,11 +524,9 @@
       boostNoiseGain = audioCtx.createGain(); boostNoiseGain.gain.value = 0;
       boostNoise.connect(f); f.connect(boostNoiseGain); boostNoiseGain.connect(audioCtx.destination); boostNoise.start();
 
-      // ✅ FIX: Check GM (GameManager Fallback)
       if(GM.data.music) this.startNewMusic();
     },
     updateContinuousAudio: function(isBoosting, isDamaging) {
-        // ✅ FIX: Check GM
         if(!audioCtx || !GM.data.sfx) {
             if(audioCtx) { boostGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); boostNoiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); noiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); }
             return;
@@ -558,22 +563,13 @@
     stopAll: function() { 
         this.isPlayingMusic = false; 
         try { 
-            // 🔧 FIX 1 & 3: Safe Stop and Disconnect
             if(noiseNode) { noiseNode.disconnect(); try { noiseNode.stop(); } catch(e){} noiseNode = null; }
             if(boostOsc) { boostOsc.disconnect(); try { boostOsc.stop(); } catch(e){} boostOsc = null; }
             if(boostNoise) { boostNoise.disconnect(); try { boostNoise.stop(); } catch(e){} boostNoise = null; }
             
-            // ✅ FIX: Nullify gain nodes as requested
-            noiseGain = null;
-            boostGain = null;
-            boostNoiseGain = null;
+            noiseGain = null; boostGain = null; boostNoiseGain = null;
         } catch(e){} 
-        
-        // 🔧 FIX 2: Async close
-        if(audioCtx) {
-            audioCtx.close().catch(() => {});
-            audioCtx = null; 
-        }
+        if(audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
     }
   };
 
@@ -585,28 +581,26 @@
       else { pauseScreen.classList.add("hidden"); requestAnimationFrame(animate); }
   }
   
-  // ✅ 🔧 FIX 1: LOGICAL INPUT SYSTEM
   window.addEventListener('keydown', (e) => { 
       if(e.key === "Escape") { togglePause(); return; } 
       if(isPaused) return; 
       
       const k = e.key.toLowerCase(); 
-      const binds = GM.data.bindings; // Used GM
+      const binds = GM.data.bindings;
       
-      // Check Key and set Logical Action
       if(k === binds.up || k === 'arrowup') activeKeys['up'] = true; 
       if(k === binds.down || k === 'arrowdown') activeKeys['down'] = true; 
       if(k === binds.left || k === 'arrowleft') activeKeys['left'] = true; 
       if(k === binds.right || k === 'arrowright') activeKeys['right'] = true; 
       
       if(k === binds.boost) activeKeys['boost'] = true; 
-      // Spacebar fallback (" " vs "space")
+      // 🟢 FIX: Spacebar Fallback ( " " or "space" )
       if(k === binds.fire || (binds.fire === ' ' && k === 'space')) activeKeys['fire'] = true; 
   });
   
   window.addEventListener('keyup', (e) => { 
       const k = e.key.toLowerCase(); 
-      const binds = GM.data.bindings; // Used GM
+      const binds = GM.data.bindings;
       
       if(k === binds.up || k === 'arrowup') activeKeys['up'] = false; 
       if(k === binds.down || k === 'arrowdown') activeKeys['down'] = false; 
@@ -614,21 +608,13 @@
       if(k === binds.right || k === 'arrowright') activeKeys['right'] = false; 
       
       if(k === binds.boost) activeKeys['boost'] = false; 
-      // Spacebar fallback (" " vs "space")
+      // 🟢 FIX: Spacebar Fallback
       if(k === binds.fire || (binds.fire === ' ' && k === 'space')) activeKeys['fire'] = false; 
   });
 
-  function isActionActive(actionId) { 
-      // 🔧 FIX 3: Force boolean return
-      return !!activeKeys[actionId]; 
-  }
+  function isActionActive(actionId) { return !!activeKeys[actionId]; }
+  function setKey(action, state) { activeKeys[action] = state; }
   
-  function setKey(action, state) { 
-      // Called by mobile controls (already sending 'up', 'fire' etc)
-      activeKeys[action] = state; 
-  }
-  
-  // Auto-pause
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { isPaused = true; } 
     else { if (isPlaying) { isPaused = false; requestAnimationFrame(animate); } }
@@ -668,31 +654,31 @@
   function disposeHierarchy(obj) { if (!obj) return; if (obj.children) obj.children.forEach(disposeHierarchy); if (obj.geometry) obj.geometry.dispose(); if (obj.material) { if (Array.isArray(obj.material)) obj.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); }); else { if(obj.material.map) obj.material.map.dispose(); obj.material.dispose(); } } }
   
   function initGame() {
+    // 🔴 FIX: CRITICAL SAFETY CHECK FOR CONFIG
+    if (typeof TERRAIN_COLORS === 'undefined') {
+        alert("CRITICAL ERROR: Game Config not loaded! Check game-config.js linkage.");
+        return;
+    }
+
     const container = document.getElementById('game-container'); 
     
     if (scene) {
-        bullets.forEach(b => {
-            if (b && b.mesh) {
-                scene.remove(b.mesh);
-                b.mesh.userData = {}; 
-            }
-        });
-    }
-    bullets.length = 0; 
+        bullets.forEach(b => { if (b && b.mesh) { scene.remove(b.mesh); b.mesh.userData = {}; } });
+        bullets.length = 0; 
 
-    if (scene) { 
         rings.forEach(r => disposeHierarchy(r));
         repairKits.forEach(k => disposeHierarchy(k));
         Object.values(otherPlayers).forEach(p => disposeHierarchy(p));
-        
         if(terrainMesh) disposeHierarchy(terrainMesh);
         if(oceanMesh) disposeHierarchy(oceanMesh);
 
         scene.clear(); 
+        
+        // 🟢 FIX: Renderer Force Cleanup
         if(renderer) {
             renderer.dispose();
-            renderer.forceContextLoss?.();
-            renderer.domElement?.remove();
+            if(renderer.forceContextLoss) renderer.forceContextLoss();
+            if(renderer.domElement) renderer.domElement.remove();
             renderer = null;
         }
     } 
@@ -721,6 +707,7 @@
     health = 100; boostLevel = 100;
     lastRender = performance.now();
 
+    console.log("Game Init: Generating World...");
     generateTerrain(); generateOcean(); createPlaneSystem(); createGuideArrow(); createRepairKits(); createRings(); updateRingVisuals(); updateLeaderboard(); isPlaying = true; isPaused = false; animate();
   }
 
@@ -759,19 +746,12 @@
   function respawnPlayer() {
       health = 100;
       AudioSys.playExplosion();
-      
-      // 🔧 FIX 4: Safer Respawn Logic
-      // Ensure we spawn high above the ground at current location
       const terrainH = getTerrainHeight(planeRig.position.x, planeRig.position.z);
       planeRig.position.y = Math.max(planeRig.position.y, terrainH + 300); 
-      
-      // Reset orientation so user doesn't instantly crash again if they were diving
       planeRig.rotation.x = 0;
       planeRig.rotation.z = 0;
-      // 🔧 FIX 5: Reset visual roll/pitch to prevent wobble
       visualRoll = 0;
       visualPitch = 0;
-
       const msg = document.getElementById("respawn-msg");
       msg.style.display = "block";
       setTimeout(() => msg.style.display = "none", 2000);
@@ -782,16 +762,12 @@
   function generateTerrain() { 
       const geometry = new THREE.PlaneGeometry(50000, 50000, 120, 120); 
       geometry.rotateX(-Math.PI / 2); const positions = geometry.attributes.position; const colors = []; for (let i = 0; i < positions.count; i++) { const x = positions.getX(i); const z = positions.getZ(i); let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; positions.setY(i, y); const color = new THREE.Color(); if (y < -50) color.setHex(TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(TERRAIN_COLORS.ROCK); else color.setHex(TERRAIN_COLORS.SNOW); colors.push(color.r, color.g, color.b); } geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true }); 
-      
-      // ✅ FIX: Removed 'const' so global variable is updated
       terrainMesh = new THREE.Mesh(geometry, mat); 
       terrainMesh.position.y = -50; 
       scene.add(terrainMesh); 
   }
   function generateOcean() { 
       const geo = new THREE.PlaneGeometry(50000, 50000); geo.rotateX(-Math.PI / 2); const mat = new THREE.MeshBasicMaterial({ color: TERRAIN_COLORS.WATER, transparent: true, opacity: 0.6 }); 
-      
-      // ✅ FIX: Removed 'const'
       oceanMesh = new THREE.Mesh(geo, mat); 
       oceanMesh.position.y = -80; scene.add(oceanMesh); 
   }
@@ -882,11 +858,10 @@
         }
         
         if (!b.mesh.userData.isMine) {
-            // 🔧 FIX 2 & 6: Better Collision using global Vector (Use Plane Model Center)
+            // Using 900 (30*30) radius squared for hit detection
             if (planeMesh) planeMesh.getWorldPosition(TMP_VEC3);
             else if (planeRig) TMP_VEC3.copy(planeRig.position);
 
-            // 🔧 FIX 4: Increased Radius (900)
             if (TMP_VEC3.distanceToSquared(b.mesh.position) < 900) { 
                 scene.remove(b.mesh); 
                 bullets.splice(i, 1);
@@ -988,3 +963,5 @@
   function endGame(win, reason) { isPlaying = false; AudioSys.stopAll(); const screen = document.getElementById('end-screen'); const title = document.getElementById('end-title'); const msg = document.getElementById('end-msg'); if (win) { title.innerText = "VICTORY"; title.className = "win-text"; msg.innerText = reason || "Race Champion!"; } else { title.innerText = "DEFEAT"; title.className = "lose-text"; msg.innerText = reason || "Lost"; } screen.classList.remove('hidden'); }
   window.addEventListener('resize', () => { if (camera && renderer) { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); } });
 </script>
+</body>
+</html>
