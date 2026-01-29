@@ -448,7 +448,7 @@
       e.rotation.x = THREE.MathUtils.lerp(e.rotation.x, 0, 0.02); e.rotation.x = THREE.MathUtils.clamp(e.rotation.x - pitchForce, -0.6, 0.6);
       e.translateZ(-desiredSpeed);
 
-      // --- ✅ BUG FIX: ENEMY WORLD BOUNDARY ---
+      // --- Boundary Clamp for Enemy ---
       e.position.x = THREE.MathUtils.clamp(e.position.x, -WORLD_LIMIT, WORLD_LIMIT);
       e.position.z = THREE.MathUtils.clamp(e.position.z, -WORLD_LIMIT, WORLD_LIMIT);
 
@@ -474,7 +474,7 @@
     document.getElementById('boost-fill').style.width = boostLevel + '%';
     planeRig.translateZ(-currentSpeed);
 
-    // --- ✅ BUG FIX: PLAYER WORLD BOUNDARY ---
+    // --- Boundary Clamp for Player ---
     planeRig.position.x = THREE.MathUtils.clamp(planeRig.position.x, -WORLD_LIMIT, WORLD_LIMIT);
     planeRig.position.z = THREE.MathUtils.clamp(planeRig.position.z, -WORLD_LIMIT, WORLD_LIMIT);
 
@@ -500,9 +500,21 @@
 
   function endGame(win, reason) { 
     isPlaying = false; 
-    MusicManager.stop(); // Stop loop background music
-    SFXManager.stopAll(); 
-    if(win) MusicManager.playWin(); else MusicManager.playLose();
+    
+    // Sabse pehle music aur continuous SFX ko silent karo
+    if (typeof MusicManager !== 'undefined') MusicManager.stop();
+    if (typeof SFXManager !== 'undefined') {
+        SFXManager.updateContinuous(false, false, false); // Silence engine
+        SFXManager.stopAll(); 
+    }
+    
+    // Victory/Defeat sound play karo
+    if(win) {
+        if (typeof MusicManager !== 'undefined') MusicManager.playWin();
+    } else {
+        if (typeof MusicManager !== 'undefined') MusicManager.playLose();
+    }
+    
     const screen = document.getElementById('end-screen'); const title = document.getElementById('end-title'); const msg = document.getElementById('end-msg'); 
     if (win) { title.innerText = "VICTORY"; title.className = "win-text"; msg.innerText = reason || "Race Champion!"; } else { title.innerText = "DEFEAT"; title.className = "lose-text"; msg.innerText = reason || "Lost"; } 
     screen.classList.remove('hidden'); 
