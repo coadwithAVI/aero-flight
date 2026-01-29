@@ -4,20 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sky Pilot - Multiplayer</title>
-  
-  <link rel="icon" href="data:,">
 
   <!-- Socket.IO client -->
   <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
   <!-- THREE.JS LIBRARY -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-  <!-- ✅ LINKING CONFIG & GLOBAL MANAGERS -->
+  <!-- ✅ LINKING EXTERNAL MANAGERS & CONFIG -->
   <script src="game-config.js"></script>
   <script src="music-manager.js"></script>
   <script src="sfx-manager.js"></script>
-  <!-- Optional: game-manager.js for general logic/settings -->
-  <script src="game-manager.js"></script>
 
   <style>
     body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; }
@@ -33,6 +29,8 @@
     .hud-top { display: flex; justify-content: space-between; align-items: flex-start; }
     .left-hud { display: flex; flex-direction: column; align-items: flex-start; gap: 15px; }
     .right-hud { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; }
+    
+    /* ✅ FIX: Missing top-right-row CSS for alignment */
     .top-right-row { display: flex; align-items: flex-start; gap: 15px; }
 
     .leaderboard-box {
@@ -65,6 +63,7 @@
     #minimap-container { position: absolute; bottom: 20px; left: 20px; width: 140px; height: 140px; background: rgba(0,10,30,0.8); border: 2px solid #00d2ff; border-radius: 50%; overflow: hidden; pointer-events: none; box-shadow: 0 0 15px rgba(0,210,255,0.3); }
     #minimap-canvas { width: 100%; height: 100%; }
 
+    /* MOBILE CONTROLS */
     .mobile-controls { display: none; position: absolute; bottom: 20px; width: 100%; padding: 0 20px; box-sizing: border-box; justify-content: space-between; pointer-events: none; z-index: 100; }
     @media (max-width: 1024px) { .mobile-controls { display: flex; } }
     .control-group { pointer-events: auto; display: flex; gap: 10px; }
@@ -78,14 +77,15 @@
 
     .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10; }
     .hidden { display: none !important; }
+
     .menu-box { background: rgba(12, 20, 30, 0.85); border: 2px solid #00d2ff; border-radius: 20px; padding: 40px; text-align: center; box-shadow: 0 0 50px rgba(0, 210, 255, 0.25), inset 0 0 30px rgba(0, 210, 255, 0.1); width: 550px; max-width: 90%; max-height: 90vh; overflow-y: auto; }
-    
     h1 { font-size: 56px; color: #fff; text-transform: uppercase; margin: 0 0 10px 0; font-weight: 900; letter-spacing: 4px; text-shadow: 0 0 20px #00d2ff; font-style: italic; }
-    .action-btn { display: block; width: 100%; padding: 18px 0; margin: 15px 0; background: linear-gradient(135deg, #00d2ff, #0077ff); border: none; color: #fff; border-radius: 50px; font-size: 20px; font-weight: 900; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 5px 20px rgba(0, 210, 255, 0.4); transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); }
+    .action-btn { display: block; width: 100%; padding: 18px 0; margin: 15px 0; background: linear-gradient(135deg, #00d2ff, #0077ff); border: none; color: #fff; border-radius: 50px; font-size: 20px; font-weight: 900; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 5px 20px rgba(0, 210, 255, 0.4); transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; }
     .action-btn:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 10px 40px rgba(0, 210, 255, 0.6); filter: brightness(1.2); }
     .secondary-btn { background: rgba(255,255,255,0.05); border: 1px solid #555; box-shadow: none; font-size: 16px; }
     .secondary-btn:hover { background: rgba(255,255,255,0.15); border-color: #fff; }
-
+    .win-text { color: #00ff00; font-size: 60px; text-shadow: 0 0 30px #00ff00; font-weight: 900; }
+    .lose-text { color: #ff4444; font-size: 60px; text-shadow: 0 0 30px #ff4444; font-weight: 900; }
     input { margin-top: 10px; padding: 12px; width: 80%; border-radius: 5px; border: none; background: rgba(255,255,255,0.1); color: #fff; font-size: 16px; font-weight: bold; text-align: center; }
   </style>
 </head>
@@ -133,7 +133,6 @@
     </div>
   </div>
 
-  <!-- MULTIPLAYER MENU -->
   <div id="mp-menu-screen" class="screen">
     <div class="menu-box">
       <h1>MULTIPLAYER</h1>
@@ -144,46 +143,49 @@
     </div>
   </div>
 
-  <!-- LOBBY SCREEN -->
   <div id="lobby-screen" class="screen hidden">
     <div class="menu-box">
       <h1>LOBBY</h1>
-      <div style="color:#00d2ff; font-weight:800;">ROOM: <span id="lobby-room-id">----</span></div>
+      <div style="color:#00d2ff; font-weight:800; margin:10px 0;">ROOM: <span id="lobby-room-id">----</span></div>
       <div id="lobby-player-list" style="text-align:left; color:#ddd; margin:15px 0;"></div>
       <button id="host-start-btn" class="action-btn hidden" onclick="mpHostStartGame()">START GAME</button>
       <button class="action-btn secondary-btn" onclick="mpLeaveLobby()">LEAVE</button>
     </div>
   </div>
 
-  <!-- COUNTDOWN -->
   <div id="countdown-screen" class="screen hidden">
     <div class="menu-box">
       <h1 id="countdown-text" style="font-size:90px;">3</h1>
-      <p style="color:#00d2ff;">GET READY</p>
+      <p style="color:#00d2ff; font-weight:800;">GET READY</p>
     </div>
   </div>
 
-  <!-- END -->
+  <div id="pause-screen" class="screen hidden">
+    <div class="menu-box">
+      <h1>PAUSED</h1>
+      <button class="action-btn" onclick="togglePause()">RESUME FLIGHT</button>
+      <button class="action-btn secondary-btn" style="border-color:#ff4444; color:#ff4444;" onclick="location.reload()">ABORT / MAIN MENU</button>
+    </div>
+  </div>
+
   <div id="end-screen" class="screen hidden">
     <div class="menu-box">
       <h1 id="end-title" class="win-text">VICTORY</h1>
-      <p id="end-msg" style="color:#fff; font-size: 20px;">Rank 1 Secured.</p>
+      <p id="end-msg" style="color:#fff; font-size: 20px;">GG</p>
       <button class="action-btn" onclick="location.reload()">MAIN MENU</button>
     </div>
   </div>
 
 <script>
-  document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
-
-  // ✅ CONFIG & SETTINGS SYNC (Shift=Boost, Space=Fire)
-  const GM = (window.GameManager && GameManager.data) ? GameManager : { 
-      data: { music: true, sfx: true, bindings: { up:'w', down:'s', left:'a', right:'d', boost:'shift', fire:' ' } } 
-  };
+  // ✅ GLOBAL BINDINGS SYNC (Shift=Boost, Space=Fire)
+  const GM_BINDINGS = { up: 'w', down: 's', left: 'a', right: 'd', boost: 'shift', fire: ' ' };
   const BULLET_GEO = new THREE.SphereGeometry(2, 8, 8);
   const BULLET_MAT_MY = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
   const BULLET_MAT_ENEMY = new THREE.MeshBasicMaterial({ color: 0xff0000 });
   const BULLET_SPEED = 8000;
-  const TMP_VEC3 = new THREE.Vector3();
+  const TMP_VEC = new THREE.Vector3();
+
+  document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
 
   let gameSeed = null; 
   function seededRandom() { gameSeed = (gameSeed * 9301 + 49297) % 233280; return gameSeed / 233280; }
@@ -194,27 +196,20 @@
   let lastNetworkTick = 0, NETWORK_TICK_RATE = 50, lastCrashTime = 0; 
   let socket = (typeof io !== "undefined") ? io() : { emit(){}, on(){} };
 
-  // ✅ FIX 6: Helper to hide all screens
-  function hideAllScreens() {
-      document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden"));
-  }
-
-  function showScreen(id) { 
-      hideAllScreens();
-      const el = document.getElementById(id); 
-      if (el) el.classList.remove("hidden"); 
-  }
+  // ✅ FIX: Efficient Screen Helper
+  function hideAllScreens() { document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden")); }
+  function showScreen(id) { hideAllScreens(); const el = document.getElementById(id); if (el) el.classList.remove("hidden"); }
 
   function mpCreateRoom() { 
       MusicManager.init(); SFXManager.init();
-      if (GM.data.music) MusicManager.playLobby(); 
+      MusicManager.playLobby(); 
       mp.playerName = prompt("Enter your name:", "ACE") || "ACE"; 
       socket.emit("mp_create_room", { name: mp.playerName }); 
   }
   
   function mpJoinRoom() { 
       MusicManager.init(); SFXManager.init();
-      if (GM.data.music) MusicManager.playLobby(); 
+      MusicManager.playLobby(); 
       mp.playerName = prompt("Enter your name:", "ROOKIE") || "ROOKIE"; 
       const room = (document.getElementById("mp-room-code").value || "").trim(); 
       if (!room) return alert("Enter Room Code"); 
@@ -229,17 +224,8 @@
   }
   
   function mpHostStartGame() { if (mp.isHost) socket.emit("mp_start_game", { roomId: mp.roomId, seed: Math.floor(Math.random() * 100000) }); }
-  
-  function mpCountdownThenStart() { 
-      let n = 3; const txt = document.getElementById("countdown-text"); 
-      const timer = setInterval(() => { 
-          n--; if (n > 0) txt.innerText = n; 
-          else if (n === 0) txt.innerText = "GO!"; 
-          else { clearInterval(timer); initMultiplayerGame(); } 
-      }, 1000); 
-  }
-  
-  function initMultiplayerGame() { if (typeof gameSeed !== "number") return setTimeout(initMultiplayerGame, 50); initGame(); hideAllScreens(); }
+  function mpCountdownThenStart() { let n = 3; const txt = document.getElementById("countdown-text"); const timer = setInterval(() => { n--; if (n > 0) txt.innerText = n; else if (n === 0) txt.innerText = "GO!"; else { clearInterval(timer); initMultiplayerGame(); } }, 1000); }
+  function initMultiplayerGame() { initGame(); hideAllScreens(); }
 
   // --- SOCKETS ---
   socket.on("mp_room_created", ({ roomId, players, hostId }) => { updateLobbyUI(roomId, players, hostId); });
@@ -250,7 +236,7 @@
       mp.roomId = roomId; mp.isHost = (socket.id === hostId); 
       document.getElementById("lobby-room-id").innerText = roomId; 
       const list = document.getElementById("lobby-player-list"); list.innerHTML = "";
-      players.forEach(p => { const div = document.createElement("div"); div.textContent = `${p.name}${p.isHost ? " (HOST) 👑" : ""}`; list.appendChild(div); });
+      players.forEach(p => { const div = document.createElement("div"); div.textContent = `${p.name}${p.isHost ? " (HOST)" : ""}`; list.appendChild(div); });
       document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); 
       showScreen("lobby-screen");
   }
@@ -259,8 +245,7 @@
 
   socket.on("currentPlayers", (players) => { 
       Object.keys(players).forEach((id) => { if (id !== socket.id) addOtherPlayer(players[id]); allScores[id] = { name: players[id].name, rings: 0 }; }); 
-      if(!allScores[socket.id]) allScores[socket.id] = { name: mp.playerName, rings: 0 };
-      updateLeaderboard();
+      allScores[socket.id] = { name: mp.playerName, rings: 0 }; updateLeaderboard();
   });
 
   socket.on("newPlayer", (p) => { addOtherPlayer(p); allScores[p.playerId] = { name: p.name, rings: 0 }; updateLeaderboard(); });
@@ -279,13 +264,12 @@
   socket.on('mp_score_update', ({ playerId, rings, nextRingIndex }) => {
       if (allScores[playerId]) {
           allScores[playerId].rings = rings; updateLeaderboard();
-          if(playerId === socket.id) { playerStats.rings = rings; playerStats.progress = (nextRingIndex !== undefined) ? nextRingIndex : rings; updateRingVisuals(); SFXManager.playRing(GM.data.sfx); }
+          if(playerId === socket.id) { playerStats.rings = rings; playerStats.progress = (nextRingIndex !== undefined) ? nextRingIndex : rings; updateRingVisuals(); SFXManager.playRing(); }
       }
   });
 
   socket.on('mp_player_fire', (data) => { if (data.shooterId !== socket.id) spawnNetworkBullet(new THREE.Vector3(data.startPos.x, data.startPos.y, data.startPos.z), new THREE.Quaternion(data.quaternion.x, data.quaternion.y, data.quaternion.z, data.quaternion.w)); });
-
-  socket.on('mp_kit_collected', ({ kitIndex, collectorId }) => { if (repairKits[kitIndex]) { repairKits[kitIndex].visible = false; if(collectorId === socket.id) { health = Math.min(100, health + 30); SFXManager.playRepair(GM.data.sfx); } } });
+  socket.on('mp_kit_collected', ({ kitIndex, collectorId }) => { if (repairKits[kitIndex]) { repairKits[kitIndex].visible = false; if(collectorId === socket.id) { health = Math.min(100, health + 30); SFXManager.playRepair(); } } });
   socket.on('mp_kit_restored', ({ kitIndex }) => { if (repairKits[kitIndex]) repairKits[kitIndex].visible = true; });
 
   // --- GAMEPLAY ---
@@ -298,53 +282,27 @@
   let lastFrameTime = performance.now(), frameCount = 0;
   const fpsElem = document.getElementById('fps-counter'), minimapCtx = document.getElementById('minimap-canvas').getContext('2d');
 
-  // ✅ FIX 1: Mobile key helper
-  function setKey(action, state) { 
-      activeKeys[action] = state; 
-  }
+  // ✅ FIX: Mobile/Keyboard logic unified
+  function setKey(action, state) { activeKeys[action] = state; }
+  function togglePause() { if(!isPlaying) return; isPaused = !isPaused; const ps = document.getElementById("pause-screen"); if(isPaused) ps.classList.remove("hidden"); else { ps.classList.add("hidden"); lastRender = performance.now(); requestAnimationFrame(animate); } }
 
-  // ✅ FIX 2: Toggle Pause function
-  function togglePause() {
-      if(!isPlaying) return;
-      isPaused = !isPaused;
-      if(!isPaused) {
-          lastRender = performance.now();
-          requestAnimationFrame(animate);
-      }
-  }
-
-  // ✅ FIX 3: Leaderboard logic
+  // ✅ FIX: Correct Leaderboard function
   function updateLeaderboard() {
-      const list = document.getElementById("leaderboard-list");
-      if(!list) return;
-      list.innerHTML = "";
-
-      const racers = Object.entries(allScores).map(([id, s]) => ({
-          id, name: s.name || "Player", rings: s.rings || 0
-      }));
-
-      racers.sort((a,b) => b.rings - a.rings);
-
-      racers.forEach((r, i) => {
-          const row = document.createElement("div");
-          row.className = "lb-row";
-          const n = document.createElement("span");
-          n.className = "lb-name";
-          if(r.id === socket.id) n.classList.add("lb-player");
-          if(i === 0) n.classList.add("lb-rank-1");
-          n.innerText = `${i+1}. ${r.name}`;
-          const sc = document.createElement("span");
-          sc.className = "lb-score";
-          sc.innerText = `${r.rings}/${TOTAL_RINGS_WIN}`;
-          row.appendChild(n); row.appendChild(sc);
-          list.appendChild(row);
+      const list = document.getElementById("leaderboard-list"); if(!list) return; list.innerHTML = "";
+      const racers = Object.entries(allScores).map(([id, s]) => ({ id, name: s.name, rings: s.rings }));
+      racers.sort((a,b)=>b.rings-a.rings);
+      racers.forEach((r,i)=>{
+          const row=document.createElement("div"); row.className="lb-row";
+          const n=document.createElement("span"); n.className="lb-name"; if(r.id===socket.id) n.classList.add("lb-player"); if(i===0) n.classList.add("lb-rank-1");
+          n.innerText=`${i+1}. ${r.name}`; const sc=document.createElement("span"); sc.className="lb-score"; sc.innerText=`${r.rings}/${TOTAL_RINGS_WIN}`;
+          row.appendChild(n); row.appendChild(sc); list.appendChild(row);
       });
   }
 
   window.addEventListener('keydown', (e) => { 
       if(e.key === "Escape") { togglePause(); return; } 
       if(isPaused) return; 
-      const k = e.key.toLowerCase(); const b = GM.data.bindings;
+      const k = e.key.toLowerCase(); const b = GM_BINDINGS;
       if(k === b.up || k === 'arrowup') activeKeys['up'] = true; 
       if(k === b.down || k === 'arrowdown') activeKeys['down'] = true; 
       if(k === b.left || k === 'arrowleft') activeKeys['left'] = true; 
@@ -353,7 +311,7 @@
       if(k === b.fire || (b.fire === ' ' && e.code === 'Space')) activeKeys['fire'] = true; 
   });
   window.addEventListener('keyup', (e) => { 
-      const k = e.key.toLowerCase(); const b = GM.data.bindings;
+      const k = e.key.toLowerCase(); const b = GM_BINDINGS;
       if(k === b.up || k === 'arrowup') activeKeys['up'] = false; 
       if(k === b.down || k === 'arrowdown') activeKeys['down'] = false; 
       if(k === b.left || k === 'arrowleft') activeKeys['left'] = false; 
@@ -364,23 +322,20 @@
 
   function initGame() {
     if (typeof TERRAIN_COLORS === 'undefined') return alert("Config missing!");
-    const container = document.getElementById('game-container'); 
-    if (scene) scene.clear();
+    const container = document.getElementById('game-container'); if (scene) scene.clear();
     rings = []; repairKits = []; bullets = []; ringWaypoints = [];
     scene = new THREE.Scene(); scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 1500, 7000); 
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000); 
     renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); container.innerHTML = ""; container.appendChild(renderer.domElement);
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); scene.add(hemiLight);
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 200, 50); scene.add(dirLight);
-    
     generateTerrain(); generateOcean(); createPlaneSystem(); createGuideArrow(); createRepairKits(); createRings(); updateRingVisuals(); updateLeaderboard();
-    
-    if (GM.data.music) MusicManager.updateGameplayMusic(health);
+    MusicManager.updateGameplayMusic(health);
     isPlaying = true; lastRender = performance.now(); animate();
   }
 
   function fireBullet() {
-      SFXManager.playGun(GM.data.sfx);
+      SFXManager.playGun();
       const b = new THREE.Mesh(BULLET_GEO, BULLET_MAT_MY); b.position.copy(planeRig.position); b.quaternion.copy(planeRig.quaternion);
       const vel = new THREE.Vector3(0, 0, -BULLET_SPEED).applyQuaternion(planeRig.quaternion);
       b.userData = { velocity: vel, life: 1.5, isMine: true }; scene.add(b); bullets.push({ mesh: b });
@@ -388,7 +343,7 @@
   }
 
   function spawnNetworkBullet(pos, quat) {
-      SFXManager.playGun(GM.data.sfx);
+      SFXManager.playGun();
       const b = new THREE.Mesh(BULLET_GEO, BULLET_MAT_ENEMY); b.position.copy(pos); b.quaternion.copy(quat);
       const vel = new THREE.Vector3(0, 0, -BULLET_SPEED).applyQuaternion(quat);
       b.userData = { velocity: vel, life: 1.5, isMine: false }; scene.add(b); bullets.push({ mesh: b });
@@ -398,19 +353,16 @@
     if (!isPlaying || isPaused) return;
     const nowPerf = performance.now();
     const dt = Math.min((nowPerf - lastRender) / 1000, 0.05); lastRender = nowPerf;
-    
     frameCount++; if (nowPerf - lastFrameTime >= 1000) { if (fpsElem) fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastFrameTime = nowPerf; }
     const now = Date.now();
 
-    // ✅ FIX 4: Safely stop music manager
-    if (GM.data.music) {
-        MusicManager.updateGameplayMusic(health);
-    } else {
-        if (MusicManager.currentTheme !== null) MusicManager.stop();
-    }
+    // ✅ FIX: Efficient Music logic
+    const isMusicOn = localStorage.getItem('skyPilot_music') !== 'OFF';
+    if (isMusicOn) MusicManager.updateGameplayMusic(health);
+    else if (MusicManager.currentTheme !== null) MusicManager.stop();
 
     const isBoosting = activeKeys['boost'] && boostLevel > 0;
-    SFXManager.updateContinuous(isBoosting, health < 30, GM.data.sfx);
+    SFXManager.updateContinuous(isBoosting, health < 30);
 
     if (activeKeys['fire'] && now - lastFireTime > FIRE_RATE) { lastFireTime = now; fireBullet(); }
 
@@ -418,41 +370,28 @@
         const b = bullets[i].mesh; b.position.addScaledVector(b.userData.velocity, dt); b.userData.life -= dt;
         if (b.userData.life <= 0) { scene.remove(b); bullets.splice(i, 1); continue; }
         if (!b.userData.isMine && b.position.distanceToSquared(planeRig.position) < 900) {
-            health -= 10; SFXManager.playExplosion(GM.data.sfx); scene.remove(b); bullets.splice(i, 1);
+            health -= 10; SFXManager.playExplosion(); scene.remove(b); bullets.splice(i, 1);
             if(health <= 0) respawnPlayer();
         }
     }
 
-    // Movement (DT Based x60)
+    // ✅ FIX: DT Based Physics
     let spd = (isBoosting ? BOOST_SPEED : NORMAL_SPEED) * dt * 60;
-    if (isBoosting) boostLevel -= BOOST_DRAIN * dt * 60; 
-    else boostLevel += BOOST_REFILL * dt * 60;
-
-    // ✅ FIX A: Boost clamp
+    if (isBoosting) boostLevel -= BOOST_DRAIN * dt * 60; else boostLevel = Math.min(100, boostLevel + BOOST_REFILL * dt * 60);
     boostLevel = THREE.MathUtils.clamp(boostLevel, 0, 100);
     document.getElementById('boost-fill').style.width = boostLevel + '%';
     planeRig.translateZ(-spd);
 
-    // ✅ FIX 5: DT-based turning and lifting
-    if (activeKeys['left']) { planeRig.rotation.y += TURN_SPEED * dt * 60; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); }
-    else if (activeKeys['right']) { planeRig.rotation.y -= TURN_SPEED * dt * 60; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); }
-    else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
+    if (activeKeys['left']) planeRig.rotation.y += TURN_SPEED * dt * 60;
+    else if (activeKeys['right']) planeRig.rotation.y -= TURN_SPEED * dt * 60;
 
-    if (activeKeys['up']) { planeRig.position.y += LIFT_SPEED * dt * 60; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.5, 0.1); }
-    else if (activeKeys['down']) { planeRig.position.y -= LIFT_SPEED * dt * 60; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.5, 0.1); }
-    else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
+    if (activeKeys['up']) planeRig.position.y += LIFT_SPEED * dt * 60;
+    else if (activeKeys['down']) planeRig.position.y -= LIFT_SPEED * dt * 60;
 
     const gh = getTerrainHeight(planeRig.position.x, planeRig.position.z);
-    if (planeRig.position.y < gh + 15) { 
-        planeRig.position.y = gh + 15; 
-        if (now - lastCrashTime > 500) { 
-            health -= COLLISION_DAMAGE; 
-            lastCrashTime = now; 
-            if (health <= 0) respawnPlayer(); 
-        } 
-    }
-
-    // ✅ FIX B: Health UI update
+    if (planeRig.position.y < gh + 15) { planeRig.position.y = gh + 15; if (now - lastCrashTime > 500) { health -= COLLISION_DAMAGE; lastCrashTime = now; if (health <= 0) respawnPlayer(); } }
+    
+    // ✅ FIX: Update Health UI
     document.getElementById("health-fill").style.width = health + "%";
 
     const renderTs = now - 100;
@@ -464,39 +403,23 @@
             if (t2.time >= renderTs) {
                 const alpha = (renderTs - t1.time) / (t2.time - t1.time);
                 p.position.lerpVectors(t1.pos, t2.pos, alpha); p.quaternion.slerpQuaternions(t1.quat, t2.quat, alpha);
-                if(p.children[0]) { p.children[0].rotation.z = THREE.MathUtils.lerp(t1.roll, t2.roll, alpha); p.children[0].rotation.x = THREE.MathUtils.lerp(t1.pitch, t2.pitch, alpha); }
             }
         }
     });
 
-    planeMesh.rotation.z = visualRoll; planeMesh.rotation.x = visualPitch;
     const targetCam = new THREE.Vector3(0, 100, 300).applyMatrix4(planeRig.matrixWorld); camera.position.lerp(targetCam, 0.1); camera.lookAt(planeRig.position);
-    
     if (currentRingObj && planeRig.position.distanceTo(currentRingObj.position) < 150) ringCollected();
     
     if (mp.roomId && (now - lastNetworkTick > NETWORK_TICK_RATE)) { socket.emit("playerMovement", { roomId: mp.roomId, x: planeRig.position.x, y: planeRig.position.y, z: planeRig.position.z, rotX: visualPitch, rotZ: visualRoll, quaternion: { x: planeRig.quaternion.x, y: planeRig.quaternion.y, z: planeRig.quaternion.z, w: planeRig.quaternion.w } }); lastNetworkTick = now; }
-
     renderer.render(scene, camera); requestAnimationFrame(animate);
   }
 
-  function respawnPlayer() { 
-      health = 100; 
-      SFXManager.playExplosion(GM.data.sfx); 
-      planeRig.position.y += 300; 
-      const msg = document.getElementById("respawn-msg"); 
-      msg.style.display = "block"; 
-      setTimeout(() => msg.style.display = "none", 2000); 
-  }
-
-   function ringCollected() {
-    const ringIndex = playerStats.progress % RINGS_PER_LAP; // expected ring
-    playerStats.progress++;
-    updateRingVisuals();
-  
-    socket.emit("mp_claim_ring", {
-      roomId: mp.roomId,
-      ringIndex: ringIndex
-    });
+  function respawnPlayer() { health = 100; SFXManager.playExplosion(); planeRig.position.y += 300; const msg = document.getElementById("respawn-msg"); msg.style.display = "block"; setTimeout(() => msg.style.display = "none", 2000); }
+  function ringCollected() { 
+      if (mp.roomId) {
+          playerStats.progress++; updateRingVisuals();
+          socket.emit('mp_ring_collected', { roomId: mp.roomId, playerId: socket.id }); 
+      }
   }
   function endGame(win, reason) { isPlaying = false; SFXManager.stopAll(); if(win) MusicManager.playWin(); else MusicManager.playLose(); showScreen("end-screen"); document.getElementById('end-title').innerText = win ? "VICTORY" : "DEFEAT"; document.getElementById('end-msg').innerText = reason; }
   
@@ -515,4 +438,3 @@
 </script>
 </body>
 </html>
-
