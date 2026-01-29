@@ -9,14 +9,7 @@ const io = new Server(server, {
 const path = require('path');
 const fs = require('fs');
 
-/**
- * SKY PILOT - UPDATED SERVER
- * FIX: Case-sensitive path handling for Linux/Render servers.
- * Ensure your folder is named exactly "Public".
- */
-
 // --- PATH CONFIGURATION ---
-// Use path.resolve for absolute path safety
 const publicPath = path.resolve(__dirname, 'Public');
 
 // --- SERVER SETUP ---
@@ -27,15 +20,15 @@ app.get('/', (req, res) => {
     if (fs.existsSync(filePath)) {
         res.sendFile(filePath);
     } else {
-        console.error("CRITICAL ERROR: index.html not found at:", filePath);
         res.status(404).send(`<h1>Error 404: Main Menu Not Found</h1><p>Path: ${filePath}</p>`);
     }
 });
 
 // --- GAME STATE ---
 let rooms = {}; 
-const RINGS_PER_LAP = 12; // Updated to match game-config.js
 const KIT_RESPAWN_TIME = 30000;
+// Note: RINGS_PER_LAP server logic mein mostly win condition ke liye use hota hai
+const TOTAL_RINGS_TO_WIN = 12; 
 
 io.on('connection', (socket) => {
     console.log('User Connected:', socket.id);
@@ -147,22 +140,26 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 7. SCORE & WIN LOGIC
-    socket.on('mp_ring_collected', ({ roomId }) => {
+    // 7. SCORE & WIN LOGIC (FIXED EVENT NAME)
+    socket.on('mp_claim_ring', ({ roomId }) => {
         const room = rooms[roomId];
         if (!room) return;
 
         const player = room.players.find(p => p.id === socket.id);
         if (player) {
             player.rings++;
+            // Calculate next ring index assuming 12 rings per lap logic or purely sequential
+            // Using 12 as global standard now
+            const nextRingIndex = player.rings % 12; 
+
             io.to(roomId).emit('mp_score_update', { 
                 playerId: socket.id, 
                 rings: player.rings,
-                nextRingIndex: player.rings % RINGS_PER_LAP
+                nextRingIndex: nextRingIndex
             });
 
             // Win condition (Total rings 12)
-            if (player.rings >= 12) { 
+            if (player.rings >= TOTAL_RINGS_TO_WIN) { 
                 io.to(roomId).emit('mp_game_over', { winnerName: player.name, winnerId: socket.id });
                 room.status = 'finished';
             }
