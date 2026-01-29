@@ -522,6 +522,19 @@
       }
   });
 
+  // ✅ New listener for rejected rings to prevent stuck lock + Re-sync
+  socket.off("mp_ring_reject");
+  socket.on("mp_ring_reject", ({ expectedIndex }) => {
+      console.warn("Ring rejected. Expected:", expectedIndex);
+      ringClaimLocked = false; 
+
+      // ✅ Re-sync client state
+      if (typeof expectedIndex === "number") {
+          playerStats.progress = expectedIndex;
+          updateRingVisuals();
+      }
+  });
+
   // ✅ Fix D: Bullet Server Authoritative Event
   socket.off("mp_player_fire");
   socket.on('mp_player_fire', (data) => {
@@ -710,7 +723,7 @@
       }
   }
 
-  // ✅ Fix 2: Safe Dispose Recursion
+  // ✅ Fix 2: Safe Dispose Recursion (Corrected: using spread)
   function disposeHierarchy(obj) { 
       if (!obj) return; 
       if (obj.children) [...obj.children].forEach(disposeHierarchy); 
@@ -730,7 +743,8 @@
     if (scene) {
         bullets.forEach(b => {
             if (b && b.mesh) {
-                scene.remove(b.mesh);
+                // ✅ Fix 6: Clean up mesh but protect shared assets
+                if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
                 b.mesh.userData = {}; 
             }
         });
@@ -853,9 +867,9 @@
               r.material.color.setHex(0xffd700); 
           } 
       }); 
-      // ✅ Fix 5: Safe assignment after loop
+      // ✅ Fix 5: Safe assignment after loop (Direct Access for reliability)
       currentRingObj = rings[currentTargetIdx] || null;
-      if (currentRingObj) currentRingObj.userData.locked = false;
+      // Note: We don't unlock here because server confirmation does that
   }
    
   function createRepairKits() { 
@@ -917,10 +931,9 @@
         b.mesh.userData.life -= dt; 
 
         if (b.mesh.userData.life <= 0) { 
-            // ✅ Fix 5: Memory Leak Bullet Disposal (Fix 4: Browser Compatibility)
-            // ✅ Fix 6: Safe removal via parent check
+            // ✅ Fix 6: Safe bullet disposal (browser compatible)
             if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
-            // ✅ Fix 4: Clear Memory references (optional but good)
+            // ✅ Fix 3: Clear references without disposing shared geometry
             b.mesh.userData = {};
             bullets.splice(i, 1); 
             continue; 
