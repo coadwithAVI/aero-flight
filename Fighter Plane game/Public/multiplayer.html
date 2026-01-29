@@ -10,6 +10,10 @@
   <!-- THREE.JS LIBRARY -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
+  <!-- ✅ LINKING CONFIG & MANAGER (Real Settings Load hongi) -->
+  <script src="game-config.js"></script>
+  <script src="game-manager.js"></script>
+
   <style>
     body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; }
     #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
@@ -84,7 +88,7 @@
 
     /* MOBILE CONTROLS */
     .mobile-controls {
-        display: none; /* Hidden on desktop by default */
+        display: none; 
         position: absolute; bottom: 20px; width: 100%; 
         padding: 0 20px; box-sizing: border-box;
         justify-content: space-between; pointer-events: none;
@@ -106,7 +110,7 @@
     .mob-btn-rect { width: 80px; height: 60px; border-radius: 15px; font-size: 14px; }
     .mob-fire { border-color: #ff4444; } .mob-fire:active { background: rgba(255, 0, 0, 0.3); }
     .mob-boost { border-color: #00d2ff; }
-     
+      
     .btn-up { grid-column: 2; grid-row: 1; }
     .btn-left { grid-column: 1; grid-row: 2; }
     .btn-down { grid-column: 2; grid-row: 2; }
@@ -193,7 +197,7 @@
         </div>
       </div>
     </div>
-     
+      
     <div id="minimap-container"><canvas id="minimap-canvas" width="140" height="140"></canvas></div>
 
     <!-- MOBILE CONTROLS -->
@@ -264,34 +268,25 @@
   </div>
 
 <script>
-  // --- INLINE CONFIGURATION (No external files needed) ---
-  const TERRAIN_COLORS = { SAND: 0xeebb88, GRASS: 0x55aa55, ROCK: 0x666666, SNOW: 0xffffff, WATER: 0x004488 };
-  const RINGS_PER_LAP = 10;
-  const TOTAL_RINGS_WIN = 10;
-  const NORMAL_SPEED = 5;
-  const BOOST_SPEED = 10;
-  const TURN_SPEED = 0.05;
-  const LIFT_SPEED = 3;
-  const FIRE_RATE = 200;
-  const BOOST_DRAIN = 0.5;
-  const BOOST_REFILL = 0.1;
-  const COLLISION_DAMAGE = 20;
-
-  const GameManager = {
-    data: {
-      music: false,
-      sfx: true,
-      bindings: { up: 'w', down: 's', left: 'a', right: 'd', boost: 'shift', fire: ' ' }
-    }
-  };
-
   document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
+
+  // 🛡️ FIX: GameManager Fallback
+  // Agar game-manager.js load nahi hua, toh default settings use karega
+  const GM = (window.GameManager && GameManager.data) ? GameManager : { 
+      data: { 
+          music: true, 
+          sfx: true, 
+          bindings: { up:'w', down:'s', left:'a', right:'d', boost:'shift', fire:' ' } 
+      } 
+  };
 
   // --- SHARED BULLET ASSETS (Performance Optimization) ---
   const BULLET_GEO = new THREE.SphereGeometry(2, 8, 8);
   const BULLET_MAT_MY = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
   const BULLET_MAT_ENEMY = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-  const BULLET_SPEED = 8000; // Units per second (approx 130 * 60)
+  const BULLET_SPEED = 8000; 
+  // 🔧 FIX 6: Global Reuse Vector
+  const TMP_VEC3 = new THREE.Vector3();
 
   // --- SEEDED RNG ---
   let gameSeed = 12345;
@@ -317,7 +312,7 @@
       socket = { emit() {}, on() {} }; 
   }
 
-  // --- OPTIMIZATION VARS (FIX 1) ---
+  // --- OPTIMIZATION VARS ---
   let lastRender = 0;
   const FPS_CAP = 60;
   const FRAME_TIME = 1000 / FPS_CAP;
@@ -348,7 +343,6 @@
       }); 
       for (let k in otherPlayers) delete otherPlayers[k]; 
       
-      // Cleanup lobby data
       for (let k in playersData) delete playersData[k];
       for (let k in allScores) delete allScores[k];
 
@@ -401,19 +395,16 @@
       updateLeaderboard();
   });
   
-  // FIX H: BUFFERED INTERPOLATION RECEPTION (Corrected for Server Time)
   socket.on("playerMoved", (playerInfo) => { 
-      // FIX: Robust ID handling to ensure Joiner sees Host
       const id = playerInfo.playerId || playerInfo.id;
       if (!id) return;
-      playerInfo.playerId = id; // Normalize ID
+      playerInfo.playerId = id; 
 
-      // If mesh doesn't exist (e.g. Joiner hasn't spawned Host yet), create it
       if (!otherPlayers[id]) { if(scene) addOtherPlayer(playerInfo); return; }
       const p = otherPlayers[id]; 
       
       const snapshot = {
-          time: playerInfo.ts || Date.now(), // FIX C: Use server timestamp if available
+          time: playerInfo.ts || Date.now(), 
           pos: new THREE.Vector3(playerInfo.x, playerInfo.y, playerInfo.z),
           quat: new THREE.Quaternion(playerInfo.quaternion.x, playerInfo.quaternion.y, playerInfo.quaternion.z, playerInfo.quaternion.w),
           roll: playerInfo.rotZ || 0,
@@ -435,13 +426,11 @@
       if (allScores[playerId]) {
           allScores[playerId].rings = rings;
           updateLeaderboard();
-          // Update visual stats if it's me
           if(playerId === socket.id) {
               playerStats.rings = rings;
-              // FIX 3: Trust server for progress
               playerStats.progress = (nextRingIndex !== undefined) ? nextRingIndex : rings; 
               updateRingVisuals();
-              AudioSys.playRing(); // Play sound only on server confirmation
+              AudioSys.playRing(); 
           }
       }
   });
@@ -453,14 +442,11 @@
       spawnNetworkBullet(startPos, quaternion, data.shooterId);
   });
 
-  // FIX A & E: SERVER AUTHORITATIVE KIT LOGIC
   socket.on('mp_kit_collected', ({ kitIndex, collectorId }) => {
       if (repairKits[kitIndex]) {
-          // Hide immediately for everyone
           repairKits[kitIndex].visible = false;
           repairKits[kitIndex].userData.active = false;
           
-          // Only heal if I am the approved collector
           if(collectorId === socket.id) {
               health += 30; if(health > 100) health = 100; 
               AudioSys.playRepair(); 
@@ -468,7 +454,6 @@
       }
   });
 
-  // Server tells us to restore
   socket.on('mp_kit_restored', ({ kitIndex }) => {
       if (repairKits[kitIndex]) {
           repairKits[kitIndex].visible = true;
@@ -477,18 +462,15 @@
   });
 
   function addOtherPlayer(playerInfo) { 
-      // ✅ FIX: Fallback to ensure we have a valid ID
       const id = playerInfo.playerId || playerInfo.id;
       if (!id) return;
       
-      // ✅ FIX: Store unified structure in playersData
       playerInfo.playerId = id;
       playersData[id] = playerInfo;
 
       if (scene && !otherPlayers[id]) {
           const otherPlayer = createPlaneMesh(0xff0000); 
           otherPlayer.userData = { buffer: [] };
-          // Default positions if missing (Handled safely for 0)
           const x = (playerInfo.x !== undefined) ? playerInfo.x : 0; 
           const y = (playerInfo.y !== undefined) ? playerInfo.y : 400; 
           const z = (playerInfo.z !== undefined) ? playerInfo.z : 0;
@@ -514,7 +496,7 @@
   const minimapCanvas = document.getElementById('minimap-canvas'); const minimapCtx = minimapCanvas.getContext('2d');
   let audioCtx, boostOsc, boostGain, boostNoise, boostNoiseGain, noiseNode, noiseGain;
 
-  // --- AUDIO SYSTEM ---
+  // --- AUDIO SYSTEM (Connected to GameManager) ---
   const AudioSys = {
     init: function() { 
         if (audioCtx) return; 
@@ -535,10 +517,12 @@
       boostNoiseGain = audioCtx.createGain(); boostNoiseGain.gain.value = 0;
       boostNoise.connect(f); f.connect(boostNoiseGain); boostNoiseGain.connect(audioCtx.destination); boostNoise.start();
 
-      if(GameManager.data.music) this.startNewMusic();
+      // ✅ FIX: Check GM (GameManager Fallback)
+      if(GM.data.music) this.startNewMusic();
     },
     updateContinuousAudio: function(isBoosting, isDamaging) {
-        if(!audioCtx || !GameManager.data.sfx) {
+        // ✅ FIX: Check GM
+        if(!audioCtx || !GM.data.sfx) {
             if(audioCtx) { boostGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); boostNoiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); noiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1); }
             return;
         }
@@ -546,10 +530,10 @@
         if (isBoosting) { boostOsc.frequency.setTargetAtTime(600, now, 0.5); boostGain.gain.setTargetAtTime(0.15, now, 0.1); boostNoiseGain.gain.setTargetAtTime(0.3, now, 0.1); } else { boostOsc.frequency.setTargetAtTime(200, now, 0.5); boostGain.gain.setTargetAtTime(0, now, 0.2); boostNoiseGain.gain.setTargetAtTime(0, now, 0.2); }
         const targetVol = isDamaging ? 0.4 : 0; noiseGain.gain.setTargetAtTime(targetVol, now, 0.1);
     },
-    playGun: function() { if(!audioCtx || !GameManager.data.sfx) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'square'; osc.frequency.setValueAtTime(800, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.15); gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.2); },
-    playExplosion: function() { if(!audioCtx || !GameManager.data.sfx) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); gain.gain.setValueAtTime(0.5, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.5); },
-    playRepair: function() { if(!audioCtx || !GameManager.data.sfx) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(400, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 0.2); gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.3); },
-    playRing: function() { if(!audioCtx || !GameManager.data.sfx) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(1200, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(1800, audioCtx.currentTime + 0.1); gain.gain.setValueAtTime(0.2, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.5); },
+    playGun: function() { if(!audioCtx || !GM.data.sfx) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'square'; osc.frequency.setValueAtTime(800, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.15); gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.2); },
+    playExplosion: function() { if(!audioCtx || !GM.data.sfx) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); gain.gain.setValueAtTime(0.5, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.5); },
+    playRepair: function() { if(!audioCtx || !GM.data.sfx) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(400, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 0.2); gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.3); },
+    playRing: function() { if(!audioCtx || !GM.data.sfx) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(1200, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(1800, audioCtx.currentTime + 0.1); gain.gain.setValueAtTime(0.2, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.5); },
     startNewMusic: function() {
         if (this.isPlayingMusic) return; this.isPlayingMusic = true;
         const bassNotes = [87.31, 87.31, 87.31, 87.31, 98.00, 98.00, 110.00, 130.81]; let noteIdx = 0; let nextNoteTime = audioCtx.currentTime;
@@ -557,7 +541,7 @@
             if (!this.isPlayingMusic || !audioCtx) return;
             if (nextNoteTime < audioCtx.currentTime - 0.2) nextNoteTime = audioCtx.currentTime;
             while (nextNoteTime < audioCtx.currentTime + 0.1) {
-                if (GameManager.data.music) {
+                if (GM.data.music) {
                     const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
                     osc.type = 'sawtooth'; const filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 600;
                     osc.frequency.value = bassNotes[noteIdx % bassNotes.length];
@@ -571,67 +555,83 @@
         };
         schedule();
     },
-    stopAll: function() { if(audioCtx) audioCtx.close(); audioCtx = null; }
+    stopAll: function() { 
+        this.isPlayingMusic = false; 
+        try { 
+            // 🔧 FIX 1 & 3: Safe Stop and Disconnect
+            if(noiseNode) { noiseNode.disconnect(); try { noiseNode.stop(); } catch(e){} noiseNode = null; }
+            if(boostOsc) { boostOsc.disconnect(); try { boostOsc.stop(); } catch(e){} boostOsc = null; }
+            if(boostNoise) { boostNoise.disconnect(); try { boostNoise.stop(); } catch(e){} boostNoise = null; }
+            
+            // ✅ FIX: Nullify gain nodes as requested
+            noiseGain = null;
+            boostGain = null;
+            boostNoiseGain = null;
+        } catch(e){} 
+        
+        // 🔧 FIX 2: Async close
+        if(audioCtx) {
+            audioCtx.close().catch(() => {});
+            audioCtx = null; 
+        }
+    }
   };
 
   function togglePause() { 
       if (!isPlaying) return;
       isPaused = !isPaused;
       const pauseScreen = document.getElementById("pause-screen");
-
-      if (isPaused) {
-        pauseScreen.classList.remove("hidden");
-      } else {
-        pauseScreen.classList.add("hidden");
-        requestAnimationFrame(animate);
-      }
+      if (isPaused) { pauseScreen.classList.remove("hidden"); } 
+      else { pauseScreen.classList.add("hidden"); requestAnimationFrame(animate); }
   }
   
-  // --- INPUT HANDLING ---
+  // ✅ 🔧 FIX 1: LOGICAL INPUT SYSTEM
   window.addEventListener('keydown', (e) => { 
       if(e.key === "Escape") { togglePause(); return; } 
       if(isPaused) return; 
+      
       const k = e.key.toLowerCase(); 
-      const binds = GameManager.data.bindings;
-      if(k === binds.up || k === 'arrowup') activeKeys[k] = true; 
-      if(k === binds.down || k === 'arrowdown') activeKeys[k] = true; 
-      if(k === binds.left || k === 'arrowleft') activeKeys[k] = true; 
-      if(k === binds.right || k === 'arrowright') activeKeys[k] = true; 
-      if(k === binds.boost) activeKeys[k] = true; 
-      if(k === binds.fire) activeKeys[k] = true; 
+      const binds = GM.data.bindings; // Used GM
+      
+      // Check Key and set Logical Action
+      if(k === binds.up || k === 'arrowup') activeKeys['up'] = true; 
+      if(k === binds.down || k === 'arrowdown') activeKeys['down'] = true; 
+      if(k === binds.left || k === 'arrowleft') activeKeys['left'] = true; 
+      if(k === binds.right || k === 'arrowright') activeKeys['right'] = true; 
+      
+      if(k === binds.boost) activeKeys['boost'] = true; 
+      // Spacebar fallback (" " vs "space")
+      if(k === binds.fire || (binds.fire === ' ' && k === 'space')) activeKeys['fire'] = true; 
   });
   
   window.addEventListener('keyup', (e) => { 
       const k = e.key.toLowerCase(); 
-      const binds = GameManager.data.bindings;
-      if(k === binds.up || k === 'arrowup') activeKeys[k] = false; 
-      if(k === binds.down || k === 'arrowdown') activeKeys[k] = false; 
-      if(k === binds.left || k === 'arrowleft') activeKeys[k] = false; 
-      if(k === binds.right || k === 'arrowright') activeKeys[k] = false; 
-      if(k === binds.boost) activeKeys[k] = false; 
-      if(k === binds.fire) activeKeys[k] = false; 
+      const binds = GM.data.bindings; // Used GM
+      
+      if(k === binds.up || k === 'arrowup') activeKeys['up'] = false; 
+      if(k === binds.down || k === 'arrowdown') activeKeys['down'] = false; 
+      if(k === binds.left || k === 'arrowleft') activeKeys['left'] = false; 
+      if(k === binds.right || k === 'arrowright') activeKeys['right'] = false; 
+      
+      if(k === binds.boost) activeKeys['boost'] = false; 
+      // Spacebar fallback (" " vs "space")
+      if(k === binds.fire || (binds.fire === ' ' && k === 'space')) activeKeys['fire'] = false; 
   });
 
   function isActionActive(actionId) { 
-      const binds = GameManager.data.bindings;
-      if (actionId === 'up') return activeKeys[binds.up] || activeKeys['arrowup']; 
-      if (actionId === 'down') return activeKeys[binds.down] || activeKeys['arrowdown']; 
-      if (actionId === 'left') return activeKeys[binds.left] || activeKeys['arrowleft']; 
-      if (actionId === 'right') return activeKeys[binds.right] || activeKeys['arrowright']; 
-      return activeKeys[binds[actionId]]; 
+      // 🔧 FIX 3: Force boolean return
+      return !!activeKeys[actionId]; 
   }
-  function setKey(action, state) { let key = GameManager.data.bindings[action]; activeKeys[key] = state; }
   
-  // Fix 7: Auto-pause & Resume
+  function setKey(action, state) { 
+      // Called by mobile controls (already sending 'up', 'fire' etc)
+      activeKeys[action] = state; 
+  }
+  
+  // Auto-pause
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      isPaused = true;
-    } else {
-      if (isPlaying) {
-        isPaused = false;
-        requestAnimationFrame(animate);
-      }
-    }
+    if (document.hidden) { isPaused = true; } 
+    else { if (isPlaying) { isPaused = false; requestAnimationFrame(animate); } }
   });
 
   function updateLeaderboard() { 
@@ -660,7 +660,6 @@
   
   function ringCollected() { 
       AudioSys.playRing();
-      // FIX B: Don't set rings locally (cheatable). Request validation.
       if (mp.roomId) {
           socket.emit('mp_claim_ring', { roomId: mp.roomId, ringIndex: playerStats.progress % RINGS_PER_LAP });
       }
@@ -671,39 +670,37 @@
   function initGame() {
     const container = document.getElementById('game-container'); 
     
-    // 🔥 Clean up old bullets safely before scene clear
-    // FIX applied here
     if (scene) {
         bullets.forEach(b => {
             if (b && b.mesh) {
                 scene.remove(b.mesh);
-                b.mesh.userData = {}; // Clear references
+                b.mesh.userData = {}; 
             }
         });
     }
-    bullets.length = 0; // Clear array
+    bullets.length = 0; 
 
-    // FIX F & E: SAFE DISPOSAL
     if (scene) { 
         rings.forEach(r => disposeHierarchy(r));
         repairKits.forEach(k => disposeHierarchy(k));
-        // bullets are handled above
         Object.values(otherPlayers).forEach(p => disposeHierarchy(p));
         
-        // Dispose terrain/ocean specifically
         if(terrainMesh) disposeHierarchy(terrainMesh);
         if(oceanMesh) disposeHierarchy(oceanMesh);
 
         scene.clear(); 
-        if(renderer) renderer.dispose(); // Check existance
+        if(renderer) {
+            renderer.dispose();
+            renderer.forceContextLoss?.();
+            renderer.domElement?.remove();
+            renderer = null;
+        }
     } 
     rings = []; repairKits = []; bullets = []; ringWaypoints = [];
     
     scene = new THREE.Scene(); 
-    // Fix 4: Fog
     scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 1500, 7000); 
     
-    // ✅ FIX: Iterate through stored player data to spawn mesh
     for (let pid in playersData) { 
         if(pid !== socket.id) addOtherPlayer(playersData[pid]); 
     }
@@ -711,22 +708,17 @@
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000); 
     renderer = new THREE.WebGLRenderer({ antialias: true }); 
     renderer.setSize(window.innerWidth, window.innerHeight); 
-    // Fix 2: Pixel Ratio
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25)); 
-    // Fix 3: Shadows OFF
     renderer.shadowMap.enabled = false; 
     container.innerHTML = ""; container.appendChild(renderer.domElement);
     
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); scene.add(hemiLight); const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 200, 50); 
-    // dirLight.castShadow = true; // Removed per shadow optimization
     scene.add(dirLight);
     
     playerStats = { name: mp.playerName || "PLAYER", rings: 0, progress: 0 }; 
     if(allScores[socket.id]) allScores[socket.id].rings = 0;
     
     health = 100; boostLevel = 100;
-    
-    // 🔥 Reset lastRender to avoid massive dt spike
     lastRender = performance.now();
 
     generateTerrain(); generateOcean(); createPlaneSystem(); createGuideArrow(); createRepairKits(); createRings(); updateRingVisuals(); updateLeaderboard(); isPlaying = true; isPaused = false; animate();
@@ -734,15 +726,12 @@
 
   function fireBullet() {
       AudioSys.playGun();
-      // SHARED ASSET REUSE
       const bullet = new THREE.Mesh(BULLET_GEO, BULLET_MAT_MY);
       bullet.position.copy(planeRig.position);
       bullet.quaternion.copy(planeRig.quaternion);
       bullet.translateZ(-10); 
-      // Velocity in units per second (BULLET_SPEED = 8000)
       const velocity = new THREE.Vector3(0, 0, -BULLET_SPEED);
       velocity.applyQuaternion(planeRig.quaternion);
-      // Life in Seconds (1.5s)
       bullet.userData = { velocity: velocity, life: 1.5, isMine: true }; 
       scene.add(bullet);
       bullets.push({ mesh: bullet });
@@ -757,14 +746,11 @@
 
   function spawnNetworkBullet(startPos, quaternion, shooterId) {
       AudioSys.playGun();
-      // SHARED ASSET REUSE
       const bullet = new THREE.Mesh(BULLET_GEO, BULLET_MAT_ENEMY);
       bullet.position.copy(startPos);
       bullet.quaternion.copy(quaternion);
-      // Velocity in units per second
       const velocity = new THREE.Vector3(0, 0, -BULLET_SPEED);
       velocity.applyQuaternion(quaternion);
-      // Life in Seconds
       bullet.userData = { velocity: velocity, life: 1.5, isMine: false, shooterId: shooterId }; 
       scene.add(bullet);
       bullets.push({ mesh: bullet });
@@ -773,8 +759,19 @@
   function respawnPlayer() {
       health = 100;
       AudioSys.playExplosion();
-      planeRig.position.y += 200;
-      if (planeRig.position.y < 300) planeRig.position.y = 300;
+      
+      // 🔧 FIX 4: Safer Respawn Logic
+      // Ensure we spawn high above the ground at current location
+      const terrainH = getTerrainHeight(planeRig.position.x, planeRig.position.z);
+      planeRig.position.y = Math.max(planeRig.position.y, terrainH + 300); 
+      
+      // Reset orientation so user doesn't instantly crash again if they were diving
+      planeRig.rotation.x = 0;
+      planeRig.rotation.z = 0;
+      // 🔧 FIX 5: Reset visual roll/pitch to prevent wobble
+      visualRoll = 0;
+      visualPitch = 0;
+
       const msg = document.getElementById("respawn-msg");
       msg.style.display = "block";
       setTimeout(() => msg.style.display = "none", 2000);
@@ -783,17 +780,19 @@
   function getTerrainHeight(x, z) { let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; return y - 50; }
   
   function generateTerrain() { 
-      // Fix 5: Optimize Geometry
       const geometry = new THREE.PlaneGeometry(50000, 50000, 120, 120); 
       geometry.rotateX(-Math.PI / 2); const positions = geometry.attributes.position; const colors = []; for (let i = 0; i < positions.count; i++) { const x = positions.getX(i); const z = positions.getZ(i); let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; positions.setY(i, y); const color = new THREE.Color(); if (y < -50) color.setHex(TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(TERRAIN_COLORS.ROCK); else color.setHex(TERRAIN_COLORS.SNOW); colors.push(color.r, color.g, color.b); } geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true }); 
-      terrainMesh = new THREE.Mesh(geometry, mat); // FIX F: Track mesh
+      
+      // ✅ FIX: Removed 'const' so global variable is updated
+      terrainMesh = new THREE.Mesh(geometry, mat); 
       terrainMesh.position.y = -50; 
-      // terrainMesh.receiveShadow = true; // Shadows disabled
       scene.add(terrainMesh); 
   }
   function generateOcean() { 
       const geo = new THREE.PlaneGeometry(50000, 50000); geo.rotateX(-Math.PI / 2); const mat = new THREE.MeshBasicMaterial({ color: TERRAIN_COLORS.WATER, transparent: true, opacity: 0.6 }); 
-      oceanMesh = new THREE.Mesh(geo, mat); // FIX F: Track mesh
+      
+      // ✅ FIX: Removed 'const'
+      oceanMesh = new THREE.Mesh(geo, mat); 
       oceanMesh.position.y = -80; scene.add(oceanMesh); 
   }
   function createPlaneMesh(color) { const group = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.4 }); const glass = new THREE.MeshStandardMaterial({ color: 0x00aaff, opacity: 0.6, transparent: true }); const body = new THREE.Mesh(new THREE.CylinderGeometry(2, 4, 30, 8), mat); body.rotateX(-Math.PI/2); const nose = new THREE.Mesh(new THREE.ConeGeometry(2, 10, 8), mat); nose.rotateX(-Math.PI/2); nose.position.z = -20; const cockpit = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 10), glass); cockpit.position.set(0, 2.5, -5); const lWing = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 15), mat); lWing.position.set(-10, 0, 5); lWing.rotation.y = 0.3; const rWing = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 15), mat); rWing.position.set(10, 0, 5); rWing.rotation.y = -0.3; const lTail = new THREE.Mesh(new THREE.BoxGeometry(8, 0.5, 8), mat); lTail.position.set(-5, 0, 18); lTail.rotation.y = 0.2; const rTail = new THREE.Mesh(new THREE.BoxGeometry(8, 0.5, 8), mat); rTail.position.set(5, 0, 18); rTail.rotation.y = -0.2; const lFin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 10), mat); lFin.position.set(-2, 4, 18); lFin.rotation.z = 0.2; const rFin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 10), mat); rFin.position.set(2, 4, 18); rFin.rotation.z = -0.2; const intakeGeo = new THREE.BoxGeometry(3, 4, 10); const lIntake = new THREE.Mesh(intakeGeo, mat); lIntake.position.set(-3.5, -1, 5); const rIntake = new THREE.Mesh(intakeGeo, mat); rIntake.position.set(3.5, -1, 5); group.add(body, nose, cockpit, lWing, rWing, lTail, rTail, lFin, rFin, lIntake, rIntake); return group; }
@@ -850,13 +849,11 @@
   function animate() {
     if (!isPlaying || isPaused) return;
 
-    // Fix 1: FPS Cap
     const nowPerf = performance.now();
     if (nowPerf - lastRender < FRAME_TIME) {
         requestAnimationFrame(animate);
         return;
     }
-    // Calculate DT (capped at 0.1s to prevent huge jumps)
     const dt = Math.min((nowPerf - lastRender) / 1000, 0.1);
     lastRender = nowPerf;
 
@@ -875,21 +872,23 @@
     for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
         
-        // Move bullet based on time, not frame
         b.mesh.position.addScaledVector(b.mesh.userData.velocity, dt);
-        b.mesh.userData.life -= dt; // Decrease life by seconds
+        b.mesh.userData.life -= dt; 
 
         if (b.mesh.userData.life <= 0) { 
-            // Dispose optimization (Shared Materials/Geometry -> DO NOT DISPOSE)
             scene.remove(b.mesh); 
             bullets.splice(i, 1); 
             continue; 
         }
         
         if (!b.mesh.userData.isMine) {
-            // Fix 6: Squared distance check
-            if (planeRig && b.mesh.position.distanceToSquared(planeRig.position) < 225) { // 15*15
-                scene.remove(b.mesh); // Shared Materials -> DO NOT DISPOSE
+            // 🔧 FIX 2 & 6: Better Collision using global Vector (Use Plane Model Center)
+            if (planeMesh) planeMesh.getWorldPosition(TMP_VEC3);
+            else if (planeRig) TMP_VEC3.copy(planeRig.position);
+
+            // 🔧 FIX 4: Increased Radius (900)
+            if (TMP_VEC3.distanceToSquared(b.mesh.position) < 900) { 
+                scene.remove(b.mesh); 
                 bullets.splice(i, 1);
                 
                 health -= 10;
@@ -919,7 +918,6 @@
     AudioSys.updateContinuousAudio(isBoosting, isDamaging);
     document.getElementById('health-fill').style.width = health + '%';
     
-    // FIX 1: Ring Collision Logic with Cooldown (Prevents lock-out)
     if (currentRingObj) { 
         guideArrow.visible = true; 
         guideArrow.position.copy(planeRig.position); 
@@ -927,27 +925,21 @@
         guideArrow.lookAt(currentRingObj.position); 
         
         if (planeRig.position.distanceTo(currentRingObj.position) < 100) { 
-            // Only try if cooldown passed
             if (!currentRingObj.userData.lastClaimTs) currentRingObj.userData.lastClaimTs = 0;
-            if (now - currentRingObj.userData.lastClaimTs > 500) { // Reduced to 500ms for better feel
+            if (now - currentRingObj.userData.lastClaimTs > 500) { 
                 currentRingObj.userData.lastClaimTs = now;
-                // Request server to verify claim
-                if (mp.roomId) {
-                    socket.emit('mp_claim_ring', { roomId: mp.roomId, ringIndex: playerStats.progress % RINGS_PER_LAP });
-                }
+                ringCollected();
             }
         } 
     } else {
         guideArrow.visible = false;
     }
     
-    // FIX 2: Kit Claim Logic with Cooldown (Prevents Spam)
     repairKits.forEach(kit => { 
         if (kit.visible && planeRig.position.distanceTo(kit.position) < 80) { 
             if (!kit.userData.lastClaimTs) kit.userData.lastClaimTs = 0;
             if (now - kit.userData.lastClaimTs > 1000) {
                 kit.userData.lastClaimTs = now;
-                // Remove optimistic hide to prevent desync
                 if (mp.roomId) {
                     socket.emit('mp_claim_kit', { roomId: mp.roomId, kitIndex: kit.userData.id });
                 }
@@ -957,19 +949,16 @@
     
     rings.forEach(r => r.rotation.z += 0.01); drawMinimap();
     
-    // Throttled Networking
     if (socket && mp.roomId && (now - lastNetworkTick > NETWORK_TICK_RATE)) { 
         const q = planeRig.quaternion; 
         socket.emit("playerMovement", { roomId: mp.roomId, x: planeRig.position.x, y: planeRig.position.y, z: planeRig.position.z, rotX: visualPitch, rotZ: visualRoll, quaternion: { x: q.x, y: q.y, z: q.z, w: q.w } }); 
         lastNetworkTick = now;
     }
 
-    // FIX H: BUFFERED INTERPOLATION APPLY
-    const renderTimestamp = now - 100; // Render 100ms in past
+    const renderTimestamp = now - 100; 
     Object.values(otherPlayers).forEach(p => {
         const buffer = p.userData.buffer;
         if (buffer && buffer.length >= 2) {
-            // Find frames around renderTimestamp
             let t1 = buffer[0], t2 = buffer[1];
             let i = 0;
             while (i < buffer.length - 1 && buffer[i+1].time <= renderTimestamp) {
@@ -978,18 +967,15 @@
                 i++;
             }
             
-            // Interpolate
             if (t2.time >= renderTimestamp) {
                const alpha = (renderTimestamp - t1.time) / (t2.time - t1.time);
                p.position.lerpVectors(t1.pos, t2.pos, alpha);
                p.quaternion.slerpQuaternions(t1.quat, t2.quat, alpha);
-               // Visual banking
                if(p.children[0]) {
                    p.children[0].rotation.z = THREE.MathUtils.lerp(t1.roll, t2.roll, alpha);
                    p.children[0].rotation.x = THREE.MathUtils.lerp(t1.pitch, t2.pitch, alpha);
                }
             } else {
-               // Too much lag, snap to latest
                p.position.copy(t2.pos);
                p.quaternion.copy(t2.quat);
             }
@@ -1002,5 +988,3 @@
   function endGame(win, reason) { isPlaying = false; AudioSys.stopAll(); const screen = document.getElementById('end-screen'); const title = document.getElementById('end-title'); const msg = document.getElementById('end-msg'); if (win) { title.innerText = "VICTORY"; title.className = "win-text"; msg.innerText = reason || "Race Champion!"; } else { title.innerText = "DEFEAT"; title.className = "lose-text"; msg.innerText = reason || "Lost"; } screen.classList.remove('hidden'); }
   window.addEventListener('resize', () => { if (camera && renderer) { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); } });
 </script>
-</body>
-</html>
