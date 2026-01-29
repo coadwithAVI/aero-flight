@@ -1,77 +1,90 @@
-// ==========================================
-// SKY PILOT - GLOBAL GAME MANAGER
-// ==========================================
-// Ye file automatically settings load karegi aur save karegi.
-// Isko har HTML file ke <head> mein add karna hai.
+/**
+ * SKY PILOT - GAME MANAGER
+ * Handles Save Data, Settings, and Keybindings.
+ * Acts as a Singleton (Globally accessible).
+ */
 
 const GameManager = {
-    // Default Controls (Agar user ne kabhi change nahi kiya)
-    defaultBindings: { 
-        up: 'w', 
-        down: 's', 
-        left: 'a', 
-        right: 'd', 
-        boost: ' ', 
-        fire: 'shift' 
-    },
-
-    // Current State (Ye poore game mein use honge)
-    data: {
-        music: true,
-        sfx: true,
-        bindings: {}
-    },
-
-    // 1. Initialize (Load from Storage)
-    init: function() {
-        console.log("GameManager: Loading settings...");
-
-        // Load Music (Default ON)
-        const savedMusic = localStorage.getItem('skyPilot_music');
-        this.data.music = savedMusic !== 'OFF'; // Agar 'OFF' nahi hai, toh ON rahega
-
-        // Load SFX (Default ON)
-        const savedSfx = localStorage.getItem('skyPilot_sfx');
-        this.data.sfx = savedSfx !== 'OFF';
-
-        // Load Controls
-        const savedBinds = localStorage.getItem('skyPilot_bindings');
-        if (savedBinds) {
-            try {
-                this.data.bindings = JSON.parse(savedBinds);
-            } catch (e) {
-                console.error("GameManager: Corrupt bindings, resetting to default.");
-                this.data.bindings = { ...this.defaultBindings };
-            }
-        } else {
-            this.data.bindings = { ...this.defaultBindings };
+    // Default Config
+    state: {
+        musicVolume: 0.5,
+        sfxVolume: 0.8,
+        isMusicOn: true,
+        isSfxOn: true,
+        // WASD + Space + Shift
+        bindings: {
+            up: 'w',
+            down: 's',
+            left: 'a',
+            right: 'd',
+            boost: ' ',
+            fire: 'shift'
         }
     },
 
-    // 2. Save Functions (Settings page isko call karega)
-    setMusic: function(isOn) {
-        this.data.music = isOn;
-        localStorage.setItem('skyPilot_music', isOn ? 'ON' : 'OFF');
+    // --- 1. INITIALIZATION ---
+    init: function() {
+        console.log("⚙️ GameManager: Initializing...");
+        this.loadSettings();
     },
 
-    setSfx: function(isOn) {
-        this.data.sfx = isOn;
-        localStorage.setItem('skyPilot_sfx', isOn ? 'ON' : 'OFF');
+    // --- 2. STORAGE LOGIC ---
+    loadSettings: function() {
+        const saved = localStorage.getItem('skyPilot_v2_settings');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                // Merge saved data with defaults (safety for updates)
+                this.state = { ...this.state, ...parsed };
+                console.log("✅ Settings Loaded");
+            } catch (e) {
+                console.warn("⚠️ Corrupt settings, resetting to default.");
+                this.saveSettings();
+            }
+        } else {
+            this.saveSettings();
+        }
     },
 
-    saveBinding: function(action, key) {
-        this.data.bindings[action] = key.toLowerCase();
-        localStorage.setItem('skyPilot_bindings', JSON.stringify(this.data.bindings));
+    saveSettings: function() {
+        localStorage.setItem('skyPilot_v2_settings', JSON.stringify(this.state));
     },
 
-    // 3. Reset to Default
-    resetSettings: function() {
-        this.data.bindings = { ...this.defaultBindings };
-        this.setMusic(true);
-        this.setSfx(true);
-        localStorage.setItem('skyPilot_bindings', JSON.stringify(this.data.bindings));
+    // --- 3. CONTROLS API ---
+    
+    // Gets the key for a specific action (e.g., 'up' -> 'w')
+    getKeyForAction: function(action) {
+        return this.state.bindings[action];
+    },
+
+    // Rebind a key safely
+    setBinding: function(action, key) {
+        if (!this.state.bindings.hasOwnProperty(action)) return;
+        
+        const safeKey = key.toLowerCase();
+        this.state.bindings[action] = safeKey;
+        this.saveSettings();
+        console.log(`Binding Updated: ${action} = ${safeKey}`);
+    },
+
+    // --- 4. AUDIO SETTINGS ---
+    toggleMusic: function() {
+        this.state.isMusicOn = !this.state.isMusicOn;
+        this.saveSettings();
+        // Notify MusicManager if it exists
+        if (window.MusicManager) window.MusicManager.updateState(this.state.isMusicOn);
+        return this.state.isMusicOn;
+    },
+
+    toggleSfx: function() {
+        this.state.isSfxOn = !this.state.isSfxOn;
+        this.saveSettings();
+        return this.state.isSfxOn;
     }
 };
 
-// Run automatically when file loads
+// Auto-initialize when file loads
 GameManager.init();
+
+// Export to window
+window.GameManager = GameManager;
