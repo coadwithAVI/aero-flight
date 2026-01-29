@@ -1,3 +1,4 @@
+me teko fix kari hui files ( multiplayer.html aur server.js) dono file one by one deta hu phel tu ye multiplyer check fir tere bolne pr me teko server.js file bhej dunga ok 
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -443,15 +444,26 @@
   });
 
   function addOtherPlayer(playerInfo) { 
-      playersData[playerInfo.playerId] = playerInfo;
-      if (scene && !otherPlayers[playerInfo.playerId]) {
+      // ✅ FIX: Fallback to ensure we have a valid ID
+      const id = playerInfo.playerId || playerInfo.id;
+      if (!id) return;
+      
+      // ✅ FIX: Store unified structure in playersData
+      playerInfo.playerId = id;
+      playersData[id] = playerInfo;
+
+      if (scene && !otherPlayers[id]) {
           const otherPlayer = createPlaneMesh(0xff0000); 
           otherPlayer.userData = { buffer: [] };
-          const x = playerInfo.x || 0; const y = playerInfo.y || 400; const z = playerInfo.z || 0;
+          // Default positions if missing (Handled safely for 0)
+          const x = (playerInfo.x !== undefined) ? playerInfo.x : 0; 
+          const y = (playerInfo.y !== undefined) ? playerInfo.y : 400; 
+          const z = (playerInfo.z !== undefined) ? playerInfo.z : 0;
           otherPlayer.position.set(x, y, z);
           scene.add(otherPlayer); 
-          otherPlayers[playerInfo.playerId] = otherPlayer; 
-          if (!allScores[playerInfo.playerId]) allScores[playerInfo.playerId] = { name: playerInfo.name, rings: 0 };
+          otherPlayers[id] = otherPlayer; 
+          
+          if (!allScores[id]) allScores[id] = { name: playerInfo.name || "Pilot", rings: 0 };
       }
   }
   function removeOtherPlayer(playerId) { delete playersData[playerId]; if (!otherPlayers[playerId]) return; disposeHierarchy(otherPlayers[playerId]); if(scene) scene.remove(otherPlayers[playerId]); delete otherPlayers[playerId]; }
@@ -590,6 +602,12 @@
       });
   }
   
+  function ringCollected() { 
+      AudioSys.playRing();
+      // FIX B: Don't set rings locally (cheatable). Request validation.
+      socket.emit('mp_claim_ring', { roomId: mp.roomId, ringIndex: playerStats.progress % RINGS_PER_LAP });
+  }
+
   function disposeHierarchy(obj) { if (!obj) return; if (obj.children) obj.children.forEach(disposeHierarchy); if (obj.geometry) obj.geometry.dispose(); if (obj.material) { if (Array.isArray(obj.material)) obj.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); }); else { if(obj.material.map) obj.material.map.dispose(); obj.material.dispose(); } } }
   
   function initGame() {
@@ -612,7 +630,11 @@
     
     scene = new THREE.Scene(); 
     scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 2000, 10000); 
-    for (let pid in playersData) { if(pid !== socket.id) addOtherPlayer(playersData[pid]); }
+    
+    // ✅ FIX: Iterate through stored player data to spawn mesh
+    for (let pid in playersData) { 
+        if(pid !== socket.id) addOtherPlayer(playersData[pid]); 
+    }
 
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000); renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.shadowMap.enabled = true; container.innerHTML = ""; container.appendChild(renderer.domElement);
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); scene.add(hemiLight); const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 200, 50); dirLight.castShadow = true; scene.add(dirLight);
@@ -790,10 +812,12 @@
         if (planeRig.position.distanceTo(currentRingObj.position) < 100) { 
             // Only try if cooldown passed
             if (!currentRingObj.userData.lastClaimTs) currentRingObj.userData.lastClaimTs = 0;
-            if (now - currentRingObj.userData.lastClaimTs > 1000) {
+            if (now - currentRingObj.userData.lastClaimTs > 500) { // Reduced to 500ms for better feel
                 currentRingObj.userData.lastClaimTs = now;
                 // Request server to verify claim
-                socket.emit('mp_claim_ring', { roomId: mp.roomId, ringIndex: playerStats.progress % RINGS_PER_LAP });
+                if (mp.roomId) {
+                    socket.emit('mp_claim_ring', { roomId: mp.roomId, ringIndex: playerStats.progress % RINGS_PER_LAP });
+                }
             }
         } 
     } else {
@@ -807,7 +831,9 @@
             if (now - kit.userData.lastClaimTs > 1000) {
                 kit.userData.lastClaimTs = now;
                 kit.visible = false; // Optimistic hide
-                socket.emit('mp_claim_kit', { roomId: mp.roomId, kitIndex: kit.userData.id });
+                if (mp.roomId) {
+                    socket.emit('mp_claim_kit', { roomId: mp.roomId, kitIndex: kit.userData.id });
+                }
             }
         } 
     });
