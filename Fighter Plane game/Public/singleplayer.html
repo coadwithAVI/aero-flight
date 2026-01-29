@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sky Pilot - Advanced AI</title>
+    <title>Sky Pilot - Advanced AI (Restored)</title>
     
     <script src="game-config.js"></script>
     <script src="sfx-manager.js"></script>
@@ -17,15 +17,15 @@
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; }
         .hud-top { display: flex; justify-content: space-between; align-items: flex-start; }
         .left-hud, .right-hud { display: flex; flex-direction: column; gap: 10px; }
-        .bar-container { width: 220px; }
+        .bar-container { width: 220px; text-align: left; pointer-events: none; }
         .bar-bg { width: 100%; height: 12px; background: rgba(0,0,0,0.6); border: 1px solid #444; border-radius: 6px; overflow: hidden; transform: skewX(-20deg); }
-        #health-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #cc0000, #00ff00); }
-        #boost-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #0066ff, #00d2ff); }
-        .leaderboard-box { background: rgba(0,0,0,0.6); padding: 15px; border-radius: 10px; color: white; min-width: 220px; border-left: 5px solid #ffd700; }
+        #health-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #cc0000, #00ff00); transition: width 0.1s linear; }
+        #boost-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #0066ff, #00d2ff); transition: width 0.1s linear; }
+        .leaderboard-box { background: rgba(0,0,0,0.6); padding: 15px; border-radius: 10px; color: white; min-width: 220px; border-left: 5px solid #ffd700; backdrop-filter: blur(4px); }
         .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; pointer-events: auto; }
         .menu-box { background: rgba(12,20,30,0.9); border: 2px solid #00d2ff; border-radius: 20px; padding: 40px; text-align: center; width: 450px; }
         .hidden { display: none !important; }
-        .action-btn { display: block; width: 100%; padding: 18px 0; margin: 15px 0; background: linear-gradient(135deg, #00d2ff, #0077ff); border: none; color: #fff; border-radius: 50px; font-weight: 900; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; }
+        .action-btn { display: block; width: 100%; padding: 18px 0; margin: 15px 0; background: linear-gradient(135deg, #00d2ff, #0077ff); border: none; color: #fff; border-radius: 50px; font-weight: 900; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 5px 20px rgba(0, 210, 255, 0.4); }
     </style>
 </head>
 <body>
@@ -35,52 +35,53 @@
 <div id="ui-layer">
     <div class="hud-top">
         <div class="left-hud">
-            <div id="fps-counter" style="color:#00ff00; font-family:monospace;">FPS: 0</div>
+            <div id="fps-counter" style="color:#00ff00; font-family:monospace; font-weight:bold;">FPS: 0</div>
             <div class="bar-container">
-                <div style="color:#00ff00; font-weight:900; font-size:12px;">HEALTH</div>
+                <div style="color:#00ff00; font-weight:900; font-size:12px; letter-spacing:1px;">HEALTH</div>
                 <div class="bar-bg"><div id="health-fill"></div></div>
             </div>
             <div class="leaderboard-box">
-                <div style="font-weight:900; color:#ffd700; margin-bottom:5px;">RACE RANKING</div>
+                <div style="font-weight:900; font-size:14px; color:#ffd700; border-bottom:1px solid #555; padding-bottom:5px; margin-bottom:8px;">RACE RANKING</div>
                 <div id="leaderboard-list"></div>
             </div>
         </div>
         <div class="right-hud">
             <div class="bar-container" style="text-align:right;">
-                <div style="color:#00d2ff; font-weight:900; font-size:12px;">BOOST</div>
+                <div style="color:#00d2ff; font-weight:900; font-size:12px; letter-spacing:1px;">BOOST</div>
                 <div class="bar-bg"><div id="boost-fill"></div></div>
             </div>
-            <div style="pointer-events:auto; cursor:pointer; color:white; border:1px solid white; padding:5px 10px;" onclick="togglePause()">PAUSE</div>
+            <div style="pointer-events:auto; cursor:pointer; color:white; border:2px solid white; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify:center; font-weight:bold;" onclick="togglePause()">||</div>
         </div>
     </div>
 </div>
 
 <div id="start-screen" class="screen">
     <div class="menu-box">
-        <h1 style="color:white; letter-spacing:4px;">SKY PILOT</h1>
-        <p style="color:#00d2ff;">ADVANCED AI MISSION</p>
+        <h1 style="color:white; font-size:56px; font-weight:900; font-style:italic; letter-spacing:4px; text-shadow:0 0 20px #00d2ff;">SKY PILOT</h1>
+        <p style="color:#00d2ff; letter-spacing:1px; margin-bottom:20px;">ADVANCED ENEMY AI UPDATE</p>
         <button class="action-btn" onclick="initGame()">LAUNCH MISSION</button>
-        <button class="action-btn" style="background:#444;" onclick="window.location.href='index.html'">BACK</button>
+        <button class="action-btn" style="background:rgba(255,255,255,0.05); border:1px solid #555;" onclick="window.location.href='index.html'">BACK TO MENU</button>
     </div>
 </div>
 
 <div id="pause-screen" class="screen hidden">
     <div class="menu-box">
-        <h1 style="color:white;">PAUSED</h1>
-        <button class="action-btn" onclick="togglePause()">RESUME</button>
-        <button class="action-btn" style="background:#cc0000;" onclick="location.reload()">ABORT</button>
+        <h1 style="color:white; font-weight:900;">PAUSED</h1>
+        <button class="action-btn" onclick="togglePause()">RESUME FLIGHT</button>
+        <button class="action-btn" style="background:rgba(204,0,0,0.8); border:none;" onclick="location.reload()">ABORT MISSION</button>
     </div>
 </div>
 
 <div id="end-screen" class="screen hidden">
     <div class="menu-box">
         <h1 id="end-title" style="font-size:48px; font-weight:900;"></h1>
-        <p id="end-msg" style="color:white; font-size:18px;"></p>
+        <p id="end-msg" style="color:white; font-size:18px; margin-bottom:30px;"></p>
         <button class="action-btn" onclick="location.reload()">RE-ENGAGE</button>
     </div>
 </div>
 
 <script>
+    // --- 🔥 ENGINE CONFIG ---
     const CONFIG = window.SKY_CONFIG;
     let scene, camera, renderer, planeRig, planeMesh;
     let enemies = [], rings = [], repairKits = [], bullets = [], ringWaypoints = [];
@@ -90,8 +91,9 @@
     let playerPrevPos = new THREE.Vector3(), playerVelocity = new THREE.Vector3();
     let lastFireTime = 0, frameCount = 0, lastFrameTime = performance.now();
     const activeKeys = {};
+    let visualRoll = 0, visualPitch = 0;
 
-    // --- 🌍 TERRAIN HEIGHT LOGIC (Original Function) ---
+    // --- 🌍 TERRAIN HEIGHT LOGIC ---
     function getTerrainHeight(x, z) {
         let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200;
         if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; 
@@ -99,18 +101,24 @@
         return y - 50;
     }
 
-    // --- ✈️ PLANE MESH (Original Model) ---
+    // --- ✈️ PLANE MESH MODEL ---
     function createPlaneMesh(color) {
         const group = new THREE.Group();
         const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.4 });
+        const glass = new THREE.MeshStandardMaterial({ color: 0x00aaff, opacity: 0.6, transparent: true });
+
         const body = new THREE.Mesh(new THREE.CylinderGeometry(2, 4, 30, 8), mat);
         body.rotateX(-Math.PI/2);
         const nose = new THREE.Mesh(new THREE.ConeGeometry(2, 10, 8), mat);
         nose.rotateX(-Math.PI/2); nose.position.z = -20;
+        const cockpit = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 10), glass);
+        cockpit.position.set(0, 2.5, -5);
         const lWing = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 15), mat);
-        lWing.position.set(-10, 0, 5);
-        const rWing = lWing.clone(); rWing.position.set(10, 0, 5);
-        group.add(body, nose, lWing, rWing);
+        lWing.position.set(-10, 0, 5); lWing.rotation.y = 0.3;
+        const rWing = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 15), mat);
+        rWing.position.set(10, 0, 5); rWing.rotation.y = -0.3;
+        
+        group.add(body, nose, cockpit, lWing, rWing);
         return group;
     }
 
@@ -125,16 +133,20 @@
         camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+        document.getElementById('game-container').innerHTML = '';
         document.getElementById('game-container').appendChild(renderer.domElement);
 
         const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6); scene.add(hemiLight);
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 200, 50); scene.add(dirLight);
 
         createPlayer();
-        createTerrain();
+        generateTerrain();
         createRings();
         createEnemies();
+        createRepairKits();
         
+        playerPrevPos.copy(planeRig.position);
         isPlaying = true;
         animate();
     }
@@ -147,12 +159,13 @@
         planeRig.add(planeMesh);
     }
 
-    function createTerrain() {
+    function generateTerrain() {
         const geometry = new THREE.PlaneGeometry(50000, 50000, 100, 100);
         geometry.rotateX(-Math.PI / 2);
         const positions = geometry.attributes.position;
         for (let i = 0; i < positions.count; i++) {
-            positions.setY(i, getTerrainHeight(positions.getX(i), positions.getZ(i)));
+            const x = positions.getX(i); const z = positions.getZ(i);
+            positions.setY(i, getTerrainHeight(x, z));
         }
         geometry.computeVertexNormals();
         const mat = new THREE.MeshStandardMaterial({ color: CONFIG.TERRAIN_COLORS.GRASS, flatShading: true });
@@ -164,11 +177,10 @@
     function createRings() {
         for(let i=0; i<CONFIG.RINGS_PER_LAP; i++) {
             const angle = (i / CONFIG.RINGS_PER_LAP) * Math.PI * 2;
-            const x = Math.sin(angle) * 8000;
-            const z = Math.cos(angle) * -8000;
-            const y = Math.max(400, getTerrainHeight(x, z) + 400);
+            const x = Math.sin(angle) * 12000; const z = Math.cos(angle) * -12000;
+            const y = Math.max(500, getTerrainHeight(x, z) + 400);
             ringWaypoints.push({x, y, z});
-            const ring = new THREE.Mesh(new THREE.TorusGeometry(80, 10, 16, 50), new THREE.MeshPhongMaterial({ color: 0xFFD700 }));
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(80, 10, 16, 50), new THREE.MeshPhongMaterial({ color: 0xFFD700, emissive: 0xffaa00 }));
             ring.position.set(x, y, z);
             ring.visible = (i === 0);
             rings.push(ring);
@@ -176,26 +188,41 @@
         }
     }
 
+    function createRepairKits() {
+        const positions = [{x:1000, z:-3000}, {x:-2000, z:-6000}, {x:500, z:-9000}];
+        positions.forEach(p => {
+            const kit = new THREE.Mesh(new THREE.BoxGeometry(60,60,60), new THREE.MeshStandardMaterial({color:0x00ff00}));
+            kit.position.set(p.x, getTerrainHeight(p.x, p.z)+200, p.z);
+            kit.userData = { active: true };
+            repairKits.push(kit);
+            scene.add(kit);
+        });
+    }
+
     function createEnemies() {
-        const names = ["ACE", "VIPER", "GHOST"];
+        const names = ["ACE", "VIPER", "GHOST", "HAWK"];
         names.forEach((name, i) => {
             const enemy = new THREE.Group();
             enemy.add(createPlaneMesh(0xaa0000));
-            enemy.position.set((i-1)*300, 400, 400);
+            enemy.position.set((i - 1.5) * 400, 400, 400);
             enemy.userData = { 
-                name: name, alive: true, health: 100, progress: 0, state: "RACE",
-                ai: { aggression: 0.5 + Math.random()*0.5, aim: 0.7 + Math.random()*0.3 }
+                name: name, alive: true, health: 300, progress: 0, state: "RACE",
+                stateTimer: 60, dodgeTimer: 0, lastShot: 0,
+                ai: { aggression: 0.3 + Math.random()*0.7, aim: 0.6 + Math.random()*0.4, dodge: 0.5 + Math.random()*0.5 }
             };
             enemies.push(enemy);
             scene.add(enemy);
         });
     }
 
-    // --- 🧠 AI LOGIC: LEAD AIM & STATE MACHINE ---
-    function calculateLeadAim(shooterPos, target, bulletSpeed) {
+    // --- 🧠 ADVANCED AI LOGIC ---
+    function calculateLeadAim(shooterPos, target, bulletSpeed, accuracy) {
         const dist = shooterPos.distanceTo(target.position);
-        const time = dist / bulletSpeed;
-        return target.position.clone().add(playerVelocity.clone().multiplyScalar(time));
+        const timeToImpact = dist / bulletSpeed;
+        const predictedPos = target.position.clone().add(playerVelocity.clone().multiplyScalar(timeToImpact));
+        const error = (1.0 - accuracy) * 100;
+        predictedPos.add(new THREE.Vector3((Math.random()-0.5)*error, (Math.random()-0.5)*error, (Math.random()-0.5)*error));
+        return predictedPos;
     }
 
     function animate() {
@@ -209,78 +236,112 @@
             frameCount = 0; lastFrameTime = now;
         }
 
-        // Velocity Tracking
         playerVelocity.subVectors(planeRig.position, playerPrevPos);
         playerPrevPos.copy(planeRig.position);
 
         updatePlayer();
         updateEnemies();
         updateBullets();
-        
+        updateRepairKitsLogic();
+        updateLeaderboard();
+
         renderer.render(scene, camera);
     }
 
     function updatePlayer() {
-        const speed = (isActionActive('boost') && boostLevel > 0) ? CONFIG.BOOST_SPEED : CONFIG.NORMAL_SPEED;
+        const isBoosting = isActionActive('boost') && boostLevel > 0;
+        const speed = isBoosting ? CONFIG.BOOST_SPEED : CONFIG.NORMAL_SPEED;
+        if(isBoosting) boostLevel -= CONFIG.BOOST_DRAIN; else if(boostLevel < 100) boostLevel += CONFIG.BOOST_REFILL;
+
         planeRig.translateZ(-speed);
+        if (isActionActive('left')) { planeRig.rotation.y += CONFIG.TURN_SPEED; visualRoll = 0.8; }
+        else if (isActionActive('right')) { planeRig.rotation.y -= CONFIG.TURN_SPEED; visualRoll = -0.8; }
+        else visualRoll = 0;
 
-        if (isActionActive('left')) planeRig.rotation.y += CONFIG.TURN_SPEED;
-        if (isActionActive('right')) planeRig.rotation.y -= CONFIG.TURN_SPEED;
-        if (isActionActive('up')) planeRig.position.y += CONFIG.LIFT_SPEED;
-        if (isActionActive('down')) planeRig.position.y -= CONFIG.LIFT_SPEED;
+        if (isActionActive('up')) { planeRig.position.y += CONFIG.LIFT_SPEED; visualPitch = -0.5; }
+        else if (isActionActive('down')) { planeRig.position.y -= CONFIG.LIFT_SPEED; visualPitch = 0.5; }
+        else visualPitch = 0;
 
-        // Collision & SFX
+        planeMesh.rotation.z = THREE.MathUtils.lerp(planeMesh.rotation.z, visualRoll, 0.1);
+        planeMesh.rotation.x = THREE.MathUtils.lerp(planeMesh.rotation.x, visualPitch, 0.1);
+
+        // Ground Collision
         const gh = getTerrainHeight(planeRig.position.x, planeRig.position.z);
-        let isDamaging = planeRig.position.y < gh + 20;
-        if (isDamaging) health -= CONFIG.COLLISION_DAMAGE * 0.1;
+        let isDamaging = planeRig.position.y < gh + 15;
+        if (isDamaging) { health -= CONFIG.COLLISION_DAMAGE * 0.1; planeRig.position.y = gh + 15; }
         
-        SFXManager.updateContinuous(isActionActive('boost'), isDamaging, GameManager.data.sfx);
+        SFXManager.updateContinuous(isBoosting, isDamaging, GameManager.data.sfx);
         MusicManager.updateGameplayMusic(health);
+        if(health <= 0) endGame(false, "Crashed into Terrain");
 
+        // UI
         document.getElementById('health-fill').style.width = health + '%';
-        
-        // Ring logic
+        document.getElementById('boost-fill').style.width = boostLevel + '%';
+
+        // Ring Check
         const targetRing = rings[playerStats.progress % CONFIG.RINGS_PER_LAP];
-        if (planeRig.position.distanceTo(targetRing.position) < 150) {
+        if (planeRig.position.distanceTo(targetRing.position) < 180) {
             targetRing.visible = false;
             playerStats.progress++;
             SFXManager.playRing(GameManager.data.sfx);
-            if (playerStats.progress >= CONFIG.TOTAL_RINGS_WIN) endGame(true, "Champion!");
+            if (playerStats.progress >= CONFIG.TOTAL_RINGS_WIN) endGame(true, "Victory!");
             else rings[playerStats.progress % CONFIG.RINGS_PER_LAP].visible = true;
         }
 
-        const camTarget = new THREE.Vector3(0, 60, 200).applyMatrix4(planeRig.matrixWorld);
+        if (isActionActive('fire') && Date.now() - lastFireTime > CONFIG.FIRE_RATE) {
+            spawnBullet(planeRig, null, false);
+            lastFireTime = Date.now();
+        }
+
+        const camTarget = new THREE.Vector3(0, 80, 250).applyMatrix4(planeRig.matrixWorld);
         camera.position.lerp(camTarget, 0.1);
         camera.lookAt(planeRig.position);
     }
 
     function updateEnemies() {
+        const now = Date.now();
         enemies.forEach(e => {
             if (!e.userData.alive) return;
-            const wp = ringWaypoints[e.userData.progress % CONFIG.RINGS_PER_LAP];
-            const targetPos = new THREE.Vector3(wp.x, wp.y, wp.z);
-            
-            // Steering
+            const data = e.userData;
+            const distToPlayer = e.position.distanceTo(planeRig.position);
+
+            // State Machine Logic (Restored)
+            if (data.dodgeTimer > 0) { data.state = "EVADE"; data.dodgeTimer--; }
+            else if (data.stateTimer <= 0) {
+                if (health < 100 && distToPlayer < 3000 && Math.random() < data.ai.aggression) data.state = "HUNT";
+                else data.state = "RACE";
+                data.stateTimer = 60 + Math.random()*60;
+            } else data.stateTimer--;
+
+            let targetPos;
+            if (data.state === "HUNT") {
+                targetPos = calculateLeadAim(e.position, planeRig, 30, data.ai.aim);
+                if (distToPlayer < 4000 && now - data.lastShot > 1500) {
+                    spawnBullet(e, targetPos, true);
+                    data.lastShot = now;
+                }
+            } else {
+                const wp = ringWaypoints[data.progress % CONFIG.RINGS_PER_LAP];
+                targetPos = new THREE.Vector3(wp.x, wp.y, wp.z);
+                if (e.position.distanceTo(targetPos) < 200) data.progress++;
+            }
+
             const dummy = new THREE.Object3D();
             dummy.position.copy(e.position);
             dummy.lookAt(targetPos);
-            e.quaternion.slerp(dummy.quaternion, 0.03);
-            e.translateZ(-CONFIG.NORMAL_SPEED * 0.95);
-
-            if (e.position.distanceTo(targetPos) < 200) e.userData.progress++;
-
-            // Firing logic
-            if (Math.random() < 0.01 && e.position.distanceTo(planeRig.position) < 3000) {
-                spawnBullet(e, calculateLeadAim(e.position, planeRig, 20), true);
-            }
+            e.quaternion.slerp(dummy.quaternion, 0.04);
+            e.translateZ(-CONFIG.NORMAL_SPEED * 0.9);
         });
     }
 
     function spawnBullet(owner, targetPos, isEnemy) {
-        const b = new THREE.Mesh(new THREE.SphereGeometry(2), new THREE.MeshBasicMaterial({ color: isEnemy ? 0xff0000 : 0xffff00 }));
+        const b = new THREE.Mesh(new THREE.SphereGeometry(3), new THREE.MeshBasicMaterial({ color: isEnemy?0xff0000:0xffff00 }));
         b.position.copy(owner.position);
-        const dir = targetPos.clone().sub(owner.position).normalize();
-        bullets.push({ mesh: b, vel: dir.multiplyScalar(20), life: 200, isEnemy });
+        let dir;
+        if (isEnemy && targetPos) dir = targetPos.clone().sub(owner.position).normalize();
+        else dir = new THREE.Vector3(0,0,-1).applyQuaternion(owner.quaternion);
+        
+        bullets.push({ mesh: b, vel: dir.multiplyScalar(40), life: 180, isEnemy });
         scene.add(b);
         if(!isEnemy) SFXManager.playGun(GameManager.data.sfx);
     }
@@ -292,17 +353,40 @@
             b.life--;
             if (b.life <= 0) { scene.remove(b.mesh); bullets.splice(i, 1); continue; }
 
-            if (b.isEnemy && b.mesh.position.distanceTo(planeRig.position) < 50) {
-                health -= 10; scene.remove(b.mesh); bullets.splice(i, 1);
-                SFXManager.playExplosion(GameManager.data.sfx);
+            if (b.isEnemy) {
+                if (b.mesh.position.distanceTo(planeRig.position) < 60) {
+                    health -= 15; scene.remove(b.mesh); bullets.splice(i, 1);
+                    SFXManager.playExplosion(GameManager.data.sfx);
+                }
+            } else {
+                enemies.forEach(e => {
+                    if (e.userData.alive && b.mesh.position.distanceTo(e.position) < 80) {
+                        e.userData.health -= 40; scene.remove(b.mesh); bullets.splice(i, 1);
+                        if(e.userData.health <= 0) { e.userData.alive = false; e.visible = false; }
+                        SFXManager.playExplosion(GameManager.data.sfx);
+                    }
+                });
             }
         }
     }
 
-    function isActionActive(a) { return activeKeys[GameManager.data.bindings[a]]; }
-    window.addEventListener('keydown', e => activeKeys[e.key.toLowerCase()] = true);
-    window.addEventListener('keyup', e => activeKeys[e.key.toLowerCase()] = false);
-    
+    function updateRepairKitsLogic() {
+        repairKits.forEach(k => {
+            if (k.userData.active && planeRig.position.distanceTo(k.position) < 100) {
+                health = Math.min(100, health + 30);
+                k.userData.active = false; k.visible = false;
+                SFXManager.playRepair(GameManager.data.sfx);
+                setTimeout(() => { k.userData.active = true; k.visible = true; }, 30000);
+            }
+        });
+    }
+
+    function updateLeaderboard() {
+        const racers = [{name:"PLAYER", rings:playerStats.progress}, ...enemies.map(e => ({name:e.userData.name, rings:e.userData.progress}))];
+        racers.sort((a,b) => b.rings - a.rings);
+        document.getElementById('leaderboard-list').innerHTML = racers.map((r,i) => `<div style="display:flex; justify-content:space-between; font-size:13px; font-weight:bold; color:${r.name==='PLAYER'?'#00ff00':'#ddd'}"><span>${i+1}. ${r.name}</span><span>${r.rings}</span></div>`).join('');
+    }
+
     function togglePause() { 
         isPaused = !isPaused; 
         document.getElementById('pause-screen').classList.toggle('hidden', !isPaused);
@@ -316,6 +400,10 @@
         document.getElementById('end-msg').innerText = msg;
         if(win) MusicManager.playWin(); else MusicManager.playLose();
     }
+
+    function isActionActive(a) { return activeKeys[GameManager.data.bindings[a]]; }
+    window.addEventListener('keydown', e => activeKeys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => activeKeys[e.key.toLowerCase()] = false);
 </script>
 </body>
 </html>
