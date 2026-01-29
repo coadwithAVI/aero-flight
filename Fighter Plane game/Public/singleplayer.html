@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sky Pilot - Singleplayer AI</title>
+  <title>Sky Pilot - Advanced AI</title>
   
   <link rel="icon" href="data:,">
 
@@ -29,10 +29,9 @@
     .hud-top { display: flex; justify-content: space-between; align-items: flex-start; }
     .left-hud { display: flex; flex-direction: column; align-items: flex-start; gap: 15px; }
     .right-hud { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; }
-    
-    /* ✅ FIX 6: Added Missing CSS for Top-Right Row */
     .top-right-row { display: flex; align-items: flex-start; gap: 15px; }
 
+    /* Leaderboard */
     .leaderboard-box {
       background: rgba(0,0,0,0.6); padding: 15px; border-radius: 10px;
       color: white; min-width: 220px; pointer-events: none;
@@ -45,6 +44,7 @@
     .lb-player { color: #00ff00; text-shadow: 0 0 5px #00ff00; }
     .lb-rank-1 { color: #ffd700; }
 
+    /* Bars */
     .bar-container { width: 220px; text-align: left; pointer-events: none; }
     .right-hud .bar-container { text-align: right; }
     .bar-label { font-weight: 900; font-size: 14px; margin-bottom: 3px; letter-spacing: 1px; text-shadow: 0 0 5px black; }
@@ -52,14 +52,18 @@
     #health-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #cc0000, #00ff00); box-shadow: 0 0 10px #00ff00; transition: width 0.1s linear; }
     #boost-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #0066ff, #00d2ff); box-shadow: 0 0 15px #00d2ff; transition: width 0.1s linear; }
 
+    /* FPS */
     #fps-counter { background: rgba(0,0,0,0.5); color: #00ff00; padding: 5px 10px; border-radius: 5px; font-family: monospace; font-weight: bold; font-size: 12px; pointer-events: none; margin-bottom: 5px; }
 
+    /* Pause Button */
     .pause-btn { background: rgba(0,0,0,0.6); color: white; border: 2px solid white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; transition: 0.2s; pointer-events: auto; }
     .pause-btn:hover { background: white; color: black; box-shadow: 0 0 15px white; }
 
+    /* Minimap */
     #minimap-container { position: absolute; bottom: 20px; left: 20px; width: 140px; height: 140px; background: rgba(0,10,30,0.8); border: 2px solid #00d2ff; border-radius: 50%; overflow: hidden; pointer-events: none; box-shadow: 0 0 15px rgba(0,210,255,0.3); }
     #minimap-canvas { width: 100%; height: 100%; }
 
+    /* MOBILE CONTROLS */
     .mobile-controls { display: none; position: absolute; bottom: 20px; width: 100%; padding: 0 20px; box-sizing: border-box; justify-content: space-between; pointer-events: none; z-index: 100; }
     @media (max-width: 1024px) { .mobile-controls { display: flex; } }
     .control-group { pointer-events: auto; display: flex; gap: 10px; }
@@ -71,12 +75,13 @@
     .mob-boost { border-color: #00d2ff; }
     .btn-up { grid-column: 2; grid-row: 1; } .btn-left { grid-column: 1; grid-row: 2; } .btn-down { grid-column: 2; grid-row: 2; } .btn-right { grid-column: 3; grid-row: 2; }
 
+    /* Screens */
     .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10; }
     .hidden { display: none !important; }
     .menu-box { background: rgba(12,20,30,0.85); border: 2px solid #00d2ff; border-radius: 20px; padding: 40px; text-align: center; box-shadow: 0 0 50px rgba(0,210,255,0.25), inset 0 0 30px rgba(0,210,255,0.1); width: 550px; max-width: 90%; max-height: 90vh; overflow-y: auto; }
     
     h1 { font-size: 56px; color: #fff; text-transform: uppercase; margin: 0 0 10px 0; font-weight: 900; letter-spacing: 4px; text-shadow: 0 0 20px #00d2ff; font-style: italic; }
-    .action-btn { display: block; width: 100%; padding: 18px 0; margin: 15px 0; background: linear-gradient(135deg, #00d2ff, #0077ff); border: none; color: #fff; border-radius: 50px; font-size: 20px; font-weight: 900; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 5px 20px rgba(0,210,255,0.4); transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); }
+    .action-btn { display: block; width: 100%; padding: 18px 0; margin: 15px 0; background: linear-gradient(135deg, #00d2ff, #0077ff); border: none; color: #fff; border-radius: 50px; font-size: 20px; font-weight: 900; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 5px 20px rgba(0,210,255,0.4); transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; }
     .action-btn:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 10px 40px rgba(0,210,255,0.6); filter: brightness(1.2); }
     .secondary-btn { background: rgba(255,255,255,0.05); border: 1px solid #555; box-shadow: none; font-size: 16px; }
     .secondary-btn:hover { background: rgba(255,255,255,0.15); border-color: #fff; }
@@ -164,17 +169,19 @@
 <script>
   document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
 
-  // ✅ 1) BIG BUG FIX: BINDINGS SYNC (Boost=Shift, Fire=Space)
+  // ✅ 1) SETTINGS & BINDINGS FIX (Shift=Boost, Space=Fire)
   let isMusicOn = localStorage.getItem('skyPilot_music') !== 'OFF';
   let isSoundOn = localStorage.getItem('skyPilot_sfx') !== 'OFF';
   let bindings = { up: 'w', down: 's', left: 'a', right: 'd', boost: 'shift', fire: ' ' };
+  const savedBinds = localStorage.getItem('skyPilot_bindings');
+  if (savedBinds) { try { Object.assign(bindings, JSON.parse(savedBinds)); } catch(e){} }
 
   // --- GAME STATE ---
   let scene, camera, renderer, planeRig, planeMesh, guideArrow;
   let enemies = [], repairKits = [], rings = [], ringWaypoints = [];
   let currentRingObj = null, bullets = [], isPlaying = false, isPaused = false;
   let boostLevel = 100, health = 100, lastFireTime = 0;
-  let lastRender = performance.now(); // ✅ For DT calculation
+  let lastRender = performance.now(); 
   let playerPrevPos = new THREE.Vector3(), playerVelocity = new THREE.Vector3();
   let playerStats = { name: "PLAYER", rings: 0, progress: 0 };
   let enemyStats = [{ name: "ACE", rings: 0, obj: null }, { name: "VIPER", rings: 0, obj: null }, { name: "GHOST", rings: 0, obj: null }, { name: "HAWK", rings: 0, obj: null }];
@@ -182,8 +189,7 @@
   const activeKeys = {}; let visualRoll = 0, visualPitch = 0;
   let lastFrameTime = performance.now(), frameCount = 0;
   const fpsElem = document.getElementById('fps-counter');
-  const minimapCanvas = document.getElementById('minimap-canvas');
-  const minimapCtx = minimapCanvas.getContext('2d');
+  const minimapCtx = document.getElementById('minimap-canvas').getContext('2d');
   
   // ✅ FIX 5: Optimized temp vector for distance checks
   const TMP_VEC = new THREE.Vector3();
@@ -192,20 +198,16 @@
   function setAction(action, state) { activeKeys[action] = state; }
   function isActionActive(actionId) { return !!activeKeys[actionId]; }
 
-  // ✅ 1) KEYDOWN/KEYUP FIX: Logical Mapping
+  // ✅ INPUT LISTENERS (Logical Mapping)
   window.addEventListener('keydown', (e) => {
     if(e.key === "Escape") { togglePause(); return; }
     if(isPaused) return;
     const k = e.key.toLowerCase();
-    
     if(k === bindings.up || k === 'arrowup') setAction('up', true);
     if(k === bindings.down || k === 'arrowdown') setAction('down', true);
     if(k === bindings.left || k === 'arrowleft') setAction('left', true);
     if(k === bindings.right || k === 'arrowright') setAction('right', true);
-    
-    // BOOST (Shift)
     if(k === bindings.boost || (bindings.boost === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) setAction('boost', true);
-    // FIRE (Space)
     if(k === bindings.fire || (bindings.fire === ' ' && e.code === 'Space')) setAction('fire', true);
   });
 
@@ -215,7 +217,6 @@
     if(k === bindings.down || k === 'arrowdown') setAction('down', false);
     if(k === bindings.left || k === 'arrowleft') setAction('left', false);
     if(k === bindings.right || k === 'arrowright') setAction('right', false);
-    
     if(k === bindings.boost || (bindings.boost === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) setAction('boost', false);
     if(k === bindings.fire || (bindings.fire === ' ' && e.code === 'Space')) setAction('fire', false);
   });
@@ -237,25 +238,20 @@
   function togglePause() {
     if(!isPlaying) return; isPaused = !isPaused;
     const pauseScreen = document.getElementById('pause-screen');
-    if(isPaused) pauseScreen.classList.remove('hidden'); else { pauseScreen.classList.add('hidden'); lastRender = performance.now(); requestAnimationFrame(animate); }
+    if(isPaused) pauseScreen.classList.remove('hidden'); 
+    else { pauseScreen.classList.add('hidden'); lastRender = performance.now(); requestAnimationFrame(animate); }
   }
 
-  // ✅ 6) MUSIC/SFX SETTINGS USAGE
+  // ✅ GAME START
   function startSinglePlayer() { 
       MusicManager.init();
       SFXManager.init();
-      // Start with Lobby Hangar sound if music is on
       if (isMusicOn) MusicManager.playLobby(); 
       initGame(); 
   }
 
   function initGame() {
-    // ✅ 5) CONFIG SAFETY CHECK
-    if (typeof TERRAIN_COLORS === 'undefined') {
-        alert("CRITICAL ERROR: game-config.js not loaded! Check file linkage.");
-        return;
-    }
-
+    if (typeof TERRAIN_COLORS === 'undefined') { alert("CRITICAL ERROR: game-config.js not loaded!"); return; }
     document.getElementById('start-screen').classList.add('hidden');
     const container = document.getElementById('game-container');
     if (scene) scene.clear();
@@ -270,94 +266,56 @@
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 200, 50); scene.add(dirLight);
     
     playerStats.rings = 0; playerStats.progress = 0; health = 100; boostLevel = 100;
-    
     generateTerrain(); generateOcean(); createPlaneSystem(); createGuideArrow(); createRepairKits(); createRings(); createEnemies();
     updateRingVisuals(); updateLeaderboard();
     
-    // ✅ 3) START GAMEPLAY MUSIC immediately after lobby
     if (isMusicOn) MusicManager.updateGameplayMusic(health);
-
-    isPlaying = true; isPaused = false; 
-    lastRender = performance.now();
-    animate();
+    isPlaying = true; isPaused = false; lastRender = performance.now(); animate();
   }
 
-  function getTerrainHeight(x, z) {
-    let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200;
-    if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; return y - 50;
+  // --- BUILDERS ---
+  function getTerrainHeight(x, z) { let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; return y - 50; }
+  function generateTerrain() { const geometry = new THREE.PlaneGeometry(50000, 50000, 100, 100); geometry.rotateX(-Math.PI / 2); const pos = geometry.attributes.position; const colors = []; for (let i = 0; i < pos.count; i++) { let y = getTerrainHeight(pos.getX(i), pos.getZ(i)); pos.setY(i, y); const c = new THREE.Color(); if (y < 100) c.setHex(TERRAIN_COLORS.SAND); else if (y < 500) c.setHex(TERRAIN_COLORS.GRASS); else c.setHex(TERRAIN_COLORS.ROCK); colors.push(c.r, c.g, c.b); } geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true })); mesh.position.y = -50; scene.add(mesh); }
+  function generateOcean() { const geo = new THREE.PlaneGeometry(50000, 50000); geo.rotateX(-Math.PI / 2); scene.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: TERRAIN_COLORS.WATER, transparent: true, opacity: 0.6 }))); }
+  function createPlaneMesh(color) { 
+    const group = new THREE.Group(); 
+    const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.4 }); 
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(2, 10, 8), mat); nose.rotateX(-Math.PI/2); nose.position.z = -20; 
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(2, 4, 30, 8), mat); body.rotateX(-Math.PI/2); 
+    const lWing = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 15), mat); lWing.position.set(-10, 0, 5); 
+    group.add(body, nose, lWing); 
+    const rWing = lWing.clone(); rWing.position.x = 10; 
+    group.add(rWing); return group; 
   }
-
-  function generateTerrain() {
-    const geometry = new THREE.PlaneGeometry(50000, 50000, 100, 100); geometry.rotateX(-Math.PI / 2);
-    const positions = geometry.attributes.position; const colors = [];
-    for (let i = 0; i < positions.count; i++) {
-      const x = positions.getX(i); const z = positions.getZ(i);
-      let y = getTerrainHeight(x, z); positions.setY(i, y);
-      const color = new THREE.Color(); 
-      if (y < 100) color.setHex(TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(TERRAIN_COLORS.GRASS); else color.setHex(TERRAIN_COLORS.ROCK);
-      colors.push(color.r, color.g, color.b);
-    }
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true });
-    const mesh = new THREE.Mesh(geometry, mat); mesh.position.y = -50; scene.add(mesh);
-  }
-
-  function generateOcean() {
-    const geo = new THREE.PlaneGeometry(50000, 50000); geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({ color: TERRAIN_COLORS.WATER, transparent: true, opacity: 0.6 });
-    const ocean = new THREE.Mesh(geo, mat); ocean.position.y = -80; scene.add(ocean);
-  }
-
-  function createPlaneMesh(color) {
-    const group = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.4 }); const glass = new THREE.MeshStandardMaterial({ color: 0x00aaff, opacity: 0.6, transparent: true });
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(2, 4, 30, 8), mat); body.rotateX(-Math.PI/2); const nose = new THREE.Mesh(new THREE.ConeGeometry(2, 10, 8), mat); nose.rotateX(-Math.PI/2); nose.position.z = -20;
-    const cockpit = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 10), glass); cockpit.position.set(0, 2.5, -5); const lWing = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 15), mat); lWing.position.set(-10, 0, 5); lWing.rotation.y = 0.3;
-    const rWing = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 15), mat); rWing.position.set(10, 0, 5); rWing.rotation.y = -0.3;
-    group.add(body, nose, cockpit, lWing, rWing); return group;
-  }
-
   function createPlaneSystem() { planeRig = new THREE.Group(); planeRig.position.set(0, 400, 800); scene.add(planeRig); planeMesh = createPlaneMesh(0x555555); planeRig.add(planeMesh); }
+  function createEnemies() { for(let i=0; i<4; i++) { const enemy = new THREE.Group(); const mesh = createPlaneMesh(0xaa0000); enemy.add(mesh); enemy.position.set((i - 1.5) * 200, 400, 400); enemy.name = enemyStats[i].name; enemy.userData = { alive: true, health: 300, progress: 0, lastShot: 0 }; scene.add(enemy); enemies.push(enemy); enemyStats[i].obj = enemy; } }
+  function createGuideArrow() { guideArrow = new THREE.Group(); guideArrow.add(new THREE.Mesh(new THREE.ConeGeometry(4, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00ff00 }))); scene.add(guideArrow); }
+  function createRings() { for(let i=0; i<RINGS_PER_LAP; i++) { const a = i * (Math.PI * 2 / RINGS_PER_LAP); const x = Math.sin(a) * 12000, z = Math.cos(a) * -12000; ringWaypoints.push({x, y: Math.max(500, getTerrainHeight(x, z)+400), z}); const r = new THREE.Mesh(new THREE.TorusGeometry(80, 10, 16, 50), new THREE.MeshPhongMaterial({ color: 0xFFD700, emissive: 0xffaa00 })); r.position.set(x, ringWaypoints[i].y, z); scene.add(r); rings.push(r); } }
+  function updateRingVisuals() { const cur = playerStats.progress % RINGS_PER_LAP; rings.forEach((r, i) => r.visible = (i === cur)); if(rings[cur]) currentRingObj = rings[cur]; }
+  function createRepairKits() { const box = new THREE.Mesh(new THREE.BoxGeometry(60, 60, 60), new THREE.MeshPhongMaterial({ color: 0x00aa00 })); [{ x: 1000, z: -3000 }, { x: -2000, z: -6000 }].forEach((loc) => { const k = box.clone(); k.position.set(loc.x, 400, loc.z); k.userData = { active: true, respawnTime: 0 }; scene.add(k); repairKits.push(k); }); }
 
-  function createEnemies() {
-    for(let i=0; i<4; i++) { 
-      const enemy = new THREE.Group(); const mesh = createPlaneMesh(0xaa0000); enemy.add(mesh); enemy.position.set((i - 1.5) * 200, 400, 400); enemy.name = enemyStats[i].name;
-      enemy.userData = { alive: true, health: 300, progress: 0, ai: { aggression: 0.5, speed: NORMAL_SPEED }, state: "RACE", lastShot: 0 }; 
-      scene.add(enemy); enemies.push(enemy); enemyStats[i].obj = enemy; 
-    }
-  }
-
-  function createGuideArrow() { const group = new THREE.Group(); const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 }); const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 15, 8), mat); cylinder.rotation.x = Math.PI / 2; cylinder.position.z = -7.5; const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 8, 8), mat); cone.rotation.x = Math.PI / 2; group.add(cylinder, cone); guideArrow = group; scene.add(guideArrow); }
-
-  function createRings() { for(let i=0; i<RINGS_PER_LAP; i++) { const angle = i * (Math.PI * 2 / RINGS_PER_LAP); const x = Math.sin(angle) * 12000, z = Math.cos(angle) * -12000; const groundY = getTerrainHeight(x, z); const y = Math.max(500, groundY + 400); ringWaypoints.push({x, y, z}); const ring = new THREE.Mesh(new THREE.TorusGeometry(80, 10, 16, 50), new THREE.MeshPhongMaterial({ color: 0xFFD700, emissive: 0xffaa00 })); ring.position.set(x, y, z); scene.add(ring); rings.push(ring); } }
-
-  function updateRingVisuals() { const currentTargetIdx = playerStats.progress % RINGS_PER_LAP; rings.forEach((r, i) => { r.visible = (i === currentTargetIdx); if(r.visible) currentRingObj = r; }); }
-
-  function createRepairKits() { const box = new THREE.Mesh(new THREE.BoxGeometry(60, 60, 60), new THREE.MeshPhongMaterial({ color: 0x00aa00 })); const positions = [{ x: 1000, z: -3000 }, { x: -2000, z: -6000 }]; positions.forEach((loc) => { const kit = box.clone(); kit.position.set(loc.x, 400, loc.z); kit.userData = { active: true, respawnTime: 0 }; scene.add(kit); repairKits.push(kit); }); }
-
-  // ✅ 4) BULLET SPAWN FIX (Velocity per second scaled for DT)
+  // ✅ ACTION FUNCTIONS
   function spawnBullet() {
     SFXManager.playGun(isSoundOn);
     const bullet = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffaa00 })); 
-    bullet.position.copy(planeRig.position); 
-    scene.add(bullet);
+    bullet.position.copy(planeRig.position); scene.add(bullet);
     const v = new THREE.Vector3(0,0,-1).applyQuaternion(planeRig.quaternion).multiplyScalar(8000); 
     bullets.push({ mesh: bullet, velocity: v, life: 1.5, isEnemy: false });
   }
 
   function spawnEnemyBullet(enemy, targetPos) { 
+    SFXManager.playGun(isSoundOn);
     const bullet = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff0000 })); 
-    bullet.position.copy(enemy.position); 
-    scene.add(bullet); 
+    bullet.position.copy(enemy.position); scene.add(bullet); 
     const v = new THREE.Vector3().subVectors(targetPos, enemy.position).normalize().multiplyScalar(4000); 
     bullets.push({ mesh: bullet, velocity: v, life: 2.0, isEnemy: true, owner: enemy }); 
-    SFXManager.playGun(isSoundOn);
   }
 
   function ringCollected(collectorName) {
     SFXManager.playRing(isSoundOn);
     if (collectorName === "PLAYER") {
       playerStats.rings++; playerStats.progress++; updateRingVisuals();
-      if (playerStats.rings >= TOTAL_RINGS_WIN) endGame(true, "Race Champion!");
+      if (playerStats.rings >= TOTAL_RINGS_WIN) endGame(true, "Champion!");
     } else {
       const eStat = enemyStats.find(e => e.name === collectorName);
       if(eStat) { eStat.rings++; if(eStat.rings >= TOTAL_RINGS_WIN) endGame(false, `${eStat.name} Won!`); }
@@ -365,114 +323,71 @@
     updateLeaderboard();
   }
 
-  function drawMinimap() { if(!minimapCtx || !planeRig) return; minimapCtx.clearRect(0, 0, 140, 140); const cx = 70, cy = 70, scale = 60 / 4000; minimapCtx.save(); minimapCtx.translate(cx, cy); minimapCtx.rotate(-planeRig.rotation.y + Math.PI); minimapCtx.beginPath(); minimapCtx.moveTo(0, -6); minimapCtx.lineTo(-4, 4); minimapCtx.lineTo(4, 4); minimapCtx.fillStyle = "#00ff00"; minimapCtx.fill(); minimapCtx.restore(); }
-
   // ✅ MAIN LOOP
   function animate() {
     if (!isPlaying || isPaused) return; 
-    
     const nowPerf = performance.now();
-    const dt = Math.min((nowPerf - lastRender) / 1000, 0.05); // ✅ DT Calculation
-    lastRender = nowPerf;
-
-    frameCount++; 
-    if (nowPerf - lastFrameTime >= 1000) { fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastFrameTime = nowPerf; }
+    const dt = Math.min((nowPerf - lastRender) / 1000, 0.05); lastRender = nowPerf;
+    
+    frameCount++; if (nowPerf - lastFrameTime >= 1000) { fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastFrameTime = nowPerf; }
     const now = Date.now();
 
-    // ✅ FIX 4: MUSIC OPTIMIZATION
-    if (isMusicOn) {
-        MusicManager.updateGameplayMusic(health); 
-    } else {
-        if (MusicManager.currentTheme !== null) MusicManager.stop();
-    }
+    // ✅ FIX: Optimized Music logic
+    if (isMusicOn) MusicManager.updateGameplayMusic(health); 
+    else if (MusicManager.currentTheme !== null) MusicManager.stop();
 
     const isBoosting = isActionActive('boost') && boostLevel > 0;
-    const isDamaging = health < 30;
-    SFXManager.updateContinuous(isBoosting, isDamaging, isSoundOn);
+    SFXManager.updateContinuous(isBoosting, health < 30, isSoundOn);
 
-    // ✅ GUN FIRING TRIGGER
-    if (isActionActive('fire') && now - lastFireTime > FIRE_RATE) {
-        lastFireTime = now;
-        spawnBullet();
-    }
+    // ✅ FIX: Firing Trigger
+    if (isActionActive('fire') && now - lastFireTime > FIRE_RATE) { lastFireTime = now; spawnBullet(); }
 
-    // Player Movement
-    let currentSpeed = isBoosting ? BOOST_SPEED : NORMAL_SPEED;
-    
-    // ✅ FIX 1: Boost Drain/Refill DT-based
-    if (isBoosting) boostLevel -= BOOST_DRAIN * dt * 60; 
-    else if (boostLevel < 100) boostLevel += BOOST_REFILL * dt * 60;
+    // ✅ FIX: DT Based Player Physics
+    let spd = (isBoosting ? BOOST_SPEED : NORMAL_SPEED) * dt * 60;
+    if (isBoosting) boostLevel -= BOOST_DRAIN * dt * 60; else boostLevel = Math.min(100, boostLevel + BOOST_REFILL * dt * 60);
     boostLevel = THREE.MathUtils.clamp(boostLevel, 0, 100);
-    
     document.getElementById('boost-fill').style.width = boostLevel + '%';
+    planeRig.translateZ(-spd);
     
-    // ✅ FIX 2: Plane movement DT-based (x60 maintains old feel at 60fps)
-    planeRig.translateZ(-currentSpeed * dt * 60);
+    if (isActionActive('left')) planeRig.rotation.y += TURN_SPEED * dt * 60;
+    else if (isActionActive('right')) planeRig.rotation.y -= TURN_SPEED * dt * 60;
     
-    if (isActionActive('left')) { planeRig.rotation.y += TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); }
-    else if (isActionActive('right')) { planeRig.rotation.y -= TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); }
-    else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
-    
-    if (isActionActive('up')) { planeRig.position.y += LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.5, 0.1); }
-    else if (isActionActive('down')) { planeRig.position.y -= LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.5, 0.1); }
-    else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
+    if (isActionActive('up')) planeRig.position.y += LIFT_SPEED * dt * 60;
+    else if (isActionActive('down')) planeRig.position.y -= LIFT_SPEED * dt * 60;
 
-    // AI Logic
+    // AI Logic (DT Based)
     enemies.forEach(e => {
         if(!e.userData.alive) return;
         const targetWp = ringWaypoints[e.userData.progress % RINGS_PER_LAP];
         e.lookAt(targetWp.x, targetWp.y, targetWp.z);
-        
-        // ✅ FIX 3: AI movement DT-based
         e.translateZ(-NORMAL_SPEED * dt * 60);
-        
-        // ✅ FIX 5: Waypoint distance check optimized (No new Vector3 spam)
+        // Optimized distance check
         TMP_VEC.set(targetWp.x, targetWp.y, targetWp.z);
-        if(e.position.distanceTo(TMP_VEC) < 200) {
-            e.userData.progress++; ringCollected(e.name);
-        }
-        if(e.position.distanceTo(planeRig.position) < 2000 && now - e.userData.lastShot > 3000) {
-            spawnEnemyBullet(e, planeRig.position); e.userData.lastShot = now;
-        }
+        if(e.position.distanceTo(TMP_VEC) < 200) { e.userData.progress++; ringCollected(e.name); }
+        if(e.position.distanceTo(planeRig.position) < 2000 && now - e.userData.lastShot > 3000) { spawnEnemyBullet(e, planeRig.position); e.userData.lastShot = now; }
     });
 
-    // BULLET UPDATES (Per-second movement with DT)
+    // Bullets Physics
     for (let i = bullets.length - 1; i >= 0; i--) {
-      const b = bullets[i]; 
-      b.mesh.position.addScaledVector(b.velocity, dt); 
-      b.life -= dt;
-      
+      const b = bullets[i]; b.mesh.position.addScaledVector(b.velocity, dt); b.life -= dt;
       if (b.life <= 0) { scene.remove(b.mesh); bullets.splice(i, 1); continue; }
-      
       if (b.isEnemy && b.mesh.position.distanceTo(planeRig.position) < 80) {
           health -= 10; SFXManager.playExplosion(isSoundOn); scene.remove(b.mesh); bullets.splice(i, 1);
           if(health <= 0) endGame(false, "Shot Down!"); continue;
       }
     }
 
-    // Health UI
     document.getElementById('health-fill').style.width = health + '%';
-    planeMesh.rotation.z = visualRoll; planeMesh.rotation.x = visualPitch;
-    const targetCamPos = new THREE.Vector3(0, 100, 300).applyMatrix4(planeRig.matrixWorld);
-    camera.position.lerp(targetCamPos, 0.1); camera.lookAt(planeRig.position);
+    const targetCam = new THREE.Vector3(0, 100, 300).applyMatrix4(planeRig.matrixWorld);
+    camera.position.lerp(targetCam, 0.1); camera.lookAt(planeRig.position);
     
     if (currentRingObj && planeRig.position.distanceTo(currentRingObj.position) < 150) ringCollected("PLAYER");
 
-    drawMinimap();
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
   }
 
-  function endGame(win, reason) { 
-      isPlaying = false; 
-      SFXManager.stopAll(); 
-      if(win) MusicManager.playWin(); else MusicManager.playLose();
-      const screen = document.getElementById('end-screen');
-      document.getElementById('end-title').innerText = win ? "VICTORY" : "DEFEAT";
-      document.getElementById('end-msg').innerText = reason;
-      screen.classList.remove('hidden'); 
-  }
-
+  function endGame(win, reason) { isPlaying = false; SFXManager.stopAll(); if(win) MusicManager.playWin(); else MusicManager.playLose(); const s = document.getElementById('end-screen'); s.classList.remove('hidden'); document.getElementById('end-title').innerText = win ? "VICTORY" : "DEFEAT"; document.getElementById('end-msg').innerText = reason; }
   window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 </script>
 </body>
