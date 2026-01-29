@@ -8,9 +8,11 @@
   <!-- THREE.JS LIBRARY -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   
-  <!-- Global Audio Managers & Config -->
-  <!-- ✅ Fix 1: Using 'game-config.js' to match your actual filename -->
+  <!-- Config & Logic -->
   <script src="game-config.js"></script>
+  <script src="map.js"></script> <!-- ✅ Map Manager Added -->
+  
+  <!-- Global Audio Managers -->
   <script src="game-manager.js"></script>
   <script src="sfx-manager.js"></script>
   <script src="music-manager.js"></script>
@@ -31,7 +33,6 @@
     .right-hud { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; }
     .top-right-row { display: flex; align-items: flex-start; gap: 15px; }
 
-    /* Leaderboard */
     .leaderboard-box {
       background: rgba(0,0,0,0.6); padding: 15px; border-radius: 10px;
       color: white; min-width: 220px; pointer-events: none;
@@ -44,57 +45,34 @@
     .lb-player { color: #00ff00; text-shadow: 0 0 5px #00ff00; }
     .lb-rank-1 { color: #ffd700; }
 
-    /* Bars */
     .bar-container { width: 220px; text-align: left; pointer-events: none; }
     .right-hud .bar-container { text-align: right; }
     .bar-label { font-weight: 900; font-size: 14px; margin-bottom: 3px; letter-spacing: 1px; text-shadow: 0 0 5px black; }
-    .bar-bg { width: 100%; height: 12px; background: rgba(0,0,0,0.6); border: 1px solid #444; border-radius: 6px; overflow: hidden; transform: skewX(-20deg); box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+    .bar-bg { width: 100%; height: 12px; background: rgba(0,0,0,0.6); border: 1px solid #444; border-radius: 6px; overflow: hidden; transform: skewX(-20deg); box-shadow: 0 0 5px rgba(0,210,255,0.5); }
     .health-label { color: #00ff00; text-shadow: 0 0 10px #00ff00; }
     #health-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #cc0000, #00ff00); box-shadow: 0 0 10px #00ff00; transition: width 0.1s linear; }
     .boost-label { color: #00d2ff; text-shadow: 0 0 10px #00d2ff; }
     #boost-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #0066ff, #00d2ff); box-shadow: 0 0 15px #00d2ff; transition: width 0.1s linear; }
 
-    /* FPS */
     #fps-counter { background: rgba(0,0,0,0.5); color: #00ff00; padding: 5px 10px; border-radius: 5px; font-family: monospace; font-weight: bold; font-size: 12px; pointer-events: none; margin-bottom: 5px; }
     
-    /* Pause Button */
     .pause-btn { background: rgba(0,0,0,0.6); color: white; border: 2px solid white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; transition: 0.2s; }
     .pause-btn:hover { background: white; color: black; box-shadow: 0 0 15px white; }
 
-    /* Minimap */
     #minimap-container { position: absolute; bottom: 20px; left: 20px; width: 140px; height: 140px; background: rgba(0,10,30,0.8); border: 2px solid #00d2ff; border-radius: 50%; overflow: hidden; pointer-events: none; box-shadow: 0 0 15px rgba(0,210,255,0.3); }
     #minimap-canvas { width: 100%; height: 100%; }
 
-    /* MOBILE CONTROLS (Updated with ontouchcancel) */
-    .mobile-controls {
-        display: none; 
-        position: absolute; bottom: 20px; width: 100%; 
-        padding: 0 20px; box-sizing: border-box;
-        justify-content: space-between; pointer-events: none;
-        z-index: 100;
-    }
+    .mobile-controls { display: none; position: absolute; bottom: 20px; width: 100%; padding: 0 20px; box-sizing: border-box; justify-content: space-between; pointer-events: none; z-index: 100; }
     @media (max-width: 1024px) { .mobile-controls { display: flex; } }
     .control-group { pointer-events: auto; display: flex; gap: 10px; }
     .dpad { display: grid; grid-template-columns: 60px 60px 60px; grid-template-rows: 60px 60px; gap: 5px; }
-    .mob-btn {
-        width: 60px; height: 60px; background: rgba(255,255,255,0.1);
-        border: 2px solid rgba(255,255,255,0.3); border-radius: 50%;
-        color: white; font-weight: bold; font-size: 20px;
-        display: flex; align-items: center; justify-content: center;
-        user-select: none; -webkit-user-select: none;
-        backdrop-filter: blur(4px);
-    }
+    .mob-btn { width: 60px; height: 60px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; color: white; font-weight: bold; font-size: 20px; display: flex; align-items: center; justify-content: center; user-select: none; backdrop-filter: blur(4px); }
     .mob-btn:active { background: rgba(0, 210, 255, 0.4); border-color: #00d2ff; transform: scale(0.95); }
     .mob-btn-rect { width: 80px; height: 60px; border-radius: 15px; font-size: 14px; }
     .mob-fire { border-color: #ff4444; } .mob-fire:active { background: rgba(255, 0, 0, 0.3); }
     .mob-boost { border-color: #00d2ff; }
-    
-    .btn-up { grid-column: 2; grid-row: 1; }
-    .btn-left { grid-column: 1; grid-row: 2; }
-    .btn-down { grid-column: 2; grid-row: 2; }
-    .btn-right { grid-column: 3; grid-row: 2; }
+    .btn-up { grid-column: 2; grid-row: 1; } .btn-left { grid-column: 1; grid-row: 2; } .btn-down { grid-column: 2; grid-row: 2; } .btn-right { grid-column: 3; grid-row: 2; }
 
-    /* Screens */
     .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10; }
     .hidden { display: none !important; }
     .menu-box { background: rgba(12,20,30,0.85); border: 2px solid #00d2ff; border-radius: 20px; padding: 40px; text-align: center; box-shadow: 0 0 50px rgba(0,210,255,0.25), inset 0 0 30px rgba(0,210,255,0.1); width: 550px; max-width: 90%; max-height: 90vh; overflow-y: auto; animation: glowPulse 4s infinite alternate; }
@@ -127,7 +105,6 @@
           <div id="leaderboard-list"></div>
         </div>
       </div>
-
       <div class="right-hud">
         <div class="top-right-row">
           <div class="bar-container">
@@ -138,55 +115,32 @@
         </div>
       </div>
     </div>
-
-    <div id="minimap-container">
-      <canvas id="minimap-canvas" width="140" height="140"></canvas>
-    </div>
-
-    <!-- MOBILE CONTROLS -->
+    <div id="minimap-container"><canvas id="minimap-canvas" width="140" height="140"></canvas></div>
+    
+    <!-- MOBILE CONTROLS: Added ontouchcancel for safety -->
     <div class="mobile-controls">
         <div class="control-group dpad">
-            <div class="mob-btn btn-up" 
-                 ontouchstart="setKey('up', true)" 
-                 ontouchend="setKey('up', false)" 
-                 ontouchcancel="setKey('up', false)">▲</div>
-            <div class="mob-btn btn-left" 
-                 ontouchstart="setKey('left', true)" 
-                 ontouchend="setKey('left', false)" 
-                 ontouchcancel="setKey('left', false)">◀</div>
-            <div class="mob-btn btn-down" 
-                 ontouchstart="setKey('down', true)" 
-                 ontouchend="setKey('down', false)" 
-                 ontouchcancel="setKey('down', false)">▼</div>
-            <div class="mob-btn btn-right" 
-                 ontouchstart="setKey('right', true)" 
-                 ontouchend="setKey('right', false)" 
-                 ontouchcancel="setKey('right', false)">▶</div>
+            <div class="mob-btn btn-up" ontouchstart="setKey('up', true)" ontouchend="setKey('up', false)" ontouchcancel="setKey('up', false)">▲</div>
+            <div class="mob-btn btn-left" ontouchstart="setKey('left', true)" ontouchend="setKey('left', false)" ontouchcancel="setKey('left', false)">◀</div>
+            <div class="mob-btn btn-down" ontouchstart="setKey('down', true)" ontouchend="setKey('down', false)" ontouchcancel="setKey('down', false)">▼</div>
+            <div class="mob-btn btn-right" ontouchstart="setKey('right', true)" ontouchend="setKey('right', false)" ontouchcancel="setKey('right', false)">▶</div>
         </div>
         <div class="control-group" style="flex-direction: column; justify-content: flex-end;">
-            <div class="mob-btn mob-btn-rect mob-fire" 
-                 ontouchstart="setKey('fire', true)" 
-                 ontouchend="setKey('fire', false)" 
-                 ontouchcancel="setKey('fire', false)">FIRE</div>
-            <div class="mob-btn mob-btn-rect mob-boost" 
-                 ontouchstart="setKey('boost', true)" 
-                 ontouchend="setKey('boost', false)" 
-                 ontouchcancel="setKey('boost', false)">BOOST</div>
+            <div class="mob-btn mob-btn-rect mob-fire" ontouchstart="setKey('fire', true)" ontouchend="setKey('fire', false)" ontouchcancel="setKey('fire', false)">FIRE</div>
+            <div class="mob-btn mob-btn-rect mob-boost" ontouchstart="setKey('boost', true)" ontouchend="setKey('boost', false)" ontouchcancel="setKey('boost', false)">BOOST</div>
         </div>
     </div>
   </div>
 
-  <!-- START SCREEN -->
   <div id="start-screen" class="screen">
     <div class="menu-box">
       <h1>SKY PILOT</h1>
-      <p style="color:#00d2ff; letter-spacing:1px; margin-bottom:20px;">ADVANCED ENEMY AI UPDATE</p>
+      <p style="color:#00d2ff; letter-spacing:1px; margin-bottom:20px;">MISSION: RACE & DESTROY</p>
       <button class="action-btn" onclick="startSinglePlayer()">LAUNCH MISSION</button>
       <button class="action-btn secondary-btn" onclick="window.location.href='index.html'">BACK TO MENU</button>
     </div>
   </div>
 
-  <!-- PAUSE -->
   <div id="pause-screen" class="screen hidden">
     <div class="menu-box">
       <h1>PAUSED</h1>
@@ -195,7 +149,6 @@
     </div>
   </div>
 
-  <!-- END -->
   <div id="end-screen" class="screen hidden">
     <div class="menu-box">
       <h1 id="end-title" class="win-text">VICTORY</h1>
@@ -207,7 +160,6 @@
 <script>
   // ✅ FIX: Use namespaced Config object to avoid SyntaxError with globals
   const Cfg = window.SKY_CONFIG || {
-      // Fallback defaults if config fails
       RINGS_PER_LAP: 12, TOTAL_RINGS_WIN: 12, NORMAL_SPEED: 5, BOOST_SPEED: 10,
       TURN_SPEED: 0.03, LIFT_SPEED: 5, FIRE_RATE: 120, COLLISION_DAMAGE: 8,
       BOOST_DRAIN: 0.5, BOOST_REFILL: 0.1, 
@@ -215,40 +167,25 @@
       TERRAIN_COLORS: { SAND: 0xeebb88, GRASS: 0x55aa55, ROCK: 0x666666, SNOW: 0xffffff, WATER: 0x004488 }
   };
   
-  const WORLD_LIMIT = 24500; 
-
-  // ✅ Fix 4: Bullet Spam Limit
   const MAX_BULLETS = 80;
-
-  // ✅ Fix 2: Shared Bullet Assets to reduce performance overhead
+  
+  // Shared Assets (Performance Boost)
   const BULLET_GEO_P = new THREE.SphereGeometry(2, 8, 8);
   const BULLET_MAT_P = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
   const BULLET_GEO_E = new THREE.SphereGeometry(4, 8, 8);
   const BULLET_MAT_E = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 
   let scene, camera, renderer, planeRig, planeMesh, guideArrow;
-  
-  // ✅ Fix: Global variables for meshes to prevent memory leaks on restart
-  let terrainMesh, oceanMesh;
+  let terrainMesh, oceanMesh; // Global for disposal
   
   let enemies = [], repairKits = [], rings = [], ringWaypoints = [];
   let currentRingObj = null;
   let bullets = [], isPlaying = false, isPaused = false;
-  let boostLevel = 100; 
-  let health = 100; 
-  let lastFireTime = 0; 
-  // ✅ Fix: Debounce timers
-  let lastCrashTime = 0;
-  let playerLastRingIndex = -1;
+  let boostLevel = 100, health = 100; 
+  let lastFireTime = 0, lastCrashTime = 0, playerLastRingIndex = -1;
+  let miniTick = 0, aiTick = 0;
 
-  // ✅ Fix 3 & 5: Throttling vars
-  let miniTick = 0;
-  let aiTick = 0;
-
-  // PLAYER VELOCITY TRACKING FOR AI
-  let playerPrevPos = new THREE.Vector3();
-  let playerVelocity = new THREE.Vector3();
-
+  let playerPrevPos = new THREE.Vector3(), playerVelocity = new THREE.Vector3();
   let playerStats = { name: "PLAYER", rings: 0, progress: 0 };
   let enemyStats = [
     { name: "ACE", rings: 0, obj: null },
@@ -257,12 +194,11 @@
     { name: "HAWK", rings: 0, obj: null }
   ];
   let enemiesAliveCount = 4;
+  const activeKeys = {}; let visualRoll = 0, visualPitch = 0;
+  let lastFrameTime = performance.now(), frameCount = 0;
+  const fpsElem = document.getElementById('fps-counter');
+  const minimapCtx = document.getElementById('minimap-canvas').getContext('2d');
 
-  const activeKeys = {}; let visualRoll = 0; let visualPitch = 0;
-  let lastFrameTime = performance.now(); let frameCount = 0; const fpsElem = document.getElementById('fps-counter');
-  const minimapCanvas = document.getElementById('minimap-canvas'); const minimapCtx = minimapCanvas.getContext('2d');
-
-  // ---- Robust Helper function to safely get bindings ----
   function getBindings() {
       if (window.GameManager && window.GameManager.data && window.GameManager.data.bindings) {
           return window.GameManager.data.bindings;
@@ -270,33 +206,16 @@
       return { up:'w', down:'s', left:'a', right:'d', boost:' ', fire:'shift' };
   }
 
-  // ---- INPUT HANDLING ----
   function setKey(action, state) { 
       const binds = getBindings();
-      
-      if(action === "boost") {
-        activeKeys[binds.boost] = state;
-        activeKeys["Space"] = state; 
-        return;
-      }
-      if(action === "fire") {
-        activeKeys[binds.fire] = state;
-        activeKeys["shift"] = state; 
-        activeKeys["Shift"] = state; 
-        return;
-      }
-
-      let key = binds[action];
-      activeKeys[key] = state;
+      if(action === "boost") { activeKeys[binds.boost] = state; activeKeys["Space"] = state; return; }
+      if(action === "fire") { activeKeys[binds.fire] = state; activeKeys["shift"] = state; activeKeys["Shift"] = state; return; }
+      activeKeys[binds[action]] = state;
   }
 
   window.addEventListener('keydown', (e) => {
     if(e.key === "Escape") { togglePause(); return; }
-    if(isPaused) return;
-    
-    const binds = getBindings();
-    const k = e.key.toLowerCase();
-    
+    const binds = getBindings(); const k = e.key.toLowerCase();
     if(k === binds.up || k === 'arrowup') activeKeys[binds.up] = true;
     if(k === binds.down || k === 'arrowdown') activeKeys[binds.down] = true;
     if(k === binds.left || k === 'arrowleft') activeKeys[binds.left] = true;
@@ -306,9 +225,7 @@
   });
 
   window.addEventListener('keyup', (e) => {
-    const binds = getBindings();
-    const k = e.key.toLowerCase();
-    
+    const binds = getBindings(); const k = e.key.toLowerCase();
     if(k === binds.up || k === 'arrowup') activeKeys[binds.up] = false;
     if(k === binds.down || k === 'arrowdown') activeKeys[binds.down] = false;
     if(k === binds.left || k === 'arrowleft') activeKeys[binds.left] = false;
@@ -323,28 +240,15 @@
       if (actionId === 'down') return activeKeys[binds.down] || activeKeys['arrowdown']; 
       if (actionId === 'left') return activeKeys[binds.left] || activeKeys['arrowleft']; 
       if (actionId === 'right') return activeKeys[binds.right] || activeKeys['arrowright']; 
-      
-      if (actionId === 'boost') {
-        return activeKeys[binds.boost] || activeKeys[" "] || activeKeys["Space"];
-      }
-
-      if (actionId === 'fire') {
-        return activeKeys[binds.fire] || activeKeys["shift"] || activeKeys["Shift"];
-      }
-
+      if (actionId === 'boost') return activeKeys[binds.boost] || activeKeys[" "] || activeKeys["Space"];
+      if (actionId === 'fire') return activeKeys[binds.fire] || activeKeys["shift"] || activeKeys["Shift"];
       return activeKeys[binds[actionId]]; 
   }
 
-  // ---- UI ----
   function updateLeaderboard() {
     const list = document.getElementById('leaderboard-list'); if(!list) return; list.innerHTML = "";
     let racers = [playerStats, ...enemyStats].filter(r => r.name === "PLAYER" || (r.obj && r.obj.userData.alive));
-    racers = racers.map(r => {
-        if(r.name !== "PLAYER" && r.obj) {
-            r.rings = r.obj.userData.progress;
-        }
-        return r;
-    });
+    racers = racers.map(r => { if(r.name !== "PLAYER" && r.obj) { r.rings = r.obj.userData.progress; } return r; });
     racers.sort((a, b) => b.rings - a.rings);
     racers.forEach((r, i) => {
       const row = document.createElement("div"); row.className = "lb-row";
@@ -356,25 +260,20 @@
 
   function togglePause() {
     if(!isPlaying) return; isPaused = !isPaused;
-    const pauseScreen = document.getElementById('pause-screen');
-    if(isPaused) pauseScreen.classList.remove('hidden'); else { pauseScreen.classList.add('hidden'); requestAnimationFrame(animate); }
+    const ps = document.getElementById('pause-screen');
+    if(isPaused) ps.classList.remove('hidden'); else { ps.classList.add('hidden'); requestAnimationFrame(animate); }
   }
 
-  // ---- GAME LOGIC ----
   function ringCollected(collectorName) {
-    const sfxEnabled = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
-    if (typeof SFXManager !== 'undefined') SFXManager.playRing(sfxEnabled); 
-    
+    const sfx = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
+    if (typeof SFXManager !== 'undefined') SFXManager.playRing(sfx); 
     let winner = null;
     if (collectorName === "PLAYER") {
       playerStats.rings++; playerStats.progress++; updateRingVisuals();
       if (playerStats.rings >= Cfg.TOTAL_RINGS_WIN) winner = { win: true, name: "PLAYER" };
     } else {
       const eStat = enemyStats.find(e => e.name === collectorName);
-      if(eStat && eStat.obj) {
-        eStat.rings = eStat.obj.userData.progress;
-        if(eStat.rings >= Cfg.TOTAL_RINGS_WIN) winner = { win: false, name: eStat.name };
-      }
+      if(eStat && eStat.obj) { eStat.rings = eStat.obj.userData.progress; if(eStat.rings >= Cfg.TOTAL_RINGS_WIN) winner = { win: false, name: eStat.name }; }
     }
     updateLeaderboard();
     if (winner) { if (winner.win) endGame(true, "Race Champion!"); else endGame(false, `${winner.name} Won the Race!`); }
@@ -385,65 +284,51 @@
     if (obj.material) { if (Array.isArray(obj.material)) { obj.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); }); } else { if(obj.material.map) obj.material.map.dispose(); obj.material.dispose(); } }
   }
 
-  // ✅ Fix 3: Global start function for button
-  window.startSinglePlayer = function() { initGame(); }
-
-  // ✅ Fix 4: Touch Lock Logic with Unlock function
   let touchLocked = false;
   function preventTouch(e) { e.preventDefault(); }
-  function lockTouchScroll() {
-    if(touchLocked) return;
-    touchLocked = true;
-    document.body.addEventListener("touchmove", preventTouch, { passive: false });
-  }
-  function unlockTouchScroll(){
-    if(!touchLocked) return;
-    touchLocked = false;
-    document.body.removeEventListener("touchmove", preventTouch);
-  }
+  function lockTouchScroll() { if(touchLocked) return; touchLocked = true; document.body.addEventListener("touchmove", preventTouch, { passive: false }); }
+  function unlockTouchScroll(){ if(!touchLocked) return; touchLocked = false; document.body.removeEventListener("touchmove", preventTouch); }
+
+  // ✅ FIX: startSinglePlayer made global
+  window.startSinglePlayer = function() { initGame(); }
 
   function initGame() {
     lockTouchScroll();
-    
-    // Safe Init for Audio
     if (typeof SFXManager !== 'undefined') SFXManager.init(); 
     if (typeof MusicManager !== 'undefined') MusicManager.init();
-
     document.getElementById('start-screen').classList.add('hidden');
     const container = document.getElementById('game-container');
     
-    // ✅ Fix 1: Correct Bullet Disposal (remove without disposing shared assets)
+    // Cleanup with safety
     if (scene) { 
         rings.forEach(r => { scene.remove(r); disposeHierarchy(r); }); 
-        
-        bullets.forEach(b => {
-          if (b && b.mesh) {
-            if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
-          }
+        bullets.forEach(b => { 
+            // ✅ Fix: Safe bullet remove
+            if (b && b.mesh && b.mesh.parent) b.mesh.parent.remove(b.mesh); 
         });
         bullets.length = 0;
-
         repairKits.forEach(k => { scene.remove(k); disposeHierarchy(k); }); 
         enemies.forEach(e => { scene.remove(e); disposeHierarchy(e); });
         
-        // Dispose global meshes properly
         if (terrainMesh) { scene.remove(terrainMesh); disposeHierarchy(terrainMesh); }
         if (oceanMesh) { scene.remove(oceanMesh); disposeHierarchy(oceanMesh); }
     }
 
     if (renderer) {
-      renderer.dispose();
+      renderer.dispose(); 
       if(renderer.forceContextLoss) renderer.forceContextLoss();
-      renderer.context = null;
+      renderer.context = null; 
       if(renderer.domElement && renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
       renderer.domElement = null;
     }
     
     rings = []; repairKits = []; enemies = []; bullets = []; ringWaypoints = [];
+    
+    // ✅ Performance: Renderer Optimization
     scene = new THREE.Scene(); scene.background = new THREE.Color(0x87CEEB); 
     scene.fog = new THREE.Fog(0x87CEEB, 1200, 5500);
-    
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 9000); 
+    
     renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" }); 
     renderer.setSize(window.innerWidth, window.innerHeight); 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1)); 
@@ -455,44 +340,20 @@
     dirLight.castShadow = false; 
     scene.add(dirLight);
     
+    // ✅ Integration: Using MapManager
+    terrainMesh = MapManager.generateTerrain(Cfg); scene.add(terrainMesh);
+    oceanMesh = MapManager.generateOcean(Cfg); scene.add(oceanMesh);
+    const ringData = MapManager.generateRings(Cfg.RINGS_PER_LAP); rings = ringData.rings; ringWaypoints = ringData.waypoints;
+    rings.forEach(r => scene.add(r));
+
     playerStats = { name: "PLAYER", rings: 0, progress: 0 }; 
     playerLastRingIndex = -1;
+    enemyStats.forEach(e => e.rings = 0); health = 100; boostLevel = 100;
     
-    enemyStats.forEach(e => e.rings = 0); enemiesAliveCount = 4; health = 100; boostLevel = 100;
-    generateTerrain(); generateOcean(); createPlaneSystem(); createGuideArrow(); createRepairKits(); createRings(); createEnemies();
+    createPlaneSystem(); createGuideArrow(); createRepairKits(); createEnemies();
     updateRingVisuals(); updateLeaderboard();
     playerPrevPos.copy(planeRig.position);
     isPlaying = true; isPaused = false; animate();
-  }
-
-  function getTerrainHeight(x, z) {
-    let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200;
-    if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; return y - 50;
-  }
-
-  function generateTerrain() {
-    const geometry = new THREE.PlaneGeometry(50000, 50000, 60, 60); 
-    geometry.rotateX(-Math.PI / 2);
-    const positions = geometry.attributes.position; const colors = [];
-    for (let i = 0; i < positions.count; i++) {
-      const x = positions.getX(i); const z = positions.getZ(i);
-      let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200;
-      if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; positions.setY(i, y);
-      const color = new THREE.Color(); if (y < -50) color.setHex(Cfg.TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(Cfg.TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(Cfg.TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(Cfg.TERRAIN_COLORS.ROCK); else color.setHex(Cfg.TERRAIN_COLORS.SNOW); colors.push(color.r, color.g, color.b);
-    }
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true });
-    terrainMesh = new THREE.Mesh(geometry, mat); 
-    terrainMesh.position.y = -50; 
-    terrainMesh.receiveShadow = false; 
-    scene.add(terrainMesh);
-  }
-
-  function generateOcean() {
-    const geo = new THREE.PlaneGeometry(50000, 50000); geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({ color: Cfg.TERRAIN_COLORS.WATER, transparent: true, opacity: 0.6 });
-    oceanMesh = new THREE.Mesh(geo, mat); 
-    oceanMesh.position.y = -80; scene.add(oceanMesh);
   }
 
   function createPlaneMesh(color) {
@@ -510,257 +371,109 @@
 
   function createEnemies() {
     for(let i=0; i<4; i++) { 
-      const enemy = new THREE.Group(); 
-      const mesh = createPlaneMesh(0xaa0000); 
-      enemy.add(mesh); 
-      const offsetX = (i - 1.5) * 200; 
-      enemy.position.set(offsetX, 400, 400); 
-      enemy.name = enemyStats[i].name;
-      const aiStats = {
-        aggression: 0.3 + Math.random() * 0.7,
-        greed: 0.3 + Math.random() * 0.7,
-        coward: 0.2 + Math.random() * 0.6,
-        aim: 0.5 + Math.random() * 0.5,
-        dodge: 0.3 + Math.random() * 0.7
-      };
-      // ✅ Fix 3: Added lastRingIndex to prevent double counting
-      enemy.userData = { 
-        alive: true, health: 300, speed: Cfg.NORMAL_SPEED, progress: 0, ringLocked: false, lastShot: 0, boostUntil: 0, ai: aiStats, state: "RACE", stateTimer: 0, dodgeTimer: 0,
-        lastRingIndex: -1
-      }; 
-      scene.add(enemy); 
-      enemies.push(enemy); 
-      enemyStats[i].obj = enemy; 
+      const enemy = new THREE.Group(); const mesh = createPlaneMesh(0xaa0000); enemy.add(mesh); enemy.position.set((i - 1.5) * 200, 400, 400); enemy.name = enemyStats[i].name;
+      enemy.userData = { alive: true, health: 300, speed: Cfg.NORMAL_SPEED, progress: 0, lastShot: 0, ai: { aggression: 0.3 + Math.random() * 0.7, greed: 0.3 + Math.random() * 0.7, coward: 0.2 + Math.random() * 0.6, aim: 0.5 + Math.random() * 0.5, dodge: 0.3 + Math.random() * 0.7 }, state: "RACE", stateTimer: 0, dodgeTimer: 0, lastRingIndex: -1 }; 
+      scene.add(enemy); enemies.push(enemy); enemyStats[i].obj = enemy; 
     }
   }
 
   function createGuideArrow() { const group = new THREE.Group(); const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 }); const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 15, 8), mat); cylinder.rotation.x = Math.PI / 2; cylinder.position.z = -7.5; const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 8, 8), mat); cone.rotation.x = Math.PI / 2; group.add(cylinder, cone); guideArrow = group; scene.add(guideArrow); }
 
-  function createRings() { for(let i=0; i<Cfg.RINGS_PER_LAP; i++) { const angle = i * (Math.PI * 2 / Cfg.RINGS_PER_LAP); const x = Math.sin(angle) * 12000; const z = Math.cos(angle) * -12000; const groundY = getTerrainHeight(x, z); const y = Math.max(500, groundY + 400); ringWaypoints.push({x, y, z}); const geo = new THREE.TorusGeometry(80, 10, 16, 50); const mat = new THREE.MeshPhongMaterial({ color: 0xFFD700, emissive: 0xffaa00, shininess: 100 }); const ring = new THREE.Mesh(geo, mat); ring.position.set(x, y, z); ring.rotation.y = Math.random() * Math.PI; ring.userData.locked = false; scene.add(ring); rings.push(ring); } }
+  function updateRingVisuals() { const curr = playerStats.progress % Cfg.RINGS_PER_LAP; rings.forEach((r, i) => { if (i === curr) { r.material.emissive.setHex(0xffaa00); r.material.color.setHex(0xffd700); r.visible = true; currentRingObj = r; } else { r.visible = false; } }); }
 
-  function updateRingVisuals() { const currentTargetIdx = playerStats.progress % Cfg.RINGS_PER_LAP; rings.forEach((r, i) => { if (i === currentTargetIdx) { r.material.emissive.setHex(0xffaa00); r.material.color.setHex(0xffd700); r.visible = true; currentRingObj = r; currentRingObj.userData.locked = false; } else { r.visible = false; } }); }
-
-  function createRepairKits() { const kitGroupPrototype = new THREE.Group(); const boxGeo = new THREE.BoxGeometry(60, 60, 60); const boxMat = new THREE.MeshPhongMaterial({ color: 0x00aa00, emissive: 0x003300, shininess: 30 }); const box = new THREE.Mesh(boxGeo, boxMat); kitGroupPrototype.add(box); const crossMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); const vBar = new THREE.Mesh(new THREE.BoxGeometry(20, 70, 20), crossMat); const hBar = new THREE.Mesh(new THREE.BoxGeometry(70, 20, 20), crossMat); const dBar = new THREE.Mesh(new THREE.BoxGeometry(20, 20, 70), crossMat); kitGroupPrototype.add(vBar, hBar, dBar); const positions = [{ x: 1000, z: -3000 }, { x: -2000, z: -6000 }, { x: 500, z: -9000 }]; positions.forEach((loc) => { const groundY = getTerrainHeight(loc.x, loc.z); const y = Math.max(300, groundY + 200); const kit = kitGroupPrototype.clone(); kit.position.set(loc.x, y, loc.z); kit.userData = { active: true, respawnTime: 0 }; scene.add(kit); repairKits.push(kit); }); }
-
-  function calculateLeadAim(shooterPos, target, bulletSpeed, accuracy) {
-    const dist = shooterPos.distanceTo(target.position);
-    const timeToImpact = dist / bulletSpeed;
-    const predictedPos = target.position.clone().add(playerVelocity.clone().multiplyScalar(timeToImpact));
-    const errorMagnitude = (1.0 - accuracy) * 100;
-    const errorOffset = new THREE.Vector3((Math.random()-0.5)*errorMagnitude,(Math.random()-0.5)*errorMagnitude,(Math.random()-0.5)*errorMagnitude);
-    return predictedPos.add(errorOffset);
-  }
+  function createRepairKits() { const kitP = new THREE.Group(); kitP.add(new THREE.Mesh(new THREE.BoxGeometry(60, 60, 60), new THREE.MeshPhongMaterial({ color: 0x00aa00, emissive: 0x003300, shininess: 30 }))); const cross = new THREE.MeshBasicMaterial({ color: 0xffffff }); kitP.add(new THREE.Mesh(new THREE.BoxGeometry(20, 70, 20), cross), new THREE.Mesh(new THREE.BoxGeometry(70, 20, 20), cross), new THREE.Mesh(new THREE.BoxGeometry(20, 20, 70), cross)); [{ x: 1000, z: -3000 }, { x: -2000, z: -6000 }, { x: 500, z: -9000 }].forEach((loc) => { const y = Math.max(300, MapManager.getTerrainHeight(loc.x, loc.z) + 200); const kit = kitP.clone(); kit.position.set(loc.x, y, loc.z); kit.userData = { active: true, respawnTime: 0 }; scene.add(kit); repairKits.push(kit); }); }
 
   function spawnBullet() {
-    const sfxEnabled = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
-    if (typeof SFXManager !== 'undefined') SFXManager.playGun(sfxEnabled); 
-    
+    const sfx = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
+    if (typeof SFXManager !== 'undefined') SFXManager.playGun(sfx); 
     let target = null; let minDist = Infinity; const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(planeRig.quaternion);
-    enemies.forEach(e => { if(!e.userData.alive) return; const toEnemy = new THREE.Vector3().subVectors(e.position, planeRig.position); const dist = toEnemy.length(); if(dist < 8000 && forward.dot(toEnemy.normalize()) > 0.7 && dist < minDist) { minDist = dist; target = e; } });
-    const offsets = [-12, 12];
-    offsets.forEach(offset => { 
-      // ✅ Fix 2: Use Shared Assets
-      const bullet = new THREE.Mesh(BULLET_GEO_P, BULLET_MAT_P); 
-      bullet.position.copy(planeRig.position); const wingX = Math.cos(planeRig.rotation.y) * offset; const wingZ = Math.sin(planeRig.rotation.y) * -offset; bullet.position.x += wingX; bullet.position.z += wingZ; scene.add(bullet); 
-      const v = new THREE.Vector3(0,0,-1).applyQuaternion(planeRig.quaternion).multiplyScalar(Cfg.BULLET_SPEED_PLAYER); 
-      bullets.push({ mesh: bullet, velocity: v, target: target, life: 150 }); 
-    });
+    enemies.forEach(e => { if(!e.userData.alive) return; const toE = new THREE.Vector3().subVectors(e.position, planeRig.position); const dist = toE.length(); if(dist < 8000 && forward.dot(toE.normalize()) > 0.7 && dist < minDist) { minDist = dist; target = e; } });
+    [-12, 12].forEach(off => { const bullet = new THREE.Mesh(BULLET_GEO_P, BULLET_MAT_P); bullet.position.copy(planeRig.position); bullet.position.x += Math.cos(planeRig.rotation.y) * off; bullet.position.z += Math.sin(planeRig.rotation.y) * -off; scene.add(bullet); const v = new THREE.Vector3(0,0,-1).applyQuaternion(planeRig.quaternion).multiplyScalar(Cfg.BULLET_SPEED_PLAYER); bullets.push({ mesh: bullet, velocity: v, target, life: 150 }); });
   }
 
-  function spawnEnemyBullet(enemy, targetPos) { 
-    // ✅ Fix 2: Use Shared Assets
-    const bullet = new THREE.Mesh(BULLET_GEO_E, BULLET_MAT_E); 
-    bullet.position.copy(enemy.position); scene.add(bullet); 
-    const direction = new THREE.Vector3().subVectors(targetPos, enemy.position).normalize(); 
-    direction.x += (Math.random() - 0.5) * 0.02; direction.y += (Math.random() - 0.5) * 0.02; direction.z += (Math.random() - 0.5) * 0.02; 
-    const v = direction.multiplyScalar(Cfg.BULLET_SPEED_ENEMY); 
-    bullets.push({ mesh: bullet, velocity: v, life: 220, isEnemy: true, owner: enemy }); 
-    const sfxEnabled = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
-    if (sfxEnabled && Math.random() < 0.3 && typeof SFXManager !== 'undefined') SFXManager.playGun(sfxEnabled); 
-  }
+  function spawnEnemyBullet(enemy, targetPos) { const bullet = new THREE.Mesh(BULLET_GEO_E, BULLET_MAT_E); bullet.position.copy(enemy.position); scene.add(bullet); const v = new THREE.Vector3().subVectors(targetPos, enemy.position).normalize().multiplyScalar(Cfg.BULLET_SPEED_ENEMY); bullets.push({ mesh: bullet, velocity: v, life: 220, isEnemy: true, owner: enemy }); const sfx = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true; if (sfx && Math.random() < 0.3 && typeof SFXManager !== 'undefined') SFXManager.playGun(sfx); }
 
-  function drawMinimap() { if(!minimapCtx || !planeRig) return; minimapCtx.clearRect(0, 0, 140, 140); const cx = 70, cy = 70; const range = 4000; const scale = 60 / range; minimapCtx.save(); minimapCtx.translate(cx, cy); minimapCtx.rotate(-planeRig.rotation.y + Math.PI); minimapCtx.beginPath(); minimapCtx.moveTo(0, -6); minimapCtx.lineTo(-4, 4); minimapCtx.lineTo(4, 4); minimapCtx.fillStyle = "#00ff00"; minimapCtx.fill(); minimapCtx.restore(); function drawDot(obj, color, size) { if(!obj || !obj.visible) return; const dx = obj.position.x - planeRig.position.x; const dz = obj.position.z - planeRig.position.z; let px = dx * scale; let py = dz * scale; const dist = Math.sqrt(px*px + py*py); if (dist > 65) { const ratio = 65 / dist; px *= ratio; py *= ratio; } minimapCtx.beginPath(); minimapCtx.arc(cx + px, cy + py, size, 0, Math.PI * 2); minimapCtx.fillStyle = color; minimapCtx.fill(); } if(currentRingObj) drawDot(currentRingObj, "#ffd700", 4); enemies.forEach(e => { if(e.userData.alive) drawDot(e, "#ff0000", 3); }); }
+  function drawMinimap() { if(!minimapCtx || !planeRig) return; minimapCtx.clearRect(0, 0, 140, 140); const cx = 70, cy = 70, scale = 60 / 4000; minimapCtx.save(); minimapCtx.translate(cx, cy); minimapCtx.rotate(-planeRig.rotation.y + Math.PI); minimapCtx.beginPath(); minimapCtx.moveTo(0, -6); minimapCtx.lineTo(-4, 4); minimapCtx.lineTo(4, 4); minimapCtx.fillStyle = "#00ff00"; minimapCtx.fill(); minimapCtx.restore(); function dot(obj, col, sz) { if(!obj || !obj.visible) return; const dx = (obj.position.x - planeRig.position.x) * scale, dz = (obj.position.z - planeRig.position.z) * scale, dist = Math.sqrt(dx*dx + dz*dz); let px = dx, py = dz; if(dist > 65) { px *= 65/dist; py *= 65/dist; } minimapCtx.beginPath(); minimapCtx.arc(cx + px, cy + py, sz, 0, Math.PI*2); minimapCtx.fillStyle = col; minimapCtx.fill(); } if(currentRingObj) dot(currentRingObj, "#ffd700", 4); enemies.forEach(e => { if(e.userData.alive) dot(e, "#ff0000", 3); }); }
 
   function animate() {
     if (!isPlaying || isPaused) return; 
-    frameCount++; const t = performance.now(); 
-    if (t - lastFrameTime >= 1000) { if (fpsElem) fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastFrameTime = t; }
-    const now = Date.now();
-    playerVelocity.subVectors(planeRig.position, playerPrevPos);
-    playerVelocity.clampLength(0, 50);
-    playerPrevPos.copy(planeRig.position);
+    frameCount++; const t = performance.now(); if (t - lastFrameTime >= 1000) { if (fpsElem) fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastFrameTime = t; }
+    const now = Date.now(); playerVelocity.subVectors(planeRig.position, playerPrevPos).clampLength(0, 50); playerPrevPos.copy(planeRig.position);
     
-    // ✅ Fix 5: Enemy AI Throttling
-    aiTick++;
-    const runAI = (aiTick % 2 === 0);
-    
-    // ✅ Fix 4: Bullet Spam Limit
-    if (isActionActive('fire') && now - lastFireTime > Cfg.FIRE_RATE) { 
-        if (bullets.length < MAX_BULLETS) {
-            spawnBullet(); 
-            lastFireTime = now; 
-        }
-    }
+    // ✅ Throttled Bullet Check & Limit
+    if (isActionActive('fire') && now - lastFireTime > Cfg.FIRE_RATE && bullets.length < MAX_BULLETS) { spawnBullet(); lastFireTime = now; }
 
+    aiTick++; const runAI = (aiTick % 2 === 0);
     enemies.forEach((e, idx) => {
-      if(!e.userData.alive) return;
-      const ai = e.userData.ai;
-      const distToPlayer = e.position.distanceTo(planeRig.position);
-      
-      let incomingThreat = false;
-      // ✅ Fix 5: Throttled bullet checks
-      if (runAI) {
-          for (let b of bullets) { if (!b.isEnemy && b.mesh.position.distanceTo(e.position) < 800) { const toEnemy = e.position.clone().sub(b.mesh.position).normalize(); const bulletDir = b.velocity.clone().normalize(); if(bulletDir.dot(toEnemy) > 0.8) { incomingThreat = true; break; } } }
+      if(!e.userData.alive) return; const ai = e.userData.ai; const dist = e.position.distanceTo(planeRig.position); let threat = false;
+      if(runAI) { for(let b of bullets) { if(!b.isEnemy && b.mesh.position.distanceTo(e.position) < 800) { if(b.velocity.clone().normalize().dot(e.position.clone().sub(b.mesh.position).normalize()) > 0.8) { threat = true; break; } } } }
+      let st = e.userData.dodgeTimer > 0 ? "EVADE" : (e.userData.stateTimer > 0 ? e.userData.state : "RACE");
+      if(st === "EVADE") e.userData.dodgeTimer--; else if(e.userData.stateTimer > 0) e.userData.stateTimer--; else {
+        if(threat && Math.random() < ai.dodge) { st = "EVADE"; e.userData.dodgeTimer = 60; } else if(e.userData.health < 60 && Math.random() < ai.coward) st = "RETREAT"; else st = (dist < 3000 && Math.random() < ai.aggression) ? "HUNT" : "RACE";
+        e.userData.stateTimer = 60 + Math.floor(Math.random()*60);
       }
-      
-      let nextState = "RACE";
-      if (e.userData.dodgeTimer > 0) { nextState = "EVADE"; e.userData.dodgeTimer--; }
-      else if (e.userData.stateTimer > 0) { e.userData.stateTimer--; nextState = e.userData.state; }
-      else { if (incomingThreat && Math.random() < ai.dodge) { nextState = "EVADE"; e.userData.dodgeTimer = 60; } else if (e.userData.health < 60 && Math.random() < ai.coward) { nextState = "RETREAT"; } else { if ((playerStats.rings > e.userData.progress || distToPlayer < 3000) && Math.random() < ai.aggression) { nextState = "HUNT"; } else if (ai.greed > 0.7) { nextState = "RACE"; } } e.userData.stateTimer = 60 + Math.floor(Math.random() * 60); }
-      e.userData.state = nextState;
-      let targetPosVec = null; let desiredSpeed = e.userData.speed; let shooting = false;
-      let targetIdx = e.userData.progress % Cfg.RINGS_PER_LAP; const wp = ringWaypoints[targetIdx];
-      if (!wp) return;
-      const raceTarget = new THREE.Vector3(wp.x, wp.y, wp.z);
-      if (nextState === "RACE") { targetPosVec = raceTarget; if (e.userData.progress < playerStats.progress) { desiredSpeed *= 1.4; } else if (e.userData.progress > playerStats.progress + 2) { desiredSpeed *= 0.9; } }
-      else if (nextState === "HUNT") { 
-          targetPosVec = calculateLeadAim(e.position, planeRig, Cfg.BULLET_SPEED_ENEMY, ai.aim); 
-          shooting = true; 
-          desiredSpeed *= 1.1; 
+      e.userData.state = st; let target = null, spd = e.userData.speed, shoot = false;
+      const wp = ringWaypoints[e.userData.progress % Cfg.RINGS_PER_LAP]; if(!wp) return;
+      if(st === "RACE") { target = new THREE.Vector3(wp.x, wp.y, wp.z); if(e.userData.progress < playerStats.progress) spd *= 1.4; }
+      else if(st === "HUNT") { 
+          const impact = dist / Cfg.BULLET_SPEED_ENEMY; target = planeRig.position.clone().add(playerVelocity.clone().multiplyScalar(impact)); 
+          shoot = true; spd *= 1.1; 
       }
-      else if (nextState === "RETREAT") { const awayFromPlayer = e.position.clone().sub(planeRig.position).normalize(); targetPosVec = e.position.clone().add(awayFromPlayer.multiplyScalar(2000)); targetPosVec.y = 800; desiredSpeed *= 1.3; }
-      else if (nextState === "EVADE") { targetPosVec = e.position.clone().add(new THREE.Vector3((Math.random()-0.5)*500,(Math.random()-0.5)*500,500).applyQuaternion(e.quaternion)); e.rotation.z = (e.rotation.z + 0.2) % (Math.PI * 2); desiredSpeed *= 1.2; }
-      const forwardDir = new THREE.Vector3(0,0,-1).applyQuaternion(e.quaternion); const sensorPos = e.position.clone().add(forwardDir.clone().multiplyScalar(500)); const terrainH_ahead = getTerrainHeight(sensorPos.x, sensorPos.z);
-      let pitchForce = 0; if (sensorPos.y < terrainH_ahead + 250) { pitchForce = 0.06; }
-      if (targetPosVec && nextState !== "EVADE") { const dummy = new THREE.Object3D(); dummy.position.copy(e.position); dummy.lookAt(targetPosVec); dummy.rotateY(Math.PI); const turnRate = (nextState === "HUNT") ? 0.05 : 0.03; e.quaternion.slerp(dummy.quaternion, turnRate); e.rotation.z = THREE.MathUtils.lerp(e.rotation.z, 0, 0.05); }
-      e.rotation.x = THREE.MathUtils.lerp(e.rotation.x, 0, 0.02); e.rotation.x = THREE.MathUtils.clamp(e.rotation.x - pitchForce, -0.6, 0.6);
-      e.translateZ(-desiredSpeed);
-
-      e.position.x = THREE.MathUtils.clamp(e.position.x, -WORLD_LIMIT, WORLD_LIMIT);
-      e.position.z = THREE.MathUtils.clamp(e.position.z, -WORLD_LIMIT, WORLD_LIMIT);
-
-      if (shooting && distToPlayer < 5000) { const toTarget = planeRig.position.clone().sub(e.position).normalize(); const dot = forwardDir.dot(toTarget); if (dot > 0.85 && (now - (e.userData.lastShot || 0) > 1500)) { spawnEnemyBullet(e, targetPosVec); e.userData.lastShot = now; } }
-      const currentH = getTerrainHeight(e.position.x, e.position.z); if(e.position.y < currentH + 80) { e.position.y = currentH + 80; e.rotation.x -= 0.05; }
+      else if(st === "RETREAT") { target = e.position.clone().add(e.position.clone().sub(planeRig.position).normalize().multiplyScalar(2000)); target.y = 800; spd *= 1.3; }
+      else if(st === "EVADE") { target = e.position.clone().add(new THREE.Vector3((Math.random()-0.5)*500,500,500).applyQuaternion(e.quaternion)); spd *= 1.2; }
       
-      if (wp) { 
-          const ringPos = new THREE.Vector3(wp.x, wp.y, wp.z); 
-          const dist = e.position.distanceTo(ringPos); 
-          
-          if (dist < 180 && e.userData.lastRingIndex !== targetIdx) { 
-              e.userData.lastRingIndex = targetIdx; 
-              e.userData.progress++; 
-              ringCollected(enemyStats[idx].name); 
-          } 
-      }
+      if(target && st !== "EVADE") { const d = new THREE.Object3D(); d.position.copy(e.position); d.lookAt(target); d.rotateY(Math.PI); e.quaternion.slerp(d.quaternion, st === "HUNT" ? 0.05 : 0.03); }
+      const sens = e.position.clone().add(new THREE.Vector3(0,0,-1).applyQuaternion(e.quaternion).multiplyScalar(500));
+      e.rotation.x = THREE.MathUtils.clamp(THREE.MathUtils.lerp(e.rotation.x, 0, 0.02) - (sens.y < MapManager.getTerrainHeight(sens.x, sens.z)+250 ? 0.06 : 0), -0.6, 0.6);
+      e.translateZ(-spd);
+      e.position.x = THREE.MathUtils.clamp(e.position.x, -MapManager.WORLD_LIMIT, MapManager.WORLD_LIMIT);
+      e.position.z = THREE.MathUtils.clamp(e.position.z, -MapManager.WORLD_LIMIT, MapManager.WORLD_LIMIT);
+      if(shoot && dist < 5000 && (now - e.userData.lastShot > 1500)) { spawnEnemyBullet(e, target); e.userData.lastShot = now; }
+      const h = MapManager.getTerrainHeight(e.position.x, e.position.z); if(e.position.y < h+80) { e.position.y = h+80; e.rotation.x -= 0.05; }
+      if(e.position.distanceTo(new THREE.Vector3(wp.x, wp.y, wp.z)) < 180 && e.userData.lastRingIndex !== (e.userData.progress % Cfg.RINGS_PER_LAP)) { e.userData.lastRingIndex = e.userData.progress % Cfg.RINGS_PER_LAP; e.userData.progress++; ringCollected(e.name); }
     });
 
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i]; b.mesh.position.add(b.velocity); b.life--;
-      const gh = getTerrainHeight(b.mesh.position.x, b.mesh.position.z); 
-      if (b.mesh.position.y < gh + 10 || b.life <= 0) { 
-          // ✅ Fix 1: Correct Bullet Disposal (remove without disposing shared assets)
-          if(b.mesh.parent) b.mesh.parent.remove(b.mesh); 
-          bullets.splice(i, 1); 
-          continue; 
-      }
-      const sfxEnabled = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
-      if (b.isEnemy) { if (b.mesh.position.distanceTo(planeRig.position) < 80) { health -= 8; if (typeof SFXManager !== 'undefined') SFXManager.playExplosion(sfxEnabled); if (health <= 0) { health = 0; endGame(false, "Shot Down by " + (b.owner.name || "Enemy")); } if(b.mesh.parent) b.mesh.parent.remove(b.mesh); bullets.splice(i, 1); continue; } }
+      if (b.mesh.position.y < MapManager.getTerrainHeight(b.mesh.position.x, b.mesh.position.z)+10 || b.life <= 0) { if(b.mesh.parent) b.mesh.parent.remove(b.mesh); bullets.splice(i, 1); continue; }
+      const sfx = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
+      if (b.isEnemy) { if (b.mesh.position.distanceTo(planeRig.position) < 80) { health -= 8; if(typeof SFXManager !== 'undefined') SFXManager.playExplosion(sfx); if(health <= 0) endGame(false, "Shot Down by " + b.owner.name); if(b.mesh.parent) b.mesh.parent.remove(b.mesh); bullets.splice(i, 1); continue; } }
       else { 
-        if(b.target && b.target.userData.alive) { const dir = new THREE.Vector3().subVectors(b.target.position, b.mesh.position).normalize(); b.velocity.lerp(dir.multiplyScalar(Cfg.BULLET_SPEED_PLAYER), 0.1); }
-        let hit = false; for(let e of enemies) { if(e.userData.alive && b.mesh.position.distanceTo(e.position) < 80) { e.userData.health -= 25; if (typeof SFXManager !== 'undefined') SFXManager.playExplosion(sfxEnabled); e.userData.dodgeTimer = 90; e.userData.state = "EVADE"; if(e.userData.health <= 0) { e.userData.alive = false; e.visible = false; enemiesAliveCount--; if(enemiesAliveCount === 0) endGame(true, "Ace Combatant: All Enemies Down"); } hit = true; break; } }
+        if(b.target && b.target.userData.alive) b.velocity.lerp(new THREE.Vector3().subVectors(b.target.position, b.mesh.position).normalize().multiplyScalar(Cfg.BULLET_SPEED_PLAYER), 0.1);
+        let hit = false; for(let e of enemies) { if(e.userData.alive && b.mesh.position.distanceTo(e.position) < 80) { e.userData.health -= 25; if(typeof SFXManager !== 'undefined') SFXManager.playExplosion(sfx); e.userData.dodgeTimer = 90; if(e.userData.health <= 0) { e.userData.alive = false; e.visible = false; enemiesAliveCount--; if(enemiesAliveCount === 0) endGame(true, "Ace Pilot: All Enemies Down"); } hit = true; break; } }
         if(hit) { if(b.mesh.parent) b.mesh.parent.remove(b.mesh); bullets.splice(i, 1); continue; }
       }
     }
 
-    let currentSpeed = Cfg.NORMAL_SPEED; let engineGlow = planeMesh.getObjectByName("EngineGlow");
-    if (isActionActive('boost') && boostLevel > 0) { currentSpeed = Cfg.BOOST_SPEED; boostLevel -= Cfg.BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0; if(engineGlow) engineGlow.material.opacity = 0.8; } else { if (boostLevel < 100) boostLevel += Cfg.BOOST_REFILL; if(engineGlow) engineGlow.material.opacity = 0; }
-    document.getElementById('boost-fill').style.width = boostLevel + '%';
-    planeRig.translateZ(-currentSpeed);
-
-    planeRig.position.x = THREE.MathUtils.clamp(planeRig.position.x, -WORLD_LIMIT, WORLD_LIMIT);
-    planeRig.position.z = THREE.MathUtils.clamp(planeRig.position.z, -WORLD_LIMIT, WORLD_LIMIT);
-
-    if (isActionActive('left')) { planeRig.rotation.y += Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); } else if (isActionActive('right')) { planeRig.rotation.y -= Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); } else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
-    if (isActionActive('up')) { planeRig.position.y += Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.5, 0.1); } else if (isActionActive('down')) { planeRig.position.y -= Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.5, 0.1); } else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
-    const groundHeight = getTerrainHeight(planeRig.position.x, planeRig.position.z); let isDamaging = false; 
-    
-    if (planeRig.position.y < groundHeight + 15) { 
-        planeRig.position.y = groundHeight + 15; 
-        
-        if (now - lastCrashTime > 500) {
-            health -= Cfg.COLLISION_DAMAGE; 
-            isDamaging = true; 
-            lastCrashTime = now;
-            
-            if (health <= 0) { 
-                health = 0; 
-                endGame(false, "Crashed into Terrain"); 
-            }
-        }
-    }
-    
-    const sfxEnabled = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
-    if (typeof SFXManager !== 'undefined') SFXManager.updateContinuous(isActionActive('boost'), isDamaging, sfxEnabled);
-    if (typeof MusicManager !== 'undefined') MusicManager.updateGameplayMusic(health);
-
-    document.getElementById('health-fill').style.width = health + '%';
-    planeMesh.rotation.z = visualRoll; planeMesh.rotation.x = visualPitch;
-    const targetCamPos = new THREE.Vector3(0, 100, 300).applyMatrix4(planeRig.matrixWorld);
-    camera.position.lerp(targetCamPos, 0.1); camera.lookAt(planeRig.position);
-    
-    if (currentRingObj) { 
-        guideArrow.visible = true; 
-        guideArrow.position.copy(planeRig.position); 
-        guideArrow.position.y += 60; 
-        guideArrow.lookAt(currentRingObj.position); 
-        
-        if (planeRig.position.distanceTo(currentRingObj.position) < 100) { 
-            if (playerLastRingIndex !== playerStats.progress) {
-                playerLastRingIndex = playerStats.progress;
-                ringCollected("PLAYER"); 
-            }
-        } 
-    } else {
-        guideArrow.visible = false;
-    }
-    
-    repairKits.forEach(kit => { if (kit.userData.active) { kit.rotation.y += 0.02; if (planeRig.position.distanceTo(kit.position) < 80) { kit.userData.active = false; kit.visible = false; kit.userData.respawnTime = Date.now() + 30000; health += 30; if(health > 100) health = 100; if (typeof SFXManager !== 'undefined') SFXManager.playRepair(sfxEnabled); } } else if (Date.now() > kit.userData.respawnTime) { kit.userData.active = true; kit.visible = true; } });
-    rings.forEach(r => r.rotation.z += 0.01);
-    
-    // ✅ Fix 3: Global pollution fix
-    miniTick++;
-    if (miniTick >= 6) { 
-        drawMinimap();
-        miniTick = 0;
-    }
-    
-    renderer.render(scene, camera);
-    requestAnimationFrame(animate);
+    let spd = isActionActive('boost') && boostLevel > 0 ? Cfg.BOOST_SPEED : Cfg.NORMAL_SPEED;
+    if(isActionActive('boost') && boostLevel > 0) { boostLevel -= Cfg.BOOST_DRAIN; planeMesh.getObjectByName("EngineGlow").material.opacity = 0.8; } else { boostLevel = Math.min(100, boostLevel + Cfg.BOOST_REFILL); planeMesh.getObjectByName("EngineGlow").material.opacity = 0; }
+    document.getElementById('boost-fill').style.width = boostLevel + '%'; planeRig.translateZ(-spd);
+    planeRig.position.x = THREE.MathUtils.clamp(planeRig.position.x, -MapManager.WORLD_LIMIT, MapManager.WORLD_LIMIT);
+    planeRig.position.z = THREE.MathUtils.clamp(planeRig.position.z, -MapManager.WORLD_LIMIT, MapManager.WORLD_LIMIT);
+    if(isActionActive('left')) { planeRig.rotation.y += Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); } else if(isActionActive('right')) { planeRig.rotation.y -= Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); } else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
+    if(isActionActive('up')) { planeRig.position.y += Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.5, 0.1); } else if(isActionActive('down')) { planeRig.position.y -= Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.5, 0.1); } else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
+    const gh = MapManager.getTerrainHeight(planeRig.position.x, planeRig.position.z); let dmg = false;
+    if(planeRig.position.y < gh + 15) { planeRig.position.y = gh + 15; if(now - lastCrashTime > 500) { health -= Cfg.COLLISION_DAMAGE; dmg = true; lastCrashTime = now; if(health <= 0) endGame(false, "Crashed into Terrain"); } }
+    const sfx_en = (typeof GameManager !== 'undefined' && GameManager.data) ? GameManager.data.sfx : true;
+    if(typeof SFXManager !== 'undefined') SFXManager.updateContinuous(isActionActive('boost'), dmg, sfx_en);
+    if(typeof MusicManager !== 'undefined') MusicManager.updateGameplayMusic(health);
+    document.getElementById('health-fill').style.width = health + '%'; planeMesh.rotation.z = visualRoll; planeMesh.rotation.x = visualPitch;
+    const camTarget = new THREE.Vector3(0, 100, 300).applyMatrix4(planeRig.matrixWorld); camera.position.lerp(camTarget, 0.1); camera.lookAt(planeRig.position);
+    if(currentRingObj) { guideArrow.visible = true; guideArrow.position.copy(planeRig.position).y += 60; guideArrow.lookAt(currentRingObj.position); if(planeRig.position.distanceTo(currentRingObj.position) < 100 && playerLastRingIndex !== playerStats.progress) { playerLastRingIndex = playerStats.progress; ringCollected("PLAYER"); } } else guideArrow.visible = false;
+    repairKits.forEach(k => { if(k.userData.active) { k.rotation.y += 0.02; if(planeRig.position.distanceTo(k.position) < 80) { k.userData.active = false; k.visible = false; k.userData.respawnTime = Date.now() + 30000; health = Math.min(100, health+30); if(typeof SFXManager !== 'undefined') SFXManager.playRepair(sfx_en); } } else if(Date.now() > k.userData.respawnTime) { k.userData.active = true; k.visible = true; } });
+    rings.forEach(r => r.rotation.z += 0.01); miniTick++; if(miniTick >= 6) { drawMinimap(); miniTick = 0; }
+    renderer.render(scene, camera); requestAnimationFrame(animate);
   }
 
   function endGame(win, reason) { 
-    isPlaying = false; 
-    
-    if (typeof MusicManager !== 'undefined') MusicManager.stop();
-    if (typeof SFXManager !== 'undefined') {
-        SFXManager.updateContinuous(false, false, false); 
-        SFXManager.stopAll(); 
-    }
-    
-    if(win) {
-        if (typeof MusicManager !== 'undefined') MusicManager.playWin();
-    } else {
-        if (typeof MusicManager !== 'undefined') MusicManager.playLose();
-    }
-    
-    // ✅ Fix 4: Unlock Touch
-    unlockTouchScroll();
-    
-    const screen = document.getElementById('end-screen'); const title = document.getElementById('end-title'); const msg = document.getElementById('end-msg'); 
-    if (win) { title.innerText = "VICTORY"; title.className = "win-text"; msg.innerText = reason || "Race Champion!"; } else { title.innerText = "DEFEAT"; title.className = "lose-text"; msg.innerText = reason || "Lost"; } 
-    screen.classList.remove('hidden'); 
+    isPlaying = false; unlockTouchScroll(); if(typeof MusicManager !== 'undefined') MusicManager.stop();
+    if(typeof SFXManager !== 'undefined') { SFXManager.updateContinuous(false, false, false); SFXManager.stopAll(); }
+    if(win) { if(typeof MusicManager !== 'undefined') MusicManager.playWin(); } else { if(typeof MusicManager !== 'undefined') MusicManager.playLose(); }
+    const s = document.getElementById('end-screen'), t = document.getElementById('end-title'), m = document.getElementById('end-msg');
+    if(win) { t.innerText = "VICTORY"; t.className = "win-text"; m.innerText = reason || "Champion!"; } else { t.innerText = "DEFEAT"; t.className = "lose-text"; m.innerText = reason || "Lost"; }
+    s.classList.remove('hidden'); 
   }
-  window.addEventListener('resize', () => { if (camera && renderer) { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); } });
+  window.addEventListener('resize', () => { if(camera && renderer) { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); } });
 </script>
 </body>
 </html>
