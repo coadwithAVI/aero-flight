@@ -288,6 +288,16 @@
   const BULLET_SPEED = 8000; 
   const TMP_VEC3 = new THREE.Vector3(); // Global Reuse
 
+  // ✅ FIX: ADDED SEEDED RANDOM FUNCTION
+  // --- SEEDED RNG ---
+  // Default to null to ensure we wait for server sync
+  let gameSeed = null; 
+  function seededRandom() {
+    // Basic LCG
+    gameSeed = (gameSeed * 9301 + 49297) % 233280;
+    return gameSeed / 233280;
+  }
+
   // --- MP STATE ---
   let gameMode = "multi";
   let mp = { roomId: null, isHost: false, inLobby: false, playerName: null };
@@ -356,7 +366,22 @@
   }
   
   function mpCountdownThenStart() { let n = 3; const txt = document.getElementById("countdown-text"); txt.innerText = n; const timer = setInterval(() => { n--; if (n > 0) txt.innerText = n; else if (n === 0) txt.innerText = "GO!"; else { clearInterval(timer); initMultiplayerGame(); } }, 1000); }
-  function initMultiplayerGame() { initGame(); document.getElementById("mp-menu-screen").classList.add("hidden"); document.getElementById("lobby-screen").classList.add("hidden"); document.getElementById("countdown-screen").classList.add("hidden"); document.getElementById("pause-screen").classList.add("hidden"); document.getElementById("end-screen").classList.add("hidden"); }
+  
+  function initMultiplayerGame() { 
+      // 🔧 FIX 1: Strong Seed Sync - Wait for server seed with RETRY logic
+      if (typeof gameSeed !== "number") {
+          console.warn("Seed not received yet, retrying...");
+          setTimeout(initMultiplayerGame, 50);
+          return;
+      }
+      
+      initGame(); 
+      document.getElementById("mp-menu-screen").classList.add("hidden"); 
+      document.getElementById("lobby-screen").classList.add("hidden"); 
+      document.getElementById("countdown-screen").classList.add("hidden"); 
+      document.getElementById("pause-screen").classList.add("hidden"); 
+      document.getElementById("end-screen").classList.add("hidden"); 
+  }
 
   // --- SOCKET EVENTS ---
   socket.on("connect", () => console.log("Connected:", socket.id));
@@ -395,12 +420,18 @@
           addOtherPlayer(players[id]); 
           allScores[id] = { name: players[id].name, rings: 0 };
       }); 
-      allScores[socket.id] = { name: mp.playerName, rings: 0 };
+      // 🔧 FIX 2: Ensure local player is tracked & sync UI
+      if(!allScores[socket.id]) {
+          allScores[socket.id] = { name: mp.playerName, rings: 0 };
+      }
+      updateLeaderboard();
   });
 
   socket.on("newPlayer", (playerInfo) => {
       addOtherPlayer(playerInfo);
       allScores[playerInfo.playerId] = { name: playerInfo.name, rings: 0 };
+      // ✅ FIX: Update leaderboard immediately when new player joins
+      updateLeaderboard();
   });
 
   socket.on("playerDisconnected", (playerId) => {
@@ -502,7 +533,8 @@
   let lastFrameTime = performance.now(); let frameCount = 0; const fpsElem = document.getElementById('fps-counter');
   const minimapCanvas = document.getElementById('minimap-canvas'); const minimapCtx = minimapCanvas.getContext('2d');
   let audioCtx, boostOsc, boostGain, boostNoise, boostNoiseGain, noiseNode, noiseGain;
-  let gameSeed = 12345;
+  
+  // ✅ FIX: Removed duplicate gameSeed from here
 
   const AudioSys = {
     init: function() { 
@@ -963,5 +995,3 @@
   function endGame(win, reason) { isPlaying = false; AudioSys.stopAll(); const screen = document.getElementById('end-screen'); const title = document.getElementById('end-title'); const msg = document.getElementById('end-msg'); if (win) { title.innerText = "VICTORY"; title.className = "win-text"; msg.innerText = reason || "Race Champion!"; } else { title.innerText = "DEFEAT"; title.className = "lose-text"; msg.innerText = reason || "Lost"; } screen.classList.remove('hidden'); }
   window.addEventListener('resize', () => { if (camera && renderer) { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); } });
 </script>
-</body>
-</html>
