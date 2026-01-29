@@ -5,15 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sky Pilot - Multiplayer</title>
 
-  <!-- Socket.IO client -->
   <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
-  <!-- THREE.JS LIBRARY -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   
-  <!-- Global Managers -->
+  <script src="game-config.js"></script> <script src="game-manager.js"></script>
   <script src="sfx-manager.js"></script>
   <script src="music-manager.js"></script>
-  <script src="game-manager.js"></script>
 
   <style>
     body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; }
@@ -89,7 +86,7 @@
 
     /* MOBILE CONTROLS */
     .mobile-controls {
-        display: none; /* Hidden on desktop by default */
+        display: none; 
         position: absolute; bottom: 20px; width: 100%; 
         padding: 0 20px; box-sizing: border-box;
         justify-content: space-between; pointer-events: none;
@@ -111,7 +108,7 @@
     .mob-btn-rect { width: 80px; height: 60px; border-radius: 15px; font-size: 14px; }
     .mob-fire { border-color: #ff4444; } .mob-fire:active { background: rgba(255, 0, 0, 0.3); }
     .mob-boost { border-color: #00d2ff; }
-     
+      
     .btn-up { grid-column: 2; grid-row: 1; }
     .btn-left { grid-column: 1; grid-row: 2; }
     .btn-down { grid-column: 2; grid-row: 2; }
@@ -198,10 +195,9 @@
         </div>
       </div>
     </div>
-     
+      
     <div id="minimap-container"><canvas id="minimap-canvas" width="140" height="140"></canvas></div>
 
-    <!-- MOBILE CONTROLS -->
     <div class="mobile-controls">
         <div class="control-group dpad">
             <div class="mob-btn btn-up" ontouchstart="setKey('up', true)" ontouchend="setKey('up', false)">▲</div>
@@ -216,7 +212,6 @@
     </div>
   </div>
 
-  <!-- MULTIPLAYER MENU -->
   <div id="mp-menu-screen" class="screen">
     <div class="menu-box">
       <h1>MULTIPLAYER</h1>
@@ -228,7 +223,6 @@
     </div>
   </div>
 
-  <!-- LOBBY SCREEN -->
   <div id="lobby-screen" class="screen hidden">
     <div class="menu-box">
       <h1>LOBBY</h1>
@@ -242,7 +236,6 @@
     </div>
   </div>
 
-  <!-- COUNTDOWN -->
   <div id="countdown-screen" class="screen hidden">
     <div class="menu-box">
       <h1 id="countdown-text" style="font-size:90px;">3</h1>
@@ -250,7 +243,6 @@
     </div>
   </div>
 
-  <!-- PAUSE -->
   <div id="pause-screen" class="screen hidden">
     <div class="menu-box">
       <h1>PAUSED</h1>
@@ -259,7 +251,6 @@
     </div>
   </div>
 
-  <!-- END -->
   <div id="end-screen" class="screen hidden">
     <div class="menu-box">
       <h1 id="end-title" class="win-text">VICTORY</h1>
@@ -269,28 +260,35 @@
   </div>
 
 <script>
-  // --- INLINE CONFIGURATION (No external files needed) ---
-  const TERRAIN_COLORS = { SAND: 0xeebb88, GRASS: 0x55aa55, ROCK: 0x666666, SNOW: 0xffffff, WATER: 0x004488 };
-  const RINGS_PER_LAP = 4;
-  const TOTAL_LAPS = 2;
-  const TOTAL_RINGS_WIN = 8;
-  const NORMAL_SPEED = 5;
-  const BOOST_SPEED = 10;
-  const TURN_SPEED = 0.05;
-  const LIFT_SPEED = 3;
-  const FIRE_RATE = 200;
-  const BOOST_DRAIN = 0.5;
-  const BOOST_REFILL = 0.1;
-  const COLLISION_DAMAGE = 20;
-  const WORLD_LIMIT = 24500; // World Boundary logic
+  // --- LOAD FROM GLOBAL CONFIG (Fix: No Inline overrides) ---
+  const { 
+      RINGS_PER_LAP, 
+      TOTAL_RINGS_WIN, 
+      NORMAL_SPEED, 
+      BOOST_SPEED, 
+      TURN_SPEED, 
+      LIFT_SPEED, 
+      FIRE_RATE, 
+      COLLISION_DAMAGE, 
+      BOOST_DRAIN, 
+      BOOST_REFILL, 
+      TERRAIN_COLORS 
+  } = window.SKY_CONFIG || {
+      // Fallback if config fails to load
+      RINGS_PER_LAP: 12, TOTAL_RINGS_WIN: 12, NORMAL_SPEED: 5, BOOST_SPEED: 10,
+      TURN_SPEED: 0.03, LIFT_SPEED: 5, FIRE_RATE: 120, COLLISION_DAMAGE: 8,
+      BOOST_DRAIN: 0.5, BOOST_REFILL: 0.1, TERRAIN_COLORS: { SAND: 0xeebb88, GRASS: 0x55aa55, ROCK: 0x666666, SNOW: 0xffffff, WATER: 0x004488 }
+  };
+
+  const WORLD_LIMIT = 24500; 
 
   document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
 
-  // --- SHARED BULLET ASSETS (Performance Optimization) ---
+  // --- SHARED BULLET ASSETS ---
   const BULLET_GEO = new THREE.SphereGeometry(2, 8, 8);
   const BULLET_MAT_MY = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
   const BULLET_MAT_ENEMY = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-  const BULLET_SPEED = 8000; // Units per second (approx 130 * 60)
+  const BULLET_SPEED = 8000; 
 
   // --- SEEDED RNG ---
   let gameSeed = 12345;
@@ -316,7 +314,7 @@
       socket = { emit() {}, on() {} }; 
   }
 
-  // --- OPTIMIZATION VARS (FIX 1) ---
+  // --- OPTIMIZATION VARS ---
   let lastRender = 0;
   const FPS_CAP = 60;
   const FRAME_TIME = 1000 / FPS_CAP;
@@ -324,14 +322,14 @@
   // --- SCREEN HELPERS ---
   function showScreen(id) { document.querySelectorAll(".screen").forEach(s => s.classList.add("hidden")); const el = document.getElementById(id); if (el) el.classList.remove("hidden"); }
   function lobbyRenderPlayers(players) { const list = document.getElementById("lobby-player-list"); list.innerHTML = ""; players.forEach((p, i) => { const row = document.createElement("div"); row.textContent = `${i+1}. ${p.name}${p.isHost ? " (HOST)" : ""}`; list.appendChild(row); }); }
-  
+   
   function mpCreateRoom() { 
       SFXManager.init(); 
       MusicManager.init();
       mp.playerName = prompt("Enter your name:", "ACE") || "ACE"; 
       socket.emit("mp_create_room", { name: mp.playerName }); 
   }
-  
+   
   function mpJoinRoom() { 
       SFXManager.init(); 
       MusicManager.init();
@@ -359,13 +357,13 @@
       mp.inLobby = false; 
       showScreen("mp-menu-screen"); 
   }
-  
+   
   function mpHostStartGame() { 
       if (!mp.isHost) return; 
       const seed = Math.floor(Math.random() * 100000);
       socket.emit("mp_start_game", { roomId: mp.roomId, seed: seed }); 
   }
-  
+   
   function mpCountdownThenStart() { let n = 3; const txt = document.getElementById("countdown-text"); txt.innerText = n; const timer = setInterval(() => { n--; if (n > 0) txt.innerText = n; else if (n === 0) txt.innerText = "GO!"; else { clearInterval(timer); initMultiplayerGame(); } }, 1000); }
   function initMultiplayerGame() { initGame(); document.getElementById("mp-menu-screen").classList.add("hidden"); document.getElementById("lobby-screen").classList.add("hidden"); document.getElementById("countdown-screen").classList.add("hidden"); document.getElementById("pause-screen").classList.add("hidden"); document.getElementById("end-screen").classList.add("hidden"); }
 
@@ -375,7 +373,7 @@
   socket.on("mp_room_joined", ({ roomId, players, hostId }) => { mp.roomId = roomId; mp.isHost = (socket.id === hostId); mp.inLobby = true; document.getElementById("lobby-room-id").innerText = roomId; lobbyRenderPlayers(players); document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); showScreen("lobby-screen"); });
   socket.on("mp_lobby_update", ({ roomId, players, hostId }) => { if (mp.roomId !== roomId) return; mp.isHost = (socket.id === hostId); lobbyRenderPlayers(players); document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); });
   socket.on("mp_error", (msg) => alert(msg || "Multiplayer error"));
-  
+   
   socket.on("mp_game_starting", (data) => { 
       if(data && data.seed) gameSeed = data.seed;
       showScreen("countdown-screen"); 
@@ -401,8 +399,7 @@
       delete allScores[playerId];
       updateLeaderboard();
   });
-  
-  // FIX H: BUFFERED INTERPOLATION RECEPTION (Corrected for Server Time)
+   
   socket.on("playerMoved", (playerInfo) => { 
       const id = playerInfo.playerId || playerInfo.id;
       if (!id) return;
@@ -450,7 +447,6 @@
       spawnNetworkBullet(startPos, quaternion, data.shooterId);
   });
 
-  // FIX A & E: SERVER AUTHORITATIVE KIT LOGIC
   socket.on('mp_kit_collected', ({ kitIndex, collectorId }) => {
       if (repairKits[kitIndex]) {
           repairKits[kitIndex].visible = false;
@@ -516,7 +512,7 @@
         requestAnimationFrame(animate);
       }
   }
-  
+   
   // --- INPUT HANDLING ---
   window.addEventListener('keydown', (e) => { 
       if(e.key === "Escape") { togglePause(); return; } 
@@ -530,7 +526,7 @@
       if(k === binds.boost) activeKeys[k] = true; 
       if(k === binds.fire) activeKeys[k] = true; 
   });
-  
+   
   window.addEventListener('keyup', (e) => { 
       const k = e.key.toLowerCase(); 
       const binds = GameManager.data.bindings;
@@ -551,7 +547,7 @@
       return activeKeys[binds[actionId]]; 
   }
   function setKey(action, state) { let key = GameManager.data.bindings[action]; activeKeys[key] = state; }
-  
+   
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       isPaused = true;
@@ -586,16 +582,16 @@
           list.appendChild(row); 
       });
   }
-  
+   
   function ringCollected() { 
       SFXManager.playRing(GameManager.data.sfx);
       if (mp.roomId) {
-          socket.emit('mp_claim_ring', { roomId: mp.roomId, ringIndex: playerStats.progress % RINGS_PER_LAP });
+          socket.emit('mp_claim_ring', { roomId: mp.roomId });
       }
   }
 
   function disposeHierarchy(obj) { if (!obj) return; if (obj.children) obj.children.forEach(disposeHierarchy); if (obj.geometry) obj.geometry.dispose(); if (obj.material) { if (Array.isArray(obj.material)) obj.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); }); else { if(obj.material.map) obj.material.map.dispose(); obj.material.dispose(); } } }
-  
+   
   function initGame() {
     const container = document.getElementById('game-container'); 
     
@@ -688,7 +684,7 @@
   }
 
   function getTerrainHeight(x, z) { let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; return y - 50; }
-  
+   
   function generateTerrain() { 
       const geometry = new THREE.PlaneGeometry(50000, 50000, 120, 120); 
       geometry.rotateX(-Math.PI / 2); const positions = geometry.attributes.position; const colors = []; for (let i = 0; i < positions.count; i++) { const x = positions.getX(i); const z = positions.getZ(i); let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; positions.setY(i, y); const color = new THREE.Color(); if (y < -50) color.setHex(TERRAIN_COLORS.SAND); else if (y < 100) color.setHex(TERRAIN_COLORS.SAND); else if (y < 500) color.setHex(TERRAIN_COLORS.GRASS); else if (y < 900) color.setHex(TERRAIN_COLORS.ROCK); else color.setHex(TERRAIN_COLORS.SNOW); colors.push(color.r, color.g, color.b); } geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true }); 
@@ -704,7 +700,7 @@
   function createPlaneMesh(color) { const group = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.4 }); const glass = new THREE.MeshStandardMaterial({ color: 0x00aaff, opacity: 0.6, transparent: true }); const body = new THREE.Mesh(new THREE.CylinderGeometry(2, 4, 30, 8), mat); body.rotateX(-Math.PI/2); const nose = new THREE.Mesh(new THREE.ConeGeometry(2, 10, 8), mat); nose.rotateX(-Math.PI/2); nose.position.z = -20; const cockpit = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 10), glass); cockpit.position.set(0, 2.5, -5); const lWing = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 15), mat); lWing.position.set(-10, 0, 5); lWing.rotation.y = 0.3; const rWing = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 15), mat); rWing.position.set(10, 0, 5); rWing.rotation.y = -0.3; const lTail = new THREE.Mesh(new THREE.BoxGeometry(8, 0.5, 8), mat); lTail.position.set(-5, 0, 18); lTail.rotation.y = 0.2; const rTail = new THREE.Mesh(new THREE.BoxGeometry(8, 0.5, 8), mat); rTail.position.set(5, 0, 18); rTail.rotation.y = -0.2; const lFin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 10), mat); lFin.position.set(-2, 4, 18); lFin.rotation.z = 0.2; const rFin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 10), mat); rFin.position.set(2, 4, 18); rFin.rotation.z = -0.2; const intakeGeo = new THREE.BoxGeometry(3, 4, 10); const lIntake = new THREE.Mesh(intakeGeo, mat); lIntake.position.set(-3.5, -1, 5); const rIntake = new THREE.Mesh(intakeGeo, mat); rIntake.position.set(3.5, -1, 5); group.add(body, nose, cockpit, lWing, rWing, lTail, rTail, lFin, rFin, lIntake, rIntake); return group; }
   function createPlaneSystem() { planeRig = new THREE.Group(); planeRig.position.set(0, 400, 800); scene.add(planeRig); planeMesh = createPlaneMesh(0x555555); planeRig.add(planeMesh); const glowGeo = new THREE.ConeGeometry(3, 10, 8); glowGeo.rotateX(Math.PI / 2); const glowMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, transparent: true, opacity: 0 }); const glow = new THREE.Mesh(glowGeo, glowMat); glow.position.set(0, 0, 20); glow.name = "EngineGlow"; planeMesh.add(glow); }
   function createGuideArrow() { const group = new THREE.Group(); const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 }); const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 15, 8), mat); cylinder.rotation.x = Math.PI / 2; cylinder.position.z = -7.5; const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 8, 8), mat); cone.rotation.x = Math.PI / 2; group.add(cylinder, cone); guideArrow = group; scene.add(guideArrow); }
-  
+   
   function createRings() { 
       for(let i=0; i<RINGS_PER_LAP; i++) { 
           const angle = i * (Math.PI * 2 / RINGS_PER_LAP); 
@@ -723,9 +719,9 @@
           rings.push(ring); 
       } 
   }
-  
+   
   function updateRingVisuals() { const currentTargetIdx = playerStats.progress % RINGS_PER_LAP; rings.forEach((r, i) => { if (i === currentTargetIdx) { r.material.emissive.setHex(0xffaa00); r.material.color.setHex(0xffd700); r.visible = true; currentRingObj = r; currentRingObj.userData.locked = false; } else r.visible = false; }); }
-  
+   
   function createRepairKits() { 
       const kitGroupPrototype = new THREE.Group(); 
       const boxGeo = new THREE.BoxGeometry(60, 60, 60); 
@@ -751,7 +747,7 @@
   }
 
   function drawMinimap() { if(!minimapCtx || !planeRig) return; minimapCtx.clearRect(0, 0, 140, 140); const cx = 70, cy = 70; const range = 4000; const scale = 60 / range; minimapCtx.save(); minimapCtx.translate(cx, cy); minimapCtx.rotate(-planeRig.rotation.y + Math.PI); minimapCtx.beginPath(); minimapCtx.moveTo(0, -6); minimapCtx.lineTo(-4, 4); minimapCtx.lineTo(4, 4); minimapCtx.fillStyle = "#00ff00"; minimapCtx.fill(); minimapCtx.restore(); function drawDot(obj, color, size) { if(!obj || !obj.visible) return; const dx = obj.position.x - planeRig.position.x; const dz = obj.position.z - planeRig.position.z; let px = dx * scale; let py = dz * scale; const dist = Math.sqrt(px*px + py*py); if (dist > 65) { const ratio = 65 / dist; px *= ratio; py *= ratio; } minimapCtx.beginPath(); minimapCtx.arc(cx + px, cy + py, size, 0, Math.PI * 2); minimapCtx.fillStyle = color; minimapCtx.fill(); } if(currentRingObj) drawDot(currentRingObj, "#ffd700", 4); Object.values(otherPlayers).forEach(p => drawDot(p, "#ff0000", 3)); }
-  
+   
   function animate() {
     if (!isPlaying || isPaused) return;
 
@@ -795,7 +791,8 @@
         }
     }
 
-    let currentSpeed = NORMAL_SPEED; let isBoosting = false; if (isActionActive('boost') && boostLevel > 0) { currentSpeed = BOOST_SPEED; isBoosting = true; boostLevel -= BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0; } else { if (boostLevel < 100) boostLevel += BOOST_REFILL; } document.getElementById('boost-fill').style.width = boostLevel + '%';
+    let currentSpeed = NORMAL_SPEED; let isBoosting = false; 
+    if (isActionActive('boost') && boostLevel > 0) { currentSpeed = BOOST_SPEED; isBoosting = true; boostLevel -= BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0; } else { if (boostLevel < 100) boostLevel += BOOST_REFILL; } document.getElementById('boost-fill').style.width = boostLevel + '%';
     planeRig.translateZ(-currentSpeed);
 
     // Boundary Clamp for Local Player
@@ -830,9 +827,7 @@
             if (!currentRingObj.userData.lastClaimTs) currentRingObj.userData.lastClaimTs = 0;
             if (now - currentRingObj.userData.lastClaimTs > 500) { 
                 currentRingObj.userData.lastClaimTs = now;
-                if (mp.roomId) {
-                    socket.emit('mp_claim_ring', { roomId: mp.roomId, ringIndex: playerStats.progress % RINGS_PER_LAP });
-                }
+                ringCollected();
             }
         } 
     } else {
