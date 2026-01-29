@@ -488,13 +488,16 @@
       setTimeout(() => msg.style.display = "none", 2000); 
   }
 
-  function ringCollected() { 
-      // ✅ FIX C: Local prediction to avoid delay artifacts
-      playerStats.progress++;
-      updateRingVisuals();
-      socket.emit('mp_ring_collected', { roomId: mp.roomId, playerId: socket.id }); 
+   function ringCollected() {
+    const ringIndex = playerStats.progress % RINGS_PER_LAP; // expected ring
+    playerStats.progress++;
+    updateRingVisuals();
+  
+    socket.emit("mp_claim_ring", {
+      roomId: mp.roomId,
+      ringIndex: ringIndex
+    });
   }
-
   function endGame(win, reason) { isPlaying = false; SFXManager.stopAll(); if(win) MusicManager.playWin(); else MusicManager.playLose(); showScreen("end-screen"); document.getElementById('end-title').innerText = win ? "VICTORY" : "DEFEAT"; document.getElementById('end-msg').innerText = reason; }
   
   function getTerrainHeight(x, z) { let y = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 1000 + Math.sin(x * 0.005) * 200; if (z > -1000 && z < 1000 && x > -1000 && x < 1000) y *= 0.1; if (y < -150) y = -150; return y - 50; }
@@ -512,3 +515,4 @@
 </script>
 </body>
 </html>
+
