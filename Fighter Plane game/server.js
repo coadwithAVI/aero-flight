@@ -1,102 +1,458 @@
 const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const path = require('path');
 
 const app = express();
+
+const http = require('http');
+
 const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
 
-// ✅ FIX: Path resolution ko handle karne ke liye absolute path use karein
-// Agar aapke folder ka naam 'Public' hai toh niche 'Public' likhein, agar 'public' hai toh 'public'
-const publicPath = path.resolve(__dirname, 'Public'); 
+const { Server } = require("socket.io");
 
-// Static files serve karein
+const io = new Server(server);
+
+const path = require('path');
+
+const fs = require('fs');
+
+
+
+// --- PATH CONFIGURATION ---
+
+// Ensure your index.html is in a folder named 'Public' or adjust this path
+
+const publicPath = path.join(__dirname, 'Public');
+
+
+
+// --- SERVER SETUP ---
+
 app.use(express.static(publicPath));
 
-// Default route for index.html
+
+
 app.get('/', (req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'), (err) => {
-        if (err) {
-            console.error("Error: index.html dhoondne mein problem ho rahi hai!");
-            console.error("Path searched:", path.join(publicPath, 'index.html'));
-            res.status(404).send("Main menu file (index.html) not found in Public folder.");
-        }
-    });
+
+    const filePath = path.join(publicPath, 'index.html');
+
+    if (fs.existsSync(filePath)) {
+
+        res.sendFile(filePath);
+
+    } else {
+
+        res.status(404).send("<h1>Error 404: Index File Not Found (Check 'Public' folder)</h1>");
+
+    }
+
 });
 
-// --- MULTIPLAYER LOGIC ---
-const rooms = {};
+
+
+// --- GAME STATE ---
+
+let rooms = {}; 
+
+const RINGS_PER_LAP = 10;
+
+const KIT_RESPAWN_TIME = 30000; // 30 Seconds
+
+
 
 io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.id}`);
 
-    // Create Room
-    socket.on('mp_create_room', (data) => {
-        const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-        rooms[roomId] = {
-            host: socket.id,
-            players: [{ id: socket.id, name: data.name, isHost: true }],
-            gameStarted: false,
-            seed: Math.floor(Math.random() * 100000)
+    console.log('A user connected:', socket.id);
+
+
+
+    // 1. CREATE ROOM
+
+    socket.on('mp_create_room', ({ name }) => {
+
+        const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
+
+        
+
+        rooms[roomId] = { 
+
+            hostId: socket.id, 
+
+            players: [],
+
+            // Initialize 3 active repair kits
+
+            kits: [true, true, true],
+
+            status: 'lobby'
+
         };
+
+
+
+        // Add Host with initial score (rings: 0)
+
+        const playerObj = { id: socket.id, name: name, isHost: true, rings: 0 };
+
+        rooms[roomId].players.push(playerObj);
+
+        
+
         socket.join(roomId);
+
         socket.emit('mp_room_created', { roomId, players: rooms[roomId].players, hostId: socket.id });
+
     });
 
-    // Join Room
-    socket.on('mp_join_room', (data) => {
-        const room = rooms[data.roomId];
-        if (room && !room.gameStarted) {
-            room.players.push({ id: socket.id, name: data.name, isHost: false });
-            socket.join(data.roomId);
-            io.to(data.roomId).emit('mp_lobby_update', { roomId: data.roomId, players: room.players, hostId: room.host });
+
+
+    // 2. JOIN ROOM
+
+    socket.on('mp_join_room', ({ roomId, name }) => {
+
+        roomId = (roomId || "").toUpperCase();
+
+        const room = rooms[roomId];
+
+        
+
+        if (room && room.status === 'lobby') {
+
+            // Add Player with initial score (rings: 0)
+
+            const playerObj = { id: socket.id, name: name, isHost: false, rings: 0 };
+
+            room.players.push(playerObj);
+
+            
+
+            socket.join(roomId);
+
+            
+
+            // Notify joiner
+
+            socket.emit('mp_room_joined', { roomId, players: room.players, hostId: room.hostId });
+
+            
+
+            // ✅ FIX: Clean Object Structure for Joiner (Explicit coords for spawning)
+
+            let currentPlayersObj = {};
+
+            room.players.forEach(p => {
+
+                if(p.id !== socket.id) {
+
+                    currentPlayersObj[p.id] = {
+
+                        playerId: p.id,
+
+                        name: p.name,
+
+                        rings: p.rings,
+
+                        x: 0, y: 400, z: 0 // Default spawn pos
+
+                    };
+
+                }
+
+            });
+
+            socket.emit('currentPlayers', currentPlayersObj);
+
+
+
+            // ✅ FIX: Send Explicit Coordinates to Others (So Joiner spawns on Host's screen)
+
+            socket.to(roomId).emit('newPlayer', { 
+
+                playerId: socket.id, 
+
+                name: name,
+
+                rings: 0,
+
+                x: 0, y: 400, z: 0
+
+            });
+
+            
+
+            io.to(roomId).emit('mp_lobby_update', { roomId, players: room.players, hostId: room.hostId });
+
         } else {
-            socket.emit('error', { message: "Room not found or already started" });
+
+            socket.emit('mp_error', 'Room not found or game started!');
+
         }
+
     });
 
-    // Start Game
-    socket.on('mp_start_game', (data) => {
-        const room = rooms[data.roomId];
-        if (room && socket.id === room.host) {
-            room.gameStarted = true;
-            io.to(data.roomId).emit('mp_game_starting', { seed: data.seed || room.seed });
+
+
+    // 3. START GAME (With Seed)
+
+    socket.on('mp_start_game', ({ roomId, seed }) => {
+
+        if (rooms[roomId] && rooms[roomId].hostId === socket.id) {
+
+            rooms[roomId].status = 'playing';
+
+            // Pass the random seed to everyone so world generation is identical
+
+            io.to(roomId).emit('mp_game_starting', { seed });
+
         }
+
     });
 
-    // Movement Sync
-    socket.on('playerMovement', (data) => {
-        socket.to(data.roomId).emit('playerMoved', { ...data, playerId: socket.id });
+
+
+    // 4. MOVEMENT SYNC (With Timestamp)
+
+    socket.on('playerMovement', (movementData) => {
+
+        const { roomId } = movementData;
+
+        if (roomId) {
+
+            // Add Server Timestamp (ts) for smooth interpolation on client
+
+            socket.to(roomId).emit('playerMoved', {
+
+                playerId: socket.id,
+
+                x: movementData.x,
+
+                y: movementData.y,
+
+                z: movementData.z,
+
+                quaternion: movementData.quaternion,
+
+                rotX: movementData.rotX,
+
+                rotZ: movementData.rotZ,
+
+                ts: Date.now() // Critical for buffered interpolation
+
+            });
+
+        }
+
     });
 
-    // Shooting Sync
+
+
+    // 5. BULLET SYNC
+
     socket.on('mp_player_fire', (data) => {
-        socket.to(data.roomId).emit('mp_player_fire', { ...data, shooterId: socket.id });
-    });
 
-    // Ring Collection Sync
-    socket.on('mp_ring_collected', (data) => {
-        const room = rooms[data.roomId];
-        if (room) {
-            // Find player and update score (simple server-side tracking)
-            io.to(data.roomId).emit('mp_score_update', { playerId: socket.id, rings: 1 }); // Simplification for now
+        // Relay bullet event to everyone else in the room
+
+        if (data.roomId) {
+
+            socket.to(data.roomId).emit('mp_player_fire', data);
+
         }
+
     });
 
-    socket.on('disconnect', () => {
-        console.log(`User disconnected: ${socket.id}`);
-        // Room clean-up logic here (optional but recommended)
+
+
+    // 6. SERVER-AUTHORITATIVE KIT CLAIM
+
+    socket.on('mp_claim_kit', ({ roomId, kitIndex }) => {
+
+        const room = rooms[roomId];
+
+        // Validate room and kit index
+
+        if (!room || kitIndex < 0 || kitIndex >= room.kits.length) return;
+
+
+
+        // Only allow claim if kit is currently active (true)
+
+        if (room.kits[kitIndex]) {
+
+            room.kits[kitIndex] = false; // Mark inactive
+
+            
+
+            // Tell everyone kit is gone (and who got it)
+
+            io.to(roomId).emit('mp_kit_collected', { 
+
+                kitIndex, 
+
+                collectorId: socket.id 
+
+            });
+
+
+
+            // Schedule respawn after 30 seconds
+
+            setTimeout(() => {
+
+                // Check if room still exists before emitting
+
+                if (rooms[roomId]) {
+
+                    rooms[roomId].kits[kitIndex] = true; // Reactivate
+
+                    io.to(roomId).emit('mp_kit_restored', { kitIndex });
+
+                }
+
+            }, KIT_RESPAWN_TIME);
+
+        }
+
     });
+
+
+
+    // 7. SERVER-AUTHORITATIVE SCORE & WIN LOGIC
+
+    socket.on('mp_claim_ring', ({ roomId, ringIndex }) => {
+
+        const room = rooms[roomId];
+
+        if (!room) return;
+
+
+
+        // Find the player in the room
+
+        const player = room.players.find(p => p.id === socket.id);
+
+        if (player) {
+
+            // Validate sequence: Is this the correct next ring?
+
+            const expectedIndex = player.rings % RINGS_PER_LAP;
+
+            
+
+            if (ringIndex === expectedIndex) {
+
+                player.rings++; // Increment score on server
+
+                
+
+                // Broadcast verified score to update leaderboards
+
+                io.to(roomId).emit('mp_score_update', { 
+
+                    playerId: socket.id, 
+
+                    rings: player.rings,
+
+                    nextRingIndex: player.rings % RINGS_PER_LAP
+
+                });
+
+
+
+                // Check Win Condition (First to 10 rings)
+
+                if (player.rings >= 10) { 
+
+                    io.to(roomId).emit('mp_game_over', { 
+
+                        winnerName: player.name, 
+
+                        winnerId: socket.id 
+
+                    });
+
+                }
+
+            }
+
+        }
+
+    });
+
+
+
+    // 8. DISCONNECT
+
+    const handleDisconnect = () => {
+
+        for (const roomId in rooms) {
+
+            const room = rooms[roomId];
+
+            const playerIndex = room.players.findIndex(p => p.id === socket.id);
+
+            
+
+            if (playerIndex !== -1) {
+
+                // Remove player
+
+                room.players.splice(playerIndex, 1);
+
+                io.to(roomId).emit('playerDisconnected', socket.id);
+
+                
+
+                // If room empty, delete it
+
+                if (room.players.length === 0) {
+
+                    delete rooms[roomId];
+
+                } else {
+
+                    // If Host left, assign new host
+
+                    if (room.hostId === socket.id) {
+
+                        room.hostId = room.players[0].id;
+
+                        room.players[0].isHost = true;
+
+                    }
+
+                    io.to(roomId).emit('mp_lobby_update', { 
+
+                        roomId, 
+
+                        players: room.players, 
+
+                        hostId: room.hostId 
+
+                    });
+
+                }
+
+                break;
+
+            }
+
+        }
+
+    };
+
+
+
+    socket.on('mp_leave_room', handleDisconnect);
+
+    socket.on('disconnect', handleDisconnect);
+
 });
 
-const PORT = process.env.PORT || 10000;
+
+
+const PORT = process.env.PORT || 3000;
+
 server.listen(PORT, () => {
-    console.log(`✅ Multiplayer server running on port: ${PORT}`);
-    console.log(`📂 Serving static files from: ${publicPath}`);
+
+    console.log(`✅ SERVER RUNNING ON PORT: ${PORT}`);
+
 });
+
