@@ -5,10 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sky Pilot - Multiplayer</title>
 
+  <!-- Socket.IO client -->
   <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+  <!-- THREE.JS LIBRARY -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   
-  <script src="game-config.js"></script> <script src="game-manager.js"></script>
+  <!-- Global Managers & Config -->
+  <!-- ✅ Fix 1: Exact filenames and ensuring config is loaded first -->
+  <script src="game-config.js"></script>
+  <script src="game-manager.js"></script>
   <script src="sfx-manager.js"></script>
   <script src="music-manager.js"></script>
 
@@ -19,7 +24,9 @@
     #ui-layer {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       pointer-events: none;
-      display: flex; flex-direction: column; justify-content: space-between;
+      /* ✅ Fix 8: Hide UI initially (Lobby/Countdown) */
+      display: none; 
+      flex-direction: column; justify-content: space-between;
       padding: 20px; box-sizing: border-box;
     }
 
@@ -84,7 +91,7 @@
     }
     #minimap-canvas { width: 100%; height: 100%; }
 
-    /* MOBILE CONTROLS */
+    /* MOBILE CONTROLS (Fixed: Added ontouchcancel) */
     .mobile-controls {
         display: none; 
         position: absolute; bottom: 20px; width: 100%; 
@@ -198,20 +205,40 @@
       
     <div id="minimap-container"><canvas id="minimap-canvas" width="140" height="140"></canvas></div>
 
+    <!-- MOBILE CONTROLS (Fixed: Added ontouchcancel) -->
     <div class="mobile-controls">
         <div class="control-group dpad">
-            <div class="mob-btn btn-up" ontouchstart="setKey('up', true)" ontouchend="setKey('up', false)">▲</div>
-            <div class="mob-btn btn-left" ontouchstart="setKey('left', true)" ontouchend="setKey('left', false)">◀</div>
-            <div class="mob-btn btn-down" ontouchstart="setKey('down', true)" ontouchend="setKey('down', false)">▼</div>
-            <div class="mob-btn btn-right" ontouchstart="setKey('right', true)" ontouchend="setKey('right', false)">▶</div>
+            <div class="mob-btn btn-up" 
+                 ontouchstart="setKey('up', true)" 
+                 ontouchend="setKey('up', false)" 
+                 ontouchcancel="setKey('up', false)">▲</div>
+            <div class="mob-btn btn-left" 
+                 ontouchstart="setKey('left', true)" 
+                 ontouchend="setKey('left', false)" 
+                 ontouchcancel="setKey('left', false)">◀</div>
+            <div class="mob-btn btn-down" 
+                 ontouchstart="setKey('down', true)" 
+                 ontouchend="setKey('down', false)" 
+                 ontouchcancel="setKey('down', false)">▼</div>
+            <div class="mob-btn btn-right" 
+                 ontouchstart="setKey('right', true)" 
+                 ontouchend="setKey('right', false)" 
+                 ontouchcancel="setKey('right', false)">▶</div>
         </div>
         <div class="control-group" style="flex-direction: column; justify-content: flex-end;">
-            <div class="mob-btn mob-btn-rect mob-fire" ontouchstart="setKey('fire', true)" ontouchend="setKey('fire', false)">FIRE</div>
-            <div class="mob-btn mob-btn-rect mob-boost" ontouchstart="setKey('boost', true)" ontouchend="setKey('boost', false)">BOOST</div>
+            <div class="mob-btn mob-btn-rect mob-fire" 
+                 ontouchstart="setKey('fire', true)" 
+                 ontouchend="setKey('fire', false)" 
+                 ontouchcancel="setKey('fire', false)">FIRE</div>
+            <div class="mob-btn mob-btn-rect mob-boost" 
+                 ontouchstart="setKey('boost', true)" 
+                 ontouchend="setKey('boost', false)" 
+                 ontouchcancel="setKey('boost', false)">BOOST</div>
         </div>
     </div>
   </div>
 
+  <!-- MULTIPLAYER MENU -->
   <div id="mp-menu-screen" class="screen">
     <div class="menu-box">
       <h1>MULTIPLAYER</h1>
@@ -223,6 +250,7 @@
     </div>
   </div>
 
+  <!-- LOBBY SCREEN -->
   <div id="lobby-screen" class="screen hidden">
     <div class="menu-box">
       <h1>LOBBY</h1>
@@ -236,6 +264,7 @@
     </div>
   </div>
 
+  <!-- COUNTDOWN -->
   <div id="countdown-screen" class="screen hidden">
     <div class="menu-box">
       <h1 id="countdown-text" style="font-size:90px;">3</h1>
@@ -243,6 +272,7 @@
     </div>
   </div>
 
+  <!-- PAUSE -->
   <div id="pause-screen" class="screen hidden">
     <div class="menu-box">
       <h1>PAUSED</h1>
@@ -251,6 +281,7 @@
     </div>
   </div>
 
+  <!-- END -->
   <div id="end-screen" class="screen hidden">
     <div class="menu-box">
       <h1 id="end-title" class="win-text">VICTORY</h1>
@@ -260,7 +291,7 @@
   </div>
 
 <script>
-  // --- LOAD FROM GLOBAL CONFIG (Fix: No Inline overrides) ---
+  // --- LOAD FROM GLOBAL CONFIG ---
   const { 
       RINGS_PER_LAP, 
       TOTAL_RINGS_WIN, 
@@ -274,7 +305,7 @@
       BOOST_REFILL, 
       TERRAIN_COLORS 
   } = window.SKY_CONFIG || {
-      // Fallback if config fails to load
+      // Fallback
       RINGS_PER_LAP: 12, TOTAL_RINGS_WIN: 12, NORMAL_SPEED: 5, BOOST_SPEED: 10,
       TURN_SPEED: 0.03, LIFT_SPEED: 5, FIRE_RATE: 120, COLLISION_DAMAGE: 8,
       BOOST_DRAIN: 0.5, BOOST_REFILL: 0.1, TERRAIN_COLORS: { SAND: 0xeebb88, GRASS: 0x55aa55, ROCK: 0x666666, SNOW: 0xffffff, WATER: 0x004488 }
@@ -282,13 +313,27 @@
 
   const WORLD_LIMIT = 24500; 
 
-  document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
+  // Touch scroll lock
+  let touchLocked = false;
+  function preventTouch(e) { e.preventDefault(); }
+  function lockTouchScroll() {
+    if(touchLocked) return;
+    touchLocked = true;
+    document.body.addEventListener("touchmove", preventTouch, { passive: false });
+  }
+
+  // ✅ Fix 1: Safe SFX Checker
+  function isSfxEnabled() {
+    if (window.GameManager && window.GameManager.data) return !!window.GameManager.data.sfx;
+    return true; // fallback to true if manager missing
+  }
 
   // --- SHARED BULLET ASSETS ---
   const BULLET_GEO = new THREE.SphereGeometry(2, 8, 8);
   const BULLET_MAT_MY = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
   const BULLET_MAT_ENEMY = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-  const BULLET_SPEED = 8000; 
+  // ✅ Fix 15: Reduced speed for reliability
+  const BULLET_SPEED = 4000; 
 
   // --- SEEDED RNG ---
   let gameSeed = 12345;
@@ -306,12 +351,21 @@
   let lastNetworkTick = 0;
   const NETWORK_TICK_RATE = 50; 
   let lastCrashTime = 0; 
+  
+  // ✅ Fix 4: Ring Claim Lock (Debounce)
+  let ringClaimLocked = false;
 
+  // ✅ Fix 2: Explicit Socket URL for Render/Localhost compatibility
   let socket; 
-  if (typeof io !== "undefined") socket = io(); 
-  else { 
+  if (typeof io !== "undefined") {
+      // ✅ Bug 7 Fix: Safe origin check using config or window location
+      const SOCKET_URL = window.SKY_CONFIG?.SOCKET_URL || window.location.origin;
+      socket = io(SOCKET_URL, { transports: ["websocket"] });
+      // ✅ Bug 3: Debug Logger
+      socket.onAny((event, ...args) => console.log("SOCKET EVENT:", event, args));
+  } else { 
       console.warn("Socket.io not found - Multiplayer disabled locally");
-      socket = { emit() {}, on() {} }; 
+      socket = { emit() {}, on() {}, off() {}, onAny() {} }; 
   }
 
   // --- OPTIMIZATION VARS ---
@@ -324,16 +378,17 @@
   function lobbyRenderPlayers(players) { const list = document.getElementById("lobby-player-list"); list.innerHTML = ""; players.forEach((p, i) => { const row = document.createElement("div"); row.textContent = `${i+1}. ${p.name}${p.isHost ? " (HOST)" : ""}`; list.appendChild(row); }); }
    
   function mpCreateRoom() { 
-      SFXManager.init(); 
-      MusicManager.init();
-      mp.playerName = prompt("Enter your name:", "ACE") || "ACE"; 
+      if (typeof SFXManager !== 'undefined') SFXManager.init(); 
+      if (typeof MusicManager !== 'undefined') MusicManager.init();
+      // ✅ Fix 9: Empty Name Bug Fix
+      mp.playerName = (prompt("Enter your name:", "ACE") || "").trim() || "ACE"; 
       socket.emit("mp_create_room", { name: mp.playerName }); 
   }
    
   function mpJoinRoom() { 
-      SFXManager.init(); 
-      MusicManager.init();
-      mp.playerName = prompt("Enter your name:", "ROOKIE") || "ROOKIE"; 
+      if (typeof SFXManager !== 'undefined') SFXManager.init(); 
+      if (typeof MusicManager !== 'undefined') MusicManager.init();
+      mp.playerName = (prompt("Enter your name:", "ROOKIE") || "").trim() || "ROOKIE"; 
       const room = (document.getElementById("mp-room-code").value || "").trim(); 
       if (!room) return alert("Enter Room Code"); 
       socket.emit("mp_join_room", { roomId: room, name: mp.playerName }); 
@@ -341,13 +396,15 @@
 
   function mpLeaveLobby() { 
       if (!mp.roomId) return showScreen("mp-menu-screen"); 
+      // ✅ Fix 8: Hide UI on leave
+      document.getElementById("ui-layer").style.display = "none";
+      
       Object.values(otherPlayers).forEach(p => { 
           if (scene) scene.remove(p); 
           disposeHierarchy(p); 
       }); 
       for (let k in otherPlayers) delete otherPlayers[k]; 
       
-      // Cleanup lobby data
       for (let k in playersData) delete playersData[k];
       for (let k in allScores) delete allScores[k];
 
@@ -358,7 +415,9 @@
       showScreen("mp-menu-screen"); 
   }
    
+  // ✅ Fix 18: Audio init on start
   function mpHostStartGame() { 
+      if (typeof SFXManager !== 'undefined') SFXManager.init(); 
       if (!mp.isHost) return; 
       const seed = Math.floor(Math.random() * 100000);
       socket.emit("mp_start_game", { roomId: mp.roomId, seed: seed }); 
@@ -368,18 +427,30 @@
   function initMultiplayerGame() { initGame(); document.getElementById("mp-menu-screen").classList.add("hidden"); document.getElementById("lobby-screen").classList.add("hidden"); document.getElementById("countdown-screen").classList.add("hidden"); document.getElementById("pause-screen").classList.add("hidden"); document.getElementById("end-screen").classList.add("hidden"); }
 
   // --- SOCKET EVENTS ---
-  socket.on("connect", () => console.log("Connected:", socket.id));
+  // ✅ Fix: Prevent Double Listeners with .off()
+  socket.off("connect"); socket.on("connect", () => console.log("Connected:", socket.id));
+  
+  socket.off("mp_room_created");
   socket.on("mp_room_created", ({ roomId, players, hostId }) => { mp.roomId = roomId; mp.isHost = (socket.id === hostId); mp.inLobby = true; document.getElementById("lobby-room-id").innerText = roomId; lobbyRenderPlayers(players); document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); showScreen("lobby-screen"); });
+  
+  socket.off("mp_room_joined");
   socket.on("mp_room_joined", ({ roomId, players, hostId }) => { mp.roomId = roomId; mp.isHost = (socket.id === hostId); mp.inLobby = true; document.getElementById("lobby-room-id").innerText = roomId; lobbyRenderPlayers(players); document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); showScreen("lobby-screen"); });
+  
+  socket.off("mp_lobby_update");
   socket.on("mp_lobby_update", ({ roomId, players, hostId }) => { if (mp.roomId !== roomId) return; mp.isHost = (socket.id === hostId); lobbyRenderPlayers(players); document.getElementById("host-start-btn").classList.toggle("hidden", !mp.isHost); });
+  
+  socket.off("mp_error");
   socket.on("mp_error", (msg) => alert(msg || "Multiplayer error"));
    
+  socket.off("mp_game_starting");
   socket.on("mp_game_starting", (data) => { 
-      if(data && data.seed) gameSeed = data.seed;
+      // ✅ Fix 12: Seed sync
+      if(data && data.seed !== undefined) gameSeed = data.seed;
       showScreen("countdown-screen"); 
       mpCountdownThenStart(); 
   });
 
+  socket.off("currentPlayers");
   socket.on("currentPlayers", (players) => { 
       Object.keys(players).forEach((id) => { 
           if (players[id].playerId === socket.id) return; 
@@ -389,24 +460,30 @@
       allScores[socket.id] = { name: mp.playerName, rings: 0 };
   });
 
+  socket.off("newPlayer");
   socket.on("newPlayer", (playerInfo) => {
       addOtherPlayer(playerInfo);
       allScores[playerInfo.playerId] = { name: playerInfo.name, rings: 0 };
   });
 
+  socket.off("playerDisconnected");
   socket.on("playerDisconnected", (playerId) => {
       removeOtherPlayer(playerId);
       delete allScores[playerId];
       updateLeaderboard();
   });
    
+  socket.off("playerMoved");
   socket.on("playerMoved", (playerInfo) => { 
+      // ✅ Fix 10: Server must send playerMoved with quaternion always
+      if (!playerInfo.quaternion) return;
+
       const id = playerInfo.playerId || playerInfo.id;
       if (!id) return;
       playerInfo.playerId = id; 
 
       if (!otherPlayers[id]) { if(scene) addOtherPlayer(playerInfo); return; }
-      const p = otherPlayers[id]; 
+      const p = otherPlayers[id]; // This is now a Group wrapping the mesh
       
       const snapshot = {
           time: playerInfo.ts || Date.now(), 
@@ -418,28 +495,35 @@
       
       if (!p.userData.buffer) p.userData.buffer = [];
       p.userData.buffer.push(snapshot);
-      
-      if (p.userData.buffer.length > 5) p.userData.buffer.shift();
+      // ✅ Fix 9: Sort buffer
+      p.userData.buffer.sort((a,b)=>a.time-b.time);
+      if (p.userData.buffer.length > 8) p.userData.buffer.shift();
   });
 
+  socket.off("mp_game_over");
   socket.on('mp_game_over', ({ winnerName, winnerId }) => {
       const isMe = (winnerId === socket.id);
       if (isMe) { endGame(true, "You are the Race Champion!"); } else { endGame(false, `${winnerName} Won the Race!`); }
   });
 
+  socket.off("mp_score_update");
   socket.on('mp_score_update', ({ playerId, rings, nextRingIndex }) => {
       if (allScores[playerId]) {
           allScores[playerId].rings = rings;
           updateLeaderboard();
           if(playerId === socket.id) {
+              // ✅ Fix 5: Unlock on confirmation
+              ringClaimLocked = false;
               playerStats.rings = rings;
               playerStats.progress = (nextRingIndex !== undefined) ? nextRingIndex : rings; 
               updateRingVisuals();
-              SFXManager.playRing(GameManager.data.sfx); 
+              if (typeof SFXManager !== 'undefined') SFXManager.playRing(isSfxEnabled()); 
           }
       }
   });
 
+  // ✅ Fix D: Bullet Server Authoritative Event
+  socket.off("mp_player_fire");
   socket.on('mp_player_fire', (data) => {
       if (data.shooterId === socket.id) return;
       const startPos = new THREE.Vector3(data.startPos.x, data.startPos.y, data.startPos.z);
@@ -447,25 +531,32 @@
       spawnNetworkBullet(startPos, quaternion, data.shooterId);
   });
 
+  socket.off("mp_kit_collected");
   socket.on('mp_kit_collected', ({ kitIndex, collectorId }) => {
       if (repairKits[kitIndex]) {
           repairKits[kitIndex].visible = false;
+          // ✅ Fix 6: reliable active state
           repairKits[kitIndex].userData.active = false;
+          // ✅ Fix 7: Local timer backup
+          repairKits[kitIndex].userData.respawnTime = Date.now() + 30000;
           
           if(collectorId === socket.id) {
               health += 30; if(health > 100) health = 100; 
-              SFXManager.playRepair(GameManager.data.sfx); 
+              if (typeof SFXManager !== 'undefined') SFXManager.playRepair(isSfxEnabled()); 
           }
       }
   });
 
+  socket.off("mp_kit_restored");
   socket.on('mp_kit_restored', ({ kitIndex }) => {
       if (repairKits[kitIndex]) {
           repairKits[kitIndex].visible = true;
           repairKits[kitIndex].userData.active = true;
+          repairKits[kitIndex].userData.respawnTime = 0;
       }
   });
 
+  // ✅ Fix 3: Structure Update - Wrap mesh in a Rig Group for correct rotation
   function addOtherPlayer(playerInfo) { 
       const id = playerInfo.playerId || playerInfo.id;
       if (!id) return;
@@ -474,14 +565,17 @@
       playersData[id] = playerInfo;
 
       if (scene && !otherPlayers[id]) {
-          const otherPlayer = createPlaneMesh(0xff0000); 
-          otherPlayer.userData = { buffer: [] };
+          const rig = new THREE.Group(); // Parent for position/heading
+          const meshGroup = createPlaneMesh(0xff0000); // Visuals
+          rig.add(meshGroup);
+          
+          rig.userData = { buffer: [] };
           const x = (playerInfo.x !== undefined) ? playerInfo.x : 0; 
           const y = (playerInfo.y !== undefined) ? playerInfo.y : 400; 
           const z = (playerInfo.z !== undefined) ? playerInfo.z : 0;
-          otherPlayer.position.set(x, y, z);
-          scene.add(otherPlayer); 
-          otherPlayers[id] = otherPlayer; 
+          rig.position.set(x, y, z);
+          scene.add(rig); 
+          otherPlayers[id] = rig; 
           
           if (!allScores[id]) allScores[id] = { name: playerInfo.name || "Pilot", rings: 0 };
       }
@@ -514,51 +608,65 @@
   }
    
   // --- INPUT HANDLING ---
-  window.addEventListener('keydown', (e) => { 
-      if(e.key === "Escape") { togglePause(); return; } 
-      if(isPaused) return; 
-      const k = e.key.toLowerCase(); 
-      const binds = GameManager.data.bindings;
-      if(k === binds.up || k === 'arrowup') activeKeys[k] = true; 
-      if(k === binds.down || k === 'arrowdown') activeKeys[k] = true; 
-      if(k === binds.left || k === 'arrowleft') activeKeys[k] = true; 
-      if(k === binds.right || k === 'arrowright') activeKeys[k] = true; 
-      if(k === binds.boost) activeKeys[k] = true; 
-      if(k === binds.fire) activeKeys[k] = true; 
-  });
-   
-  window.addEventListener('keyup', (e) => { 
-      const k = e.key.toLowerCase(); 
-      const binds = GameManager.data.bindings;
-      if(k === binds.up || k === 'arrowup') activeKeys[k] = false; 
-      if(k === binds.down || k === 'arrowdown') activeKeys[k] = false; 
-      if(k === binds.left || k === 'arrowleft') activeKeys[k] = false; 
-      if(k === binds.right || k === 'arrowright') activeKeys[k] = false; 
-      if(k === binds.boost) activeKeys[k] = false; 
-      if(k === binds.fire) activeKeys[k] = false; 
+  function getBindings() {
+      if (window.GameManager && window.GameManager.data && window.GameManager.data.bindings) {
+          return window.GameManager.data.bindings;
+      }
+      return { up:'w', down:'s', left:'a', right:'d', boost:' ', fire:'shift' };
+  }
+
+  function setKey(action, state) { 
+      const binds = getBindings();
+      if(action === "boost") {
+        activeKeys[binds.boost] = state;
+        activeKeys["Space"] = state; 
+        return;
+      }
+      if(action === "fire") {
+        activeKeys[binds.fire] = state;
+        activeKeys["shift"] = state; 
+        activeKeys["Shift"] = state; 
+        return;
+      }
+      let key = binds[action];
+      activeKeys[key] = state;
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if(e.key === "Escape") { togglePause(); return; }
+    if(isPaused) return;
+    const binds = getBindings();
+    const k = e.key.toLowerCase();
+    if(k === binds.up || k === 'arrowup') activeKeys[binds.up] = true;
+    if(k === binds.down || k === 'arrowdown') activeKeys[binds.down] = true;
+    if(k === binds.left || k === 'arrowleft') activeKeys[binds.left] = true;
+    if(k === binds.right || k === 'arrowright') activeKeys[binds.right] = true;
+    if(k === binds.boost || (binds.boost === ' ' && e.code === 'Space')) activeKeys[binds.boost] = true;
+    if(k === binds.fire || (binds.fire === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) activeKeys[binds.fire] = true;
   });
 
+  window.addEventListener('keyup', (e) => {
+    const binds = getBindings();
+    const k = e.key.toLowerCase();
+    if(k === binds.up || k === 'arrowup') activeKeys[binds.up] = false;
+    if(k === binds.down || k === 'arrowdown') activeKeys[binds.down] = false;
+    if(k === binds.left || k === 'arrowleft') activeKeys[binds.left] = false;
+    if(k === binds.right || k === 'arrowright') activeKeys[binds.right] = false;
+    if(k === binds.boost || (binds.boost === ' ' && e.code === 'Space')) activeKeys[binds.boost] = false;
+    if(k === binds.fire || (binds.fire === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) activeKeys[binds.fire] = false;
+  });
+  
   function isActionActive(actionId) { 
-      const binds = GameManager.data.bindings;
+      const binds = getBindings();
       if (actionId === 'up') return activeKeys[binds.up] || activeKeys['arrowup']; 
       if (actionId === 'down') return activeKeys[binds.down] || activeKeys['arrowdown']; 
       if (actionId === 'left') return activeKeys[binds.left] || activeKeys['arrowleft']; 
       if (actionId === 'right') return activeKeys[binds.right] || activeKeys['arrowright']; 
+      if (actionId === 'boost') return activeKeys[binds.boost] || activeKeys[" "] || activeKeys["Space"];
+      if (actionId === 'fire') return activeKeys[binds.fire] || activeKeys["shift"] || activeKeys["Shift"];
       return activeKeys[binds[actionId]]; 
   }
-  function setKey(action, state) { let key = GameManager.data.bindings[action]; activeKeys[key] = state; }
    
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      isPaused = true;
-    } else {
-      if (isPlaying) {
-        isPaused = false;
-        requestAnimationFrame(animate);
-      }
-    }
-  });
-
   function updateLeaderboard() { 
       const list = document.getElementById('leaderboard-list'); 
       if(!list) return; 
@@ -583,17 +691,41 @@
       });
   }
    
+  // ✅ Fix 4: Consolidated ring collection Logic
   function ringCollected() { 
-      SFXManager.playRing(GameManager.data.sfx);
+      if (typeof SFXManager !== 'undefined') SFXManager.playRing(isSfxEnabled());
       if (mp.roomId) {
-          socket.emit('mp_claim_ring', { roomId: mp.roomId });
+          ringClaimLocked = true;
+          // ✅ Fix 2 & 3: Send index based on ring object, not progress
+          // ✅ Fix 5: Ensure currentRingObj is valid before finding index
+          if (currentRingObj && rings) {
+              const idx = rings.indexOf(currentRingObj);
+              if (idx !== -1) {
+                  // ✅ Fix 6: Send ringIndex for server validation
+                  socket.emit('mp_claim_ring', { roomId: mp.roomId, ringIndex: idx });
+              }
+          }
+          // Safety timeout in case score update is missed
+          setTimeout(() => ringClaimLocked = false, 2000);
       }
   }
 
-  function disposeHierarchy(obj) { if (!obj) return; if (obj.children) obj.children.forEach(disposeHierarchy); if (obj.geometry) obj.geometry.dispose(); if (obj.material) { if (Array.isArray(obj.material)) obj.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); }); else { if(obj.material.map) obj.material.map.dispose(); obj.material.dispose(); } } }
+  // ✅ Fix 2: Safe Dispose Recursion
+  function disposeHierarchy(obj) { 
+      if (!obj) return; 
+      if (obj.children) [...obj.children].forEach(disposeHierarchy); 
+      if (obj.geometry) obj.geometry.dispose(); 
+      if (obj.material) { 
+          if (Array.isArray(obj.material)) obj.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); }); 
+          else { if(obj.material.map) obj.material.map.dispose(); obj.material.dispose(); } 
+      } 
+  }
    
   function initGame() {
+    lockTouchScroll();
     const container = document.getElementById('game-container'); 
+    // ✅ Fix 8: Show UI when game starts
+    document.getElementById("ui-layer").style.display = "flex";
     
     if (scene) {
         bullets.forEach(b => {
@@ -602,20 +734,25 @@
                 b.mesh.userData = {}; 
             }
         });
-    }
-    bullets.length = 0; 
-
-    if (scene) { 
         rings.forEach(r => disposeHierarchy(r));
         repairKits.forEach(k => disposeHierarchy(k));
         Object.values(otherPlayers).forEach(p => disposeHierarchy(p));
         if(terrainMesh) disposeHierarchy(terrainMesh);
         if(oceanMesh) disposeHierarchy(oceanMesh);
-        scene.clear(); 
-        if(renderer) renderer.dispose(); 
-    } 
+        // ✅ Fix: No scene.clear() to avoid light loss
+    }
+    bullets.length = 0; 
     rings = []; repairKits = []; bullets = []; ringWaypoints = [];
     
+    if (renderer) {
+      if(renderer.domElement && renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
+      renderer.dispose();
+      // ✅ Fix 7: Manual disposal cleanup
+      if(renderer.forceContextLoss) renderer.forceContextLoss();
+      renderer.context = null;
+      renderer.domElement = null;
+    }
+
     scene = new THREE.Scene(); 
     scene.background = new THREE.Color(0x87CEEB); scene.fog = new THREE.Fog(0x87CEEB, 1500, 7000); 
     
@@ -642,7 +779,9 @@
   }
 
   function fireBullet() {
-      SFXManager.playGun(GameManager.data.sfx);
+      // ✅ Fix 1: Safety Check
+      if (!planeRig || !scene) return;
+      if (typeof SFXManager !== 'undefined') SFXManager.playGun(isSfxEnabled());
       const bullet = new THREE.Mesh(BULLET_GEO, BULLET_MAT_MY);
       bullet.position.copy(planeRig.position);
       bullet.quaternion.copy(planeRig.quaternion);
@@ -662,7 +801,7 @@
   }
 
   function spawnNetworkBullet(startPos, quaternion, shooterId) {
-      SFXManager.playGun(GameManager.data.sfx);
+      if (typeof SFXManager !== 'undefined') SFXManager.playGun(isSfxEnabled());
       const bullet = new THREE.Mesh(BULLET_GEO, BULLET_MAT_ENEMY);
       bullet.position.copy(startPos);
       bullet.quaternion.copy(quaternion);
@@ -675,9 +814,13 @@
 
   function respawnPlayer() {
       health = 100;
-      SFXManager.playExplosion(GameManager.data.sfx);
+      if (typeof SFXManager !== 'undefined') SFXManager.playExplosion(isSfxEnabled());
+      // ✅ Fix 13: Reset Rotation
       planeRig.position.y += 200;
       if (planeRig.position.y < 300) planeRig.position.y = 300;
+      planeRig.rotation.set(0, planeRig.rotation.y, 0); 
+      visualRoll = 0; 
+      visualPitch = 0;
       const msg = document.getElementById("respawn-msg");
       msg.style.display = "block";
       setTimeout(() => msg.style.display = "none", 2000);
@@ -701,26 +844,19 @@
   function createPlaneSystem() { planeRig = new THREE.Group(); planeRig.position.set(0, 400, 800); scene.add(planeRig); planeMesh = createPlaneMesh(0x555555); planeRig.add(planeMesh); const glowGeo = new THREE.ConeGeometry(3, 10, 8); glowGeo.rotateX(Math.PI / 2); const glowMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, transparent: true, opacity: 0 }); const glow = new THREE.Mesh(glowGeo, glowMat); glow.position.set(0, 0, 20); glow.name = "EngineGlow"; planeMesh.add(glow); }
   function createGuideArrow() { const group = new THREE.Group(); const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 }); const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 15, 8), mat); cylinder.rotation.x = Math.PI / 2; cylinder.position.z = -7.5; const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 8, 8), mat); cone.rotation.x = Math.PI / 2; group.add(cylinder, cone); guideArrow = group; scene.add(guideArrow); }
    
-  function createRings() { 
-      for(let i=0; i<RINGS_PER_LAP; i++) { 
-          const angle = i * (Math.PI * 2 / RINGS_PER_LAP); 
-          const x = Math.sin(angle) * 12000; 
-          const z = Math.cos(angle) * -12000; 
-          const groundY = getTerrainHeight(x, z); 
-          const y = Math.max(500, groundY + 400); 
-          ringWaypoints.push({x, y, z}); 
-          const geo = new THREE.TorusGeometry(80, 10, 16, 50); 
-          const mat = new THREE.MeshPhongMaterial({ color: 0xFFD700, emissive: 0xffaa00, shininess: 100 }); 
-          const ring = new THREE.Mesh(geo, mat); 
-          ring.position.set(x, y, z); 
-          ring.rotation.y = seededRandom() * Math.PI; 
-          ring.userData.locked = false; 
-          scene.add(ring); 
-          rings.push(ring); 
-      } 
+  function updateRingVisuals() { 
+      const currentTargetIdx = playerStats.progress % RINGS_PER_LAP; 
+      rings.forEach((r, i) => { 
+          r.visible = (i === currentTargetIdx);
+          if (i === currentTargetIdx) { 
+              r.material.emissive.setHex(0xffaa00); 
+              r.material.color.setHex(0xffd700); 
+          } 
+      }); 
+      // ✅ Fix 5: Safe assignment after loop
+      currentRingObj = rings[currentTargetIdx] || null;
+      if (currentRingObj) currentRingObj.userData.locked = false;
   }
-   
-  function updateRingVisuals() { const currentTargetIdx = playerStats.progress % RINGS_PER_LAP; rings.forEach((r, i) => { if (i === currentTargetIdx) { r.material.emissive.setHex(0xffaa00); r.material.color.setHex(0xffd700); r.visible = true; currentRingObj = r; currentRingObj.userData.locked = false; } else r.visible = false; }); }
    
   function createRepairKits() { 
       const kitGroupPrototype = new THREE.Group(); 
@@ -751,6 +887,12 @@
   function animate() {
     if (!isPlaying || isPaused) return;
 
+    // ✅ Fix 1: Safety Check
+    if (!planeRig || !planeMesh) {
+        requestAnimationFrame(animate);
+        return;
+    }
+
     const nowPerf = performance.now();
     if (nowPerf - lastRender < FRAME_TIME) {
         requestAnimationFrame(animate);
@@ -775,14 +917,19 @@
         b.mesh.userData.life -= dt; 
 
         if (b.mesh.userData.life <= 0) { 
-            scene.remove(b.mesh); 
+            // ✅ Fix 5: Memory Leak Bullet Disposal (Fix 4: Browser Compatibility)
+            // ✅ Fix 6: Safe removal via parent check
+            if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
+            // ✅ Fix 4: Clear Memory references (optional but good)
+            b.mesh.userData = {};
             bullets.splice(i, 1); 
             continue; 
         }
         
         if (!b.mesh.userData.isMine) {
-            if (planeRig && b.mesh.position.distanceToSquared(planeRig.position) < 225) { 
-                scene.remove(b.mesh); 
+            // ✅ Fix 5: Hit radius increased to 80 (6400 squared)
+            if (planeRig && b.mesh.position.distanceToSquared(planeRig.position) < 6400) { 
+                if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
                 bullets.splice(i, 1);
                 health -= 10;
                 if(health <= 0) respawnPlayer();
@@ -813,8 +960,13 @@
         }
     }
     
-    SFXManager.updateContinuous(isBoosting, isDamaging, GameManager.data.sfx);
-    MusicManager.updateGameplayMusic(health);
+    // ✅ Fix 8: GameManager/SFX Safety
+    if (typeof SFXManager !== 'undefined' && SFXManager.updateContinuous) {
+        SFXManager.updateContinuous(isBoosting, isDamaging, isSfxEnabled());
+    }
+    if (typeof MusicManager !== 'undefined' && MusicManager.updateGameplayMusic) {
+        MusicManager.updateGameplayMusic(health);
+    }
     document.getElementById('health-fill').style.width = health + '%';
     
     if (currentRingObj) { 
@@ -824,9 +976,8 @@
         guideArrow.lookAt(currentRingObj.position); 
         
         if (planeRig.position.distanceTo(currentRingObj.position) < 100) { 
-            if (!currentRingObj.userData.lastClaimTs) currentRingObj.userData.lastClaimTs = 0;
-            if (now - currentRingObj.userData.lastClaimTs > 500) { 
-                currentRingObj.userData.lastClaimTs = now;
+            // ✅ Fix 4: Consolidated Ring Claim Logic
+            if (!ringClaimLocked) {
                 ringCollected();
             }
         } 
@@ -835,7 +986,8 @@
     }
     
     repairKits.forEach(kit => { 
-        if (kit.visible && planeRig.position.distanceTo(kit.position) < 80) { 
+        // ✅ Fix 6: Reliable active check
+        if (kit.userData.active && kit.visible && planeRig.position.distanceTo(kit.position) < 80) { 
             if (!kit.userData.lastClaimTs) kit.userData.lastClaimTs = 0;
             if (now - kit.userData.lastClaimTs > 1000) {
                 kit.userData.lastClaimTs = now;
@@ -844,13 +996,21 @@
                 }
             }
         } 
+        
+        // ✅ Fix 7: Local respawn timer fallback
+        if(!kit.userData.active && kit.userData.respawnTime && now > kit.userData.respawnTime){
+            kit.visible = true;
+            kit.userData.active = true;
+            kit.userData.respawnTime = 0;
+        }
     });
     
     rings.forEach(r => r.rotation.z += 0.01); drawMinimap();
     
     if (socket && mp.roomId && (now - lastNetworkTick > NETWORK_TICK_RATE)) { 
         const q = planeRig.quaternion; 
-        socket.emit("playerMovement", { roomId: mp.roomId, x: planeRig.position.x, y: planeRig.position.y, z: planeRig.position.z, rotX: visualPitch, rotZ: visualRoll, quaternion: { x: q.x, y: q.y, z: q.z, w: q.w } }); 
+        // ✅ Fix 10: Timestamp
+        socket.emit("playerMovement", { roomId: mp.roomId, x: planeRig.position.x, y: planeRig.position.y, z: planeRig.position.z, rotX: visualPitch, rotZ: visualRoll, quaternion: { x: q.x, y: q.y, z: q.z, w: q.w }, ts: Date.now() }); 
         lastNetworkTick = now;
     }
 
@@ -868,8 +1028,11 @@
             
             if (t2.time >= renderTimestamp) {
                const alpha = (renderTimestamp - t1.time) / (t2.time - t1.time);
+               // Interpolate RIG
                p.position.lerpVectors(t1.pos, t2.pos, alpha);
                p.quaternion.slerpQuaternions(t1.quat, t2.quat, alpha);
+               
+               // ✅ Fix 11: Interpolate VISUAL MESH (Child) else block handled below
                if(p.children[0]) {
                    p.children[0].rotation.z = THREE.MathUtils.lerp(t1.roll, t2.roll, alpha);
                    p.children[0].rotation.x = THREE.MathUtils.lerp(t1.pitch, t2.pitch, alpha);
@@ -877,6 +1040,11 @@
             } else {
                p.position.copy(t2.pos);
                p.quaternion.copy(t2.quat);
+               // ✅ Fix 11: Snap rotation on latest packet
+               if(p.children[0]) {
+                   p.children[0].rotation.z = t2.roll;
+                   p.children[0].rotation.x = t2.pitch;
+               }
             }
             
             // Boundary Clamp for Other Players
@@ -891,10 +1059,22 @@
 
   function endGame(win, reason) { 
     isPlaying = false; 
-    MusicManager.stop();
-    SFXManager.updateContinuous(false, false, false);
-    SFXManager.stopAll(); 
-    if(win) MusicManager.playWin(); else MusicManager.playLose();
+    // ✅ Fix 4: Hide UI on End Game
+    document.getElementById("ui-layer").style.display = "none";
+    if (typeof MusicManager !== 'undefined') MusicManager.stop();
+    if (typeof SFXManager !== 'undefined' && SFXManager.updateContinuous) {
+        SFXManager.updateContinuous(false, false, false); 
+        SFXManager.stopAll(); 
+    }
+    // ✅ Fix 1: Corrected syntax for music
+    if(win) {
+        if (typeof MusicManager !== 'undefined') MusicManager.playWin();
+    } else {
+        if (typeof MusicManager !== 'undefined') MusicManager.playLose();
+    }
+    // ✅ Fix 17: Leave room on end
+    if(mp.roomId) socket.emit("mp_leave_room", { roomId: mp.roomId });
+    
     const screen = document.getElementById('end-screen'); const title = document.getElementById('end-title'); const msg = document.getElementById('end-msg'); 
     if (win) { title.innerText = "VICTORY"; title.className = "win-text"; msg.innerText = reason || "Race Champion!"; } else { title.innerText = "DEFEAT"; title.className = "lose-text"; msg.innerText = reason || "Lost"; } 
     screen.classList.remove('hidden'); 
