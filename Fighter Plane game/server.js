@@ -8,7 +8,7 @@ const path = require('path');
 const fs = require('fs');
 
 // --- PATH CONFIGURATION ---
-// Keeps your existing folder structure
+// Ensure your index.html is in a folder named 'Public' or adjust this path
 const publicPath = path.join(__dirname, 'Public');
 
 // --- SERVER SETUP ---
@@ -19,13 +19,13 @@ app.get('/', (req, res) => {
     if (fs.existsSync(filePath)) {
         res.sendFile(filePath);
     } else {
-        res.status(404).send("<h1>Error 404: Index File Not Found</h1>");
+        res.status(404).send("<h1>Error 404: Index File Not Found (Check 'Public' folder)</h1>");
     }
 });
 
 // --- GAME STATE ---
 let rooms = {}; 
-const RINGS_PER_LAP = 10;       // Must match client config
+const RINGS_PER_LAP = 10;
 const KIT_RESPAWN_TIME = 30000; // 30 Seconds
 
 io.on('connection', (socket) => {
@@ -66,15 +66,28 @@ io.on('connection', (socket) => {
             // Notify joiner
             socket.emit('mp_room_joined', { roomId, players: room.players, hostId: room.hostId });
             
-            // Send current players to the new joiner
+            // ✅ FIX: Clean Object Structure for Joiner (Explicit coords for spawning)
             let currentPlayersObj = {};
             room.players.forEach(p => {
-                if(p.id !== socket.id) currentPlayersObj[p.id] = { playerId: p.id, ...p };
+                if(p.id !== socket.id) {
+                    currentPlayersObj[p.id] = {
+                        playerId: p.id,
+                        name: p.name,
+                        rings: p.rings,
+                        x: 0, y: 400, z: 0 // Default spawn pos
+                    };
+                }
             });
             socket.emit('currentPlayers', currentPlayersObj);
 
-            // Notify others
-            socket.to(roomId).emit('newPlayer', { playerId: socket.id, name: name });
+            // ✅ FIX: Send Explicit Coordinates to Others (So Joiner spawns on Host's screen)
+            socket.to(roomId).emit('newPlayer', { 
+                playerId: socket.id, 
+                name: name,
+                rings: 0,
+                x: 0, y: 400, z: 0
+            });
+            
             io.to(roomId).emit('mp_lobby_update', { roomId, players: room.players, hostId: room.hostId });
         } else {
             socket.emit('mp_error', 'Room not found or game started!');
@@ -103,7 +116,7 @@ io.on('connection', (socket) => {
                 quaternion: movementData.quaternion,
                 rotX: movementData.rotX,
                 rotZ: movementData.rotZ,
-                ts: Date.now() // <--- Critical for Fix H
+                ts: Date.now() // Critical for buffered interpolation
             });
         }
     });
