@@ -326,7 +326,7 @@
     
     // ✅ Performance: Renderer Optimization
     scene = new THREE.Scene(); scene.background = new THREE.Color(0x87CEEB); 
-    scene.fog = new THREE.Fog(0x87CEEB, 1200, 5500);
+    scene.fog = new THREE.Fog(0x87CEEB, 2000, 15000);
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 9000); 
     
     renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" }); 
@@ -477,3 +477,4 @@
 </script>
 </body>
 </html>
+
