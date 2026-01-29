@@ -3,276 +3,188 @@ const app = express();
 const http = require('http');
 const server = http.createServer(app);
 const { Server } = require("socket.io");
-const io = new Server(server, {
-    cors: { origin: "*" } 
-});
 const path = require('path');
-const fs = require('fs');
 
-/**
- * SKY PILOT - UPDATED SERVER
- * FIX: Ring validation logic and timestamp passthrough for interpolation.
- */
+// --- 🛠️ CONFIGURATION ---
+// Render.com dynamic port use karta hai. Hardcode mat karna.
+const PORT = process.env.PORT || 10000;
 
-// --- PATH CONFIGURATION ---
-const publicPath = path.resolve(__dirname, 'Public');
+// Shared Config ko import karte hain taaki rules same rahein
+// (Ensure game-config.js has module.exports as written in previous step)
+const Cfg = require('./public/game-config.js');
 
-// --- SERVER SETUP ---
+// --- 🚀 SETUP SERVER & CORS ---
+const io = new Server(server, {
+    cors: { origin: "*" }, // Allow all connections (Dev/Prod friendly)
+    transports: ['websocket', 'polling'] // Connection stability ke liye
+});
+
+// Serve Static Files (IMPORTANT: Folder name MUST be 'public' in lowercase)
+const publicPath = path.join(__dirname, 'public');
 app.use(express.static(publicPath));
 
+// Route for root
 app.get('/', (req, res) => {
-    const filePath = path.join(publicPath, 'index.html');
-    if (fs.existsSync(filePath)) {
-        res.sendFile(filePath);
-    } else {
-        console.error("CRITICAL ERROR: index.html not found at:", filePath);
-        res.status(404).send(`<h1>Error 404: Main Menu Not Found</h1><p>Path: ${filePath}</p>`);
-    }
+    res.sendFile(path.join(publicPath, 'index.html'));
 });
 
-// --- GAME STATE ---
+// --- 💾 GAME STATE ---
 let rooms = {}; 
-const KIT_RESPAWN_TIME = 30000;
-// ✅ FIX: Separate constants for lap logic vs win logic
-const RINGS_PER_LAP = 12;
-const TOTAL_RINGS_TO_WIN = 12; 
 
 io.on('connection', (socket) => {
-    console.log('User Connected:', socket.id);
+    console.log(`[CONNECT] User: ${socket.id}`);
 
-    // 1. CREATE ROOM
+    // --- 1. ROOM MANAGEMENT ---
+    
     socket.on('mp_create_room', ({ name }) => {
         const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
         
         rooms[roomId] = { 
+            id: roomId,
             hostId: socket.id, 
             players: [],
-            kits: [true, true, true],
             status: 'lobby',
-            seed: Math.floor(Math.random() * 100000)
+            // CRITICAL: Server generates the map seed!
+            seed: Math.floor(Math.random() * 100000) 
         };
 
-        const playerObj = { id: socket.id, name: name || "Player", isHost: true, rings: 0 };
-        rooms[roomId].players.push(playerObj);
+        const player = { id: socket.id, name: name.substring(0, 12), isHost: true, rings: 0 };
+        rooms[roomId].players.push(player);
         
         socket.join(roomId);
-        socket.emit('mp_room_created', { roomId, players: rooms[roomId].players, hostId: socket.id });
+        socket.emit('mp_room_created', { roomId, players: rooms[roomId].players, isHost: true });
+        console.log(`[ROOM] Created ${roomId} by ${name}`);
     });
 
-    // 2. JOIN ROOM
     socket.on('mp_join_room', ({ roomId, name }) => {
-        const cleanRoomId = (roomId || "").toUpperCase();
-        const room = rooms[cleanRoomId];
+        const rId = (roomId || "").toUpperCase();
+        const room = rooms[rId];
         
         if (room && room.status === 'lobby') {
-            // ✅ FIX: Prevent duplicate joins
-            if(room.players.some(p => p.id === socket.id)) return;
-
-            const playerObj = { id: socket.id, name: name || "Player", isHost: false, rings: 0 };
-            room.players.push(playerObj);
+            const player = { id: socket.id, name: name.substring(0, 12), isHost: false, rings: 0 };
+            room.players.push(player);
             
-            socket.join(cleanRoomId);
-            socket.emit('mp_room_joined', { roomId: cleanRoomId, players: room.players, hostId: room.hostId });
+            socket.join(rId);
             
-            // Send existing players to the newcomer
-            let currentPlayersObj = {};
-            room.players.forEach(p => {
-                if(p.id !== socket.id) {
-                    currentPlayersObj[p.id] = {
-                        playerId: p.id,
-                        name: p.name,
-                        rings: p.rings,
-                        x: 0, y: 400, z: 0 
-                    };
-                }
-            });
-            socket.emit('currentPlayers', currentPlayersObj);
-
-            // Notify others about the new player
-            socket.to(cleanRoomId).emit('newPlayer', { 
-                playerId: socket.id, 
-                name: name || "Player",
-                rings: 0,
-                x: 0, y: 400, z: 0
+            // Send room info AND the Seed to the new player
+            socket.emit('mp_room_joined', { 
+                roomId: rId, 
+                players: room.players, 
+                hostId: room.hostId,
+                seed: room.seed // Sync Map
             });
             
-            io.to(cleanRoomId).emit('mp_lobby_update', { roomId: cleanRoomId, players: room.players, hostId: room.hostId });
+            // Notify others
+            socket.to(rId).emit('mp_lobby_update', { players: room.players });
         } else {
-            socket.emit('mp_error', 'Room not found or game already started!');
+            socket.emit('mp_error', { msg: "Room not found or game started." });
         }
     });
 
-    // 3. START GAME
-    socket.on('mp_start_game', ({ roomId, seed }) => {
-        // ✅ Fix 1: Sanitize roomId casing
-        const cleanRoomId = (roomId || "").toUpperCase();
-        const room = rooms[cleanRoomId];
+    socket.on('mp_start_game', ({ roomId }) => {
+        const rId = (roomId || "").toUpperCase();
+        const room = rooms[rId];
         
         if (room && room.hostId === socket.id) {
-            // ✅ FIX: Prevent restarting if already playing or finished
-            if (room.status !== 'lobby') return;
-
             room.status = 'playing';
-            
-            // ✅ Reset player stats if room reused
+            // Reset scores
             room.players.forEach(p => p.rings = 0);
             
-            // ✅ Reset kits state on restart
-            room.kits = room.kits.map(() => true);
-
-            io.to(cleanRoomId).emit('mp_game_starting', { seed: seed || room.seed });
+            // Broadcast Start with SEED ensures everyone generates same terrain
+            io.to(rId).emit('mp_game_start', { seed: room.seed });
+            console.log(`[GAME] Started in ${rId}`);
         }
     });
 
-    // 4. MOVEMENT SYNC
-    socket.on('playerMovement', (movementData) => {
-        // ✅ Fix 1: Sanitize roomId casing for movement
-        const cleanRoomId = (movementData.roomId || "").toUpperCase();
-        
-        // ✅ Fix 3: Ensure room exists and is playing
-        if (cleanRoomId && rooms[cleanRoomId] && rooms[cleanRoomId].status === 'playing') {
-            // Relay to everyone else in the room
-            socket.to(cleanRoomId).emit('playerMoved', {
-                playerId: socket.id,
-                x: movementData.x,
-                y: movementData.y,
-                z: movementData.z,
-                quaternion: movementData.quaternion,
-                rotX: movementData.rotX,
-                rotZ: movementData.rotZ,
-                // Prioritize client timestamp for interpolation, fallback to server time
-                ts: movementData.ts || Date.now()
+    // --- 2. GAMEPLAY SYNC (Optimized) ---
+
+    socket.on('playerMovement', (data) => {
+        // Relay movement to others in the room, exclude sender
+        // Pass through timestamp (ts) for interpolation
+        if (data.roomId) {
+            socket.to(data.roomId).emit('playerMoved', {
+                id: socket.id,
+                ...data
             });
         }
     });
 
-    // 5. BULLET SYNC
-    socket.on('mp_player_fire', (data) => {
-        const cleanRoomId = (data.roomId || "").toUpperCase();
-        // ✅ Fix 3: Ensure room exists and is playing
-        if (cleanRoomId && rooms[cleanRoomId] && rooms[cleanRoomId].status === 'playing') {
-            // ✅ Fix A: Ensure data.roomId matches the casing used for socket.to()
-            data.roomId = cleanRoomId;
-            socket.to(cleanRoomId).emit('mp_player_fire', data);
+    socket.on('mp_shoot', (data) => {
+        if (data.roomId) {
+            socket.to(data.roomId).emit('mp_remote_shoot', {
+                ownerId: socket.id,
+                pos: data.pos,
+                quat: data.quat,
+                vel: data.vel
+            });
         }
     });
 
-    // 6. KIT CLAIM
-    socket.on('mp_claim_kit', ({ roomId, kitIndex }) => {
-        const cleanRoomId = (roomId || "").toUpperCase();
-        const room = rooms[cleanRoomId];
-        
-        // ✅ Fix 3: Ensure room exists and is playing
-        if (!room || room.status !== 'playing') return;
+    // --- 3. SCORING (Server Authority) ---
 
-        // ✅ Fix 2: Validate kitIndex
-        if (typeof kitIndex !== "number" || kitIndex < 0 || kitIndex >= room.kits.length) return;
-
-        if (room.kits[kitIndex] === true) {
-            room.kits[kitIndex] = false;
-            io.to(cleanRoomId).emit('mp_kit_collected', { kitIndex, collectorId: socket.id });
-
-            setTimeout(() => {
-                if (rooms[cleanRoomId]) {
-                    rooms[cleanRoomId].kits[kitIndex] = true;
-                    io.to(cleanRoomId).emit('mp_kit_restored', { kitIndex });
-                }
-            }, KIT_RESPAWN_TIME);
-        }
-    });
-
-    // 7. SCORE & WIN LOGIC (Updated for ringIndex validation)
     socket.on('mp_claim_ring', ({ roomId, ringIndex }) => {
-        const cleanRoomId = (roomId || "").toUpperCase();
-        const room = rooms[cleanRoomId];
-        if (!room) return;
+        const rId = (roomId || "").toUpperCase();
+        const room = rooms[rId];
 
-        // ✅ FIX: Don't allow updates if game is finished
-        if (room.status !== "playing") return;
+        if (room && room.status === 'playing') {
+            const player = room.players.find(p => p.id === socket.id);
+            if (player) {
+                // LOGIC: Check sequence. Player cannot skip rings.
+                const expectedIndex = player.rings % Cfg.RINGS_PER_LAP;
+                
+                if (ringIndex === expectedIndex) {
+                    player.rings++;
+                    
+                    // Broadcast update
+                    io.to(rId).emit('mp_score_update', { 
+                        id: socket.id, 
+                        rings: player.rings 
+                    });
 
-        // ✅ FIX: Validate ringIndex type safety
-        if (typeof ringIndex !== "number") return;
-
-        const player = room.players.find(p => p.id === socket.id);
-        
-        // ✅ Safety check: If player not found (rare), ignore
-        if (!player) return;
-
-        // ✅ FIX: Validate against lap rings, not total win rings
-        const expectedIndex = player.rings % RINGS_PER_LAP;
-        
-        // Allow if client sends index matching our expectation (strict check for anti-cheat)
-        if (ringIndex === expectedIndex) {
-            player.rings++;
-            
-            io.to(cleanRoomId).emit('mp_score_update', { 
-                playerId: socket.id, 
-                rings: player.rings,
-                nextRingIndex: player.rings % RINGS_PER_LAP
-            });
-
-            // Win condition
-            if (player.rings >= TOTAL_RINGS_TO_WIN) { 
-                io.to(cleanRoomId).emit('mp_game_over', { winnerName: player.name, winnerId: socket.id });
-                room.status = 'finished';
+                    // Win Condition
+                    if (player.rings >= Cfg.TOTAL_RINGS_WIN) {
+                        room.status = 'finished';
+                        io.to(rId).emit('mp_game_over', { winner: player.name });
+                    }
+                }
             }
-        } else {
-            // ✅ Feedback for invalid ring (silent reject instead of alert to prevent lag)
-            socket.emit("mp_ring_reject", { expectedIndex });
         }
     });
 
-    // 8. DISCONNECT / LEAVE HANDLER (Refactored for efficiency)
-    const handleDisconnect = (targetRoomId = null) => {
-        // ✅ Fix B: If a specific roomId is provided, check only that room (optimization).
-        // Otherwise, check all rooms (fallback for disconnect).
-        const roomsToSearch = targetRoomId ? [targetRoomId] : Object.keys(rooms);
+    // --- 4. CLEANUP (Memory Leak Prevention) ---
 
-        for (const roomId of roomsToSearch) {
-            const room = rooms[roomId];
-            if (!room) continue;
-
-            const playerIndex = room.players.findIndex(p => p.id === socket.id);
+    socket.on('disconnect', () => {
+        // Find which room the player was in
+        for (const rId in rooms) {
+            const room = rooms[rId];
+            const idx = room.players.findIndex(p => p.id === socket.id);
             
-            if (playerIndex !== -1) {
-                room.players.splice(playerIndex, 1);
-                
-                // ✅ Fix 2: Proper socket leave on disconnect/leave
-                socket.leave(roomId);
-                
-                io.to(roomId).emit('playerDisconnected', socket.id);
+            if (idx !== -1) {
+                room.players.splice(idx, 1);
                 
                 if (room.players.length === 0) {
-                    delete rooms[roomId];
+                    // Empty room? Delete it immediately to free memory
+                    delete rooms[rId];
+                    console.log(`[ROOM] Deleted ${rId} (Empty)`);
                 } else {
+                    // Host left? Assign new host
                     if (room.hostId === socket.id) {
                         room.hostId = room.players[0].id;
                         room.players[0].isHost = true;
                     }
-                    io.to(roomId).emit('mp_lobby_update', { 
-                        roomId, 
+                    io.to(rId).emit('mp_lobby_update', { 
                         players: room.players, 
                         hostId: room.hostId 
                     });
+                    io.to(rId).emit('playerDisconnected', socket.id);
                 }
-                break; // Found the player, stop searching
+                break;
             }
         }
-    };
-
-    socket.on('mp_leave_room', (payload) => {
-        // ✅ Fix: Handle both {roomId} object or direct string payload safely
-        const roomId = (payload && payload.roomId) ? payload.roomId : payload;
-        handleDisconnect(roomId ? String(roomId).toUpperCase() : null);
-    });
-    
-    socket.on('disconnect', () => {
-        handleDisconnect(); // Search all rooms since we don't know where the player was
     });
 });
 
-const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-    console.log(`✅ SERVER RUNNING ON PORT: ${PORT}`);
-    console.log(`📂 SERVING FROM: ${publicPath}`);
+    console.log(`✅ Server Running on Port: ${PORT}`);
+    console.log(`📂 Serving files from: ${publicPath}`);
 });
