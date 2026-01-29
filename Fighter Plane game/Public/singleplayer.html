@@ -147,7 +147,6 @@
       <h1>SKY PILOT</h1>
       <p style="color:#00d2ff; letter-spacing:1px; margin-bottom:20px;">ADVANCED ENEMY AI UPDATE</p>
       <button class="action-btn" onclick="startSinglePlayer()">LAUNCH MISSION</button>
-      <!-- ✅ RESTORED BACK TO MENU BUTTON -->
       <button class="action-btn secondary-btn" onclick="window.location.href='index.html'">BACK TO MENU</button>
     </div>
   </div>
@@ -184,6 +183,7 @@
   const TERRAIN_COLORS = { WATER: 0x1E90FF, SAND: 0xEEDD82, GRASS: 0x556B2F, ROCK: 0x808080, SNOW: 0xFFFFFF };
   const NORMAL_SPEED = 10; const BOOST_SPEED  = 20; const TURN_SPEED = 0.05; const LIFT_SPEED = 3.5;
   const RINGS_PER_LAP = 5; const TOTAL_LAPS = 3; const TOTAL_RINGS_WIN = RINGS_PER_LAP * TOTAL_LAPS;
+  const WORLD_LIMIT = 24500; // Boundary limit fix
 
   let scene, camera, renderer, planeRig, planeMesh, guideArrow;
   let enemies = [], repairKits = [], rings = [], ringWaypoints = [];
@@ -447,6 +447,11 @@
       if (targetPosVec && nextState !== "EVADE") { const dummy = new THREE.Object3D(); dummy.position.copy(e.position); dummy.lookAt(targetPosVec); dummy.rotateY(Math.PI); const turnRate = (nextState === "HUNT") ? 0.05 : 0.03; e.quaternion.slerp(dummy.quaternion, turnRate); e.rotation.z = THREE.MathUtils.lerp(e.rotation.z, 0, 0.05); }
       e.rotation.x = THREE.MathUtils.lerp(e.rotation.x, 0, 0.02); e.rotation.x = THREE.MathUtils.clamp(e.rotation.x - pitchForce, -0.6, 0.6);
       e.translateZ(-desiredSpeed);
+
+      // --- ✅ BUG FIX: ENEMY WORLD BOUNDARY ---
+      e.position.x = THREE.MathUtils.clamp(e.position.x, -WORLD_LIMIT, WORLD_LIMIT);
+      e.position.z = THREE.MathUtils.clamp(e.position.z, -WORLD_LIMIT, WORLD_LIMIT);
+
       if (shooting && distToPlayer < 5000) { const toTarget = planeRig.position.clone().sub(e.position).normalize(); const dot = forwardDir.dot(toTarget); if (dot > 0.85 && (now - (e.userData.lastShot || 0) > 1500)) { spawnEnemyBullet(e, targetPosVec); e.userData.lastShot = now; } }
       const currentH = getTerrainHeight(e.position.x, e.position.z); if(e.position.y < currentH + 80) { e.position.y = currentH + 80; e.rotation.x -= 0.05; }
       if (wp) { const ringPos = new THREE.Vector3(wp.x, wp.y, wp.z); const dist = e.position.distanceTo(ringPos); if (!e.userData.ringLocked && dist < 180) { e.userData.ringLocked = true; setTimeout(() => e.userData.ringLocked = false, 700); e.userData.progress++; ringCollected(enemyStats[idx].name); } }
@@ -468,6 +473,11 @@
     if (isActionActive('boost') && boostLevel > 0) { currentSpeed = BOOST_SPEED; boostLevel -= BOOST_DRAIN; if (boostLevel < 0) boostLevel = 0; if(engineGlow) engineGlow.material.opacity = 0.8; } else { if (boostLevel < 100) boostLevel += BOOST_REFILL; if(engineGlow) engineGlow.material.opacity = 0; }
     document.getElementById('boost-fill').style.width = boostLevel + '%';
     planeRig.translateZ(-currentSpeed);
+
+    // --- ✅ BUG FIX: PLAYER WORLD BOUNDARY ---
+    planeRig.position.x = THREE.MathUtils.clamp(planeRig.position.x, -WORLD_LIMIT, WORLD_LIMIT);
+    planeRig.position.z = THREE.MathUtils.clamp(planeRig.position.z, -WORLD_LIMIT, WORLD_LIMIT);
+
     if (isActionActive('left')) { planeRig.rotation.y += TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); } else if (isActionActive('right')) { planeRig.rotation.y -= TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); } else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
     if (isActionActive('up')) { planeRig.position.y += LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.5, 0.1); } else if (isActionActive('down')) { planeRig.position.y -= LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.5, 0.1); } else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
     const groundHeight = getTerrainHeight(planeRig.position.x, planeRig.position.z); let isDamaging = false; 
