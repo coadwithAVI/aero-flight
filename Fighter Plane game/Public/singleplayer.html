@@ -5,11 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sky Pilot - Advanced AI</title>
   
-  <!-- THREE.JS LIBRARY -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   
-  <!-- Global Audio Managers -->
-  <script src="sfx-manager.js"></script>
+  <script src="game-config.js"></script> <script src="game-manager.js"></script> <script src="sfx-manager.js"></script>
   <script src="music-manager.js"></script>
 
   <style>
@@ -99,7 +97,6 @@
     <div class="hud-top">
       <div class="left-hud">
         <div id="fps-counter">FPS: 0</div>
-        <!-- Debug AI State display (hidden by default) -->
         <div id="ai-state-debug"></div>
         <div class="bar-container">
           <div class="bar-label health-label">HEALTH</div>
@@ -126,22 +123,20 @@
       <canvas id="minimap-canvas" width="140" height="140"></canvas>
     </div>
 
-    <!-- MOBILE CONTROLS -->
     <div class="mobile-controls">
         <div class="control-group dpad">
-            <div class="mob-btn btn-up" ontouchstart="setAction('up', true)" ontouchend="setAction('up', false)">▲</div>
-            <div class="mob-btn btn-left" ontouchstart="setAction('left', true)" ontouchend="setAction('left', false)">◀</div>
-            <div class="mob-btn btn-down" ontouchstart="setAction('down', true)" ontouchend="setAction('down', false)">▼</div>
-            <div class="mob-btn btn-right" ontouchstart="setAction('right', true)" ontouchend="setAction('right', false)">▶</div>
+            <div class="mob-btn btn-up" ontouchstart="setKey('up', true)" ontouchend="setKey('up', false)">▲</div>
+            <div class="mob-btn btn-left" ontouchstart="setKey('left', true)" ontouchend="setKey('left', false)">◀</div>
+            <div class="mob-btn btn-down" ontouchstart="setKey('down', true)" ontouchend="setKey('down', false)">▼</div>
+            <div class="mob-btn btn-right" ontouchstart="setKey('right', true)" ontouchend="setKey('right', false)">▶</div>
         </div>
         <div class="control-group" style="flex-direction: column; justify-content: flex-end;">
-            <div class="mob-btn mob-btn-rect mob-fire" ontouchstart="setAction('fire', true)" ontouchend="setAction('fire', false)">FIRE</div>
-            <div class="mob-btn mob-btn-rect mob-boost" ontouchstart="setAction('boost', true)" ontouchend="setAction('boost', false)">BOOST</div>
+            <div class="mob-btn mob-btn-rect mob-fire" ontouchstart="setKey('fire', true)" ontouchend="setKey('fire', false)">FIRE</div>
+            <div class="mob-btn mob-btn-rect mob-boost" ontouchstart="setKey('boost', true)" ontouchend="setKey('boost', false)">BOOST</div>
         </div>
     </div>
   </div>
 
-  <!-- START SCREEN -->
   <div id="start-screen" class="screen">
     <div class="menu-box">
       <h1>SKY PILOT</h1>
@@ -151,7 +146,6 @@
     </div>
   </div>
 
-  <!-- PAUSE -->
   <div id="pause-screen" class="screen hidden">
     <div class="menu-box">
       <h1>PAUSED</h1>
@@ -160,7 +154,6 @@
     </div>
   </div>
 
-  <!-- END -->
   <div id="end-screen" class="screen hidden">
     <div class="menu-box">
       <h1 id="end-title" class="win-text">VICTORY</h1>
@@ -172,26 +165,37 @@
 <script>
   document.body.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
 
-  // --- 🔥 SETTINGS ---
-  let bindings = { up: 'w', down: 's', left: 'a', right: 'd', boost: ' ', fire: 'shift' };
-  const savedBinds = localStorage.getItem('skyPilot_bindings');
-  if (savedBinds) { try { bindings = JSON.parse(savedBinds); } catch(e){} }
-  let isMusicOn = localStorage.getItem('skyPilot_music') !== 'OFF';
-  let isSoundOn = localStorage.getItem('skyPilot_sfx') !== 'OFF';
-
-  // --- CONFIG ---
-  const TERRAIN_COLORS = { WATER: 0x1E90FF, SAND: 0xEEDD82, GRASS: 0x556B2F, ROCK: 0x808080, SNOW: 0xFFFFFF };
-  const NORMAL_SPEED = 10; const BOOST_SPEED  = 20; const TURN_SPEED = 0.05; const LIFT_SPEED = 3.5;
-  const RINGS_PER_LAP = 4; const TOTAL_LAPS = 2; const TOTAL_RINGS_WIN = RINGS_PER_LAP * TOTAL_LAPS;
-  const WORLD_LIMIT = 24500; // Boundary limit fix
+  // --- 🔥 LOAD CONFIG ---
+  // Fallback if SKY_CONFIG missing
+  const { 
+      RINGS_PER_LAP, 
+      TOTAL_RINGS_WIN, 
+      NORMAL_SPEED, 
+      BOOST_SPEED, 
+      TURN_SPEED, 
+      LIFT_SPEED, 
+      FIRE_RATE, 
+      COLLISION_DAMAGE, 
+      BOOST_DRAIN, 
+      BOOST_REFILL, 
+      TERRAIN_COLORS 
+  } = window.SKY_CONFIG || {
+      RINGS_PER_LAP: 12, TOTAL_RINGS_WIN: 12, NORMAL_SPEED: 5, BOOST_SPEED: 10,
+      TURN_SPEED: 0.03, LIFT_SPEED: 5, FIRE_RATE: 120, COLLISION_DAMAGE: 8,
+      BOOST_DRAIN: 0.5, BOOST_REFILL: 0.1, TERRAIN_COLORS: { SAND: 0xeebb88, GRASS: 0x55aa55, ROCK: 0x666666, SNOW: 0xffffff, WATER: 0x004488 }
+  };
+  
+  const WORLD_LIMIT = 24500; 
+  // Config uses "RINGS_PER_LAP" but game logic counts total rings.
+  // Using 12 as standard win condition.
 
   let scene, camera, renderer, planeRig, planeMesh, guideArrow;
   let enemies = [], repairKits = [], rings = [], ringWaypoints = [];
   let currentRingObj = null;
   let bullets = [], isPlaying = false, isPaused = false;
-  let boostLevel = 100; const BOOST_DRAIN = 0.8; const BOOST_REFILL = 0.3;
-  let health = 100; const COLLISION_DAMAGE = 0.6;
-  let lastFireTime = 0; const FIRE_RATE = 150;
+  let boostLevel = 100; 
+  let health = 100; 
+  let lastFireTime = 0; 
 
   // PLAYER VELOCITY TRACKING FOR AI
   let playerPrevPos = new THREE.Vector3();
@@ -210,41 +214,52 @@
   let lastFrameTime = performance.now(); let frameCount = 0; const fpsElem = document.getElementById('fps-counter');
   const minimapCanvas = document.getElementById('minimap-canvas'); const minimapCtx = minimapCanvas.getContext('2d');
 
-  // ---- ✅ BUG FIX 1: CLEAN INPUT ABSTRACTION ----
-  function setAction(action, state) {
-    activeKeys[action] = state;
-  }
-  
-  function isActionActive(actionId) { 
-    return !!activeKeys[actionId]; 
+  // ---- INPUT HANDLING WITH GAME MANAGER ----
+  function setKey(action, state) { 
+      // Mobile controls uses this function
+      if (typeof GameManager !== 'undefined') {
+          let key = GameManager.data.bindings[action]; 
+          activeKeys[key] = state;
+      }
   }
 
   // Input Listeners
   window.addEventListener('keydown', (e) => {
     if(e.key === "Escape") { togglePause(); return; }
     if(isPaused) return;
+    
+    // Fallback if GameManager not loaded (safety)
+    const binds = (typeof GameManager !== 'undefined') ? GameManager.data.bindings : { up:'w', down:'s', left:'a', right:'d', boost:' ', fire:'shift' };
+    
     const k = e.key.toLowerCase();
-    if(k === bindings.up || k === 'arrowup') setAction('up', true);
-    if(k === bindings.down || k === 'arrowdown') setAction('down', true);
-    if(k === bindings.left || k === 'arrowleft') setAction('left', true);
-    if(k === bindings.right || k === 'arrowright') setAction('right', true);
-    if(k === bindings.boost || (bindings.boost === ' ' && e.code === 'Space')) setAction('boost', true);
-    if(k === bindings.fire || (bindings.fire === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) setAction('fire', true);
+    if(k === binds.up || k === 'arrowup') activeKeys[binds.up] = true;
+    if(k === binds.down || k === 'arrowdown') activeKeys[binds.down] = true;
+    if(k === binds.left || k === 'arrowleft') activeKeys[binds.left] = true;
+    if(k === binds.right || k === 'arrowright') activeKeys[binds.right] = true;
+    if(k === binds.boost || (binds.boost === ' ' && e.code === 'Space')) activeKeys[binds.boost] = true;
+    if(k === binds.fire || (binds.fire === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) activeKeys[binds.fire] = true;
   });
 
   window.addEventListener('keyup', (e) => {
+    const binds = (typeof GameManager !== 'undefined') ? GameManager.data.bindings : { up:'w', down:'s', left:'a', right:'d', boost:' ', fire:'shift' };
     const k = e.key.toLowerCase();
-    if(k === bindings.up || k === 'arrowup') setAction('up', false);
-    if(k === bindings.down || k === 'arrowdown') setAction('down', false);
-    if(k === bindings.left || k === 'arrowleft') setAction('left', false);
-    if(k === bindings.right || k === 'arrowright') setAction('right', false);
-    if(k === bindings.boost || (bindings.boost === ' ' && e.code === 'Space')) setAction('boost', false);
-    if(k === bindings.fire || (bindings.fire === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) setAction('fire', false);
+    
+    if(k === binds.up || k === 'arrowup') activeKeys[binds.up] = false;
+    if(k === binds.down || k === 'arrowdown') activeKeys[binds.down] = false;
+    if(k === binds.left || k === 'arrowleft') activeKeys[binds.left] = false;
+    if(k === binds.right || k === 'arrowright') activeKeys[binds.right] = false;
+    if(k === binds.boost || (binds.boost === ' ' && e.code === 'Space')) activeKeys[binds.boost] = false;
+    if(k === binds.fire || (binds.fire === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) activeKeys[binds.fire] = false;
   });
-
-  window.addEventListener("touchend", () => { 
-    ["up","down","left","right","fire","boost"].forEach(k => setAction(k, false)); 
-  });
+  
+  function isActionActive(actionId) { 
+      const binds = (typeof GameManager !== 'undefined') ? GameManager.data.bindings : { up:'w', down:'s', left:'a', right:'d', boost:' ', fire:'shift' };
+      if (actionId === 'up') return activeKeys[binds.up] || activeKeys['arrowup']; 
+      if (actionId === 'down') return activeKeys[binds.down] || activeKeys['arrowdown']; 
+      if (actionId === 'left') return activeKeys[binds.left] || activeKeys['arrowleft']; 
+      if (actionId === 'right') return activeKeys[binds.right] || activeKeys['arrowright']; 
+      return activeKeys[binds[actionId]]; 
+  }
 
   // ---- UI ----
   function updateLeaderboard() {
@@ -273,7 +288,10 @@
 
   // ---- GAME LOGIC ----
   function ringCollected(collectorName) {
-    SFXManager.playRing(isSoundOn); let winner = null;
+    const sfxEnabled = (typeof GameManager !== 'undefined') ? GameManager.data.sfx : true;
+    SFXManager.playRing(sfxEnabled); 
+    
+    let winner = null;
     if (collectorName === "PLAYER") {
       playerStats.rings++; playerStats.progress++; updateRingVisuals();
       if (playerStats.rings >= TOTAL_RINGS_WIN) winner = { win: true, name: "PLAYER" };
@@ -396,7 +414,8 @@
   }
 
   function spawnBullet() {
-    SFXManager.playGun(isSoundOn); let target = null; let minDist = Infinity; const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(planeRig.quaternion);
+    const sfxEnabled = (typeof GameManager !== 'undefined') ? GameManager.data.sfx : true;
+    SFXManager.playGun(sfxEnabled); let target = null; let minDist = Infinity; const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(planeRig.quaternion);
     enemies.forEach(e => { if(!e.userData.alive) return; const toEnemy = new THREE.Vector3().subVectors(e.position, planeRig.position); const dist = toEnemy.length(); if(dist < 8000 && forward.dot(toEnemy.normalize()) > 0.7 && dist < minDist) { minDist = dist; target = e; } });
     const bulletGeo = new THREE.SphereGeometry(2, 8, 8); const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 }); const offsets = [-12, 12];
     offsets.forEach(offset => { const bullet = new THREE.Mesh(bulletGeo, bulletMat); bullet.position.copy(planeRig.position); const wingX = Math.cos(planeRig.rotation.y) * offset; const wingZ = Math.sin(planeRig.rotation.y) * -offset; bullet.position.x += wingX; bullet.position.z += wingZ; scene.add(bullet); const v = new THREE.Vector3(0,0,-1).applyQuaternion(planeRig.quaternion).multiplyScalar(25); bullets.push({ mesh: bullet, velocity: v, target: target, life: 150 }); });
@@ -409,7 +428,8 @@
     direction.x += (Math.random() - 0.5) * 0.02; direction.y += (Math.random() - 0.5) * 0.02; direction.z += (Math.random() - 0.5) * 0.02; 
     const v = direction.multiplyScalar(40); 
     bullets.push({ mesh: bullet, velocity: v, life: 220, isEnemy: true, owner: enemy }); 
-    if (isSoundOn && Math.random() < 0.3) SFXManager.playGun(isSoundOn); 
+    const sfxEnabled = (typeof GameManager !== 'undefined') ? GameManager.data.sfx : true;
+    if (sfxEnabled && Math.random() < 0.3) SFXManager.playGun(sfxEnabled); 
   }
 
   function drawMinimap() { if(!minimapCtx || !planeRig) return; minimapCtx.clearRect(0, 0, 140, 140); const cx = 70, cy = 70; const range = 4000; const scale = 60 / range; minimapCtx.save(); minimapCtx.translate(cx, cy); minimapCtx.rotate(-planeRig.rotation.y + Math.PI); minimapCtx.beginPath(); minimapCtx.moveTo(0, -6); minimapCtx.lineTo(-4, 4); minimapCtx.lineTo(4, 4); minimapCtx.fillStyle = "#00ff00"; minimapCtx.fill(); minimapCtx.restore(); function drawDot(obj, color, size) { if(!obj || !obj.visible) return; const dx = obj.position.x - planeRig.position.x; const dz = obj.position.z - planeRig.position.z; let px = dx * scale; let py = dz * scale; const dist = Math.sqrt(px*px + py*py); if (dist > 65) { const ratio = 65 / dist; px *= ratio; py *= ratio; } minimapCtx.beginPath(); minimapCtx.arc(cx + px, cy + py, size, 0, Math.PI * 2); minimapCtx.fillStyle = color; minimapCtx.fill(); } if(currentRingObj) drawDot(currentRingObj, "#ffd700", 4); enemies.forEach(e => { if(e.userData.alive) drawDot(e, "#ff0000", 3); }); }
@@ -462,9 +482,10 @@
       const b = bullets[i]; b.mesh.position.add(b.velocity); b.life--;
       const gh = getTerrainHeight(b.mesh.position.x, b.mesh.position.z); 
       if (b.mesh.position.y < gh + 10 || b.life <= 0) { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); bullets.splice(i, 1); continue; }
-      if (b.isEnemy) { if (b.mesh.position.distanceTo(planeRig.position) < 80) { health -= 8; SFXManager.playExplosion(isSoundOn); if (health <= 0) { health = 0; endGame(false, "Shot Down by " + (b.owner.name || "Enemy")); } scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); bullets.splice(i, 1); continue; } }
+      const sfxEnabled = (typeof GameManager !== 'undefined') ? GameManager.data.sfx : true;
+      if (b.isEnemy) { if (b.mesh.position.distanceTo(planeRig.position) < 80) { health -= 8; SFXManager.playExplosion(sfxEnabled); if (health <= 0) { health = 0; endGame(false, "Shot Down by " + (b.owner.name || "Enemy")); } scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); bullets.splice(i, 1); continue; } }
       else { if(b.target && b.target.userData.alive) { const dir = new THREE.Vector3().subVectors(b.target.position, b.mesh.position).normalize(); b.velocity.lerp(dir.multiplyScalar(20), 0.1); }
-        let hit = false; for(let e of enemies) { if(e.userData.alive && b.mesh.position.distanceTo(e.position) < 80) { e.userData.health -= 25; SFXManager.playExplosion(isSoundOn); e.userData.dodgeTimer = 90; e.userData.state = "EVADE"; if(e.userData.health <= 0) { e.userData.alive = false; e.visible = false; enemiesAliveCount--; if(enemiesAliveCount === 0) endGame(true, "Ace Combatant: All Enemies Down"); } hit = true; break; } }
+        let hit = false; for(let e of enemies) { if(e.userData.alive && b.mesh.position.distanceTo(e.position) < 80) { e.userData.health -= 25; SFXManager.playExplosion(sfxEnabled); e.userData.dodgeTimer = 90; e.userData.state = "EVADE"; if(e.userData.health <= 0) { e.userData.alive = false; e.visible = false; enemiesAliveCount--; if(enemiesAliveCount === 0) endGame(true, "Ace Combatant: All Enemies Down"); } hit = true; break; } }
         if(hit) { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); bullets.splice(i, 1); continue; }
       }
     }
@@ -483,7 +504,8 @@
     const groundHeight = getTerrainHeight(planeRig.position.x, planeRig.position.z); let isDamaging = false; 
     if (planeRig.position.y < groundHeight + 15) { planeRig.position.y = groundHeight + 15; health -= COLLISION_DAMAGE; isDamaging = true; if (health <= 0) { health = 0; endGame(false, "Crashed into Terrain"); } }
     
-    SFXManager.updateContinuous(isActionActive('boost'), isDamaging, isSoundOn);
+    const sfxEnabled = (typeof GameManager !== 'undefined') ? GameManager.data.sfx : true;
+    SFXManager.updateContinuous(isActionActive('boost'), isDamaging, sfxEnabled);
     MusicManager.updateGameplayMusic(health);
 
     document.getElementById('health-fill').style.width = health + '%';
@@ -491,7 +513,7 @@
     const targetCamPos = new THREE.Vector3(0, 100, 300).applyMatrix4(planeRig.matrixWorld);
     camera.position.lerp(targetCamPos, 0.1); camera.lookAt(planeRig.position);
     if (currentRingObj) { guideArrow.visible = true; guideArrow.position.copy(planeRig.position); guideArrow.position.y += 60; guideArrow.lookAt(currentRingObj.position); if (planeRig.position.distanceTo(currentRingObj.position) < 100 && !currentRingObj.userData.locked) { currentRingObj.userData.locked = true; ringCollected("PLAYER"); } } else guideArrow.visible = false;
-    repairKits.forEach(kit => { if (kit.userData.active) { kit.rotation.y += 0.02; if (planeRig.position.distanceTo(kit.position) < 80) { kit.userData.active = false; kit.visible = false; kit.userData.respawnTime = Date.now() + 30000; health += 30; if(health > 100) health = 100; SFXManager.playRepair(isSoundOn); } } else if (Date.now() > kit.userData.respawnTime) { kit.userData.active = true; kit.visible = true; } });
+    repairKits.forEach(kit => { if (kit.userData.active) { kit.rotation.y += 0.02; if (planeRig.position.distanceTo(kit.position) < 80) { kit.userData.active = false; kit.visible = false; kit.userData.respawnTime = Date.now() + 30000; health += 30; if(health > 100) health = 100; SFXManager.playRepair(sfxEnabled); } } else if (Date.now() > kit.userData.respawnTime) { kit.userData.active = true; kit.visible = true; } });
     rings.forEach(r => r.rotation.z += 0.01);
     drawMinimap();
     renderer.render(scene, camera);
@@ -501,14 +523,13 @@
   function endGame(win, reason) { 
     isPlaying = false; 
     
-    // Sabse pehle music aur continuous SFX ko silent karo
+    // Silence audio safely
     if (typeof MusicManager !== 'undefined') MusicManager.stop();
     if (typeof SFXManager !== 'undefined') {
-        SFXManager.updateContinuous(false, false, false); // Silence engine
+        SFXManager.updateContinuous(false, false, false); 
         SFXManager.stopAll(); 
     }
     
-    // Victory/Defeat sound play karo
     if(win) {
         if (typeof MusicManager !== 'undefined') MusicManager.playWin();
     } else {
