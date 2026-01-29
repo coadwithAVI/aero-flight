@@ -500,6 +500,7 @@
 
   function endGame(win, reason) { 
     isPlaying = false; 
+    MusicManager.stop(); // Stop loop background music
     SFXManager.stopAll(); 
     if(win) MusicManager.playWin(); else MusicManager.playLose();
     const screen = document.getElementById('end-screen'); const title = document.getElementById('end-title'); const msg = document.getElementById('end-msg'); 
