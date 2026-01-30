@@ -6,21 +6,29 @@ const { Server } = require("socket.io");
 const path = require('path');
 
 // --- 🛠️ CONFIGURATION ---
-// Render.com dynamic port use karta hai. Hardcode mat karna.
 const PORT = process.env.PORT || 10000;
 
-// Shared Config ko import karte hain taaki rules same rahein
-// (Ensure game-config.js has module.exports as written in previous step)
-const Cfg = require('./public/game-config.js');
+// ✅ FIX 1: Folder ka naam 'Public' (Capital P) hai, toh path bhi wahi hona chahiye
+const publicPath = path.join(__dirname, 'Public');
+
+// ✅ FIX 2: Config file load karte waqt bhi Capital 'P' use karein
+// Note: Ensure game-config.js mein 'module.exports' wala code added ho
+let Cfg = {};
+try {
+    Cfg = require('./Public/game-config.js');
+} catch (e) {
+    console.warn("⚠️ Game Config not loaded by server. Using defaults.");
+    // Fallback defaults agar file load na ho
+    Cfg = { RINGS_PER_LAP: 4, TOTAL_RINGS_WIN: 8 };
+}
 
 // --- 🚀 SETUP SERVER & CORS ---
 const io = new Server(server, {
-    cors: { origin: "*" }, // Allow all connections (Dev/Prod friendly)
-    transports: ['websocket', 'polling'] // Connection stability ke liye
+    cors: { origin: "*" }, 
+    transports: ['websocket', 'polling']
 });
 
-// Serve Static Files (IMPORTANT: Folder name MUST be 'public' in lowercase)
-const publicPath = path.join(__dirname, 'public');
+// Serve Static Files form 'Public' folder
 app.use(express.static(publicPath));
 
 // Route for root
@@ -44,16 +52,15 @@ io.on('connection', (socket) => {
             hostId: socket.id, 
             players: [],
             status: 'lobby',
-            // CRITICAL: Server generates the map seed!
             seed: Math.floor(Math.random() * 100000) 
         };
 
-        const player = { id: socket.id, name: name.substring(0, 12), isHost: true, rings: 0 };
+        const player = { id: socket.id, name: (name || "Player").substring(0, 12), isHost: true, rings: 0 };
         rooms[roomId].players.push(player);
         
         socket.join(roomId);
         socket.emit('mp_room_created', { roomId, players: rooms[roomId].players, isHost: true });
-        console.log(`[ROOM] Created ${roomId} by ${name}`);
+        console.log(`[ROOM] Created ${roomId}`);
     });
 
     socket.on('mp_join_room', ({ roomId, name }) => {
@@ -61,20 +68,19 @@ io.on('connection', (socket) => {
         const room = rooms[rId];
         
         if (room && room.status === 'lobby') {
-            const player = { id: socket.id, name: name.substring(0, 12), isHost: false, rings: 0 };
+            const player = { id: socket.id, name: (name || "Wingman").substring(0, 12), isHost: false, rings: 0 };
             room.players.push(player);
             
             socket.join(rId);
             
-            // Send room info AND the Seed to the new player
+            // Send room info AND the Seed
             socket.emit('mp_room_joined', { 
                 roomId: rId, 
                 players: room.players, 
                 hostId: room.hostId,
-                seed: room.seed // Sync Map
+                seed: room.seed 
             });
             
-            // Notify others
             socket.to(rId).emit('mp_lobby_update', { players: room.players });
         } else {
             socket.emit('mp_error', { msg: "Room not found or game started." });
@@ -87,20 +93,16 @@ io.on('connection', (socket) => {
         
         if (room && room.hostId === socket.id) {
             room.status = 'playing';
-            // Reset scores
             room.players.forEach(p => p.rings = 0);
             
-            // Broadcast Start with SEED ensures everyone generates same terrain
             io.to(rId).emit('mp_game_start', { seed: room.seed });
             console.log(`[GAME] Started in ${rId}`);
         }
     });
 
-    // --- 2. GAMEPLAY SYNC (Optimized) ---
+    // --- 2. GAMEPLAY SYNC ---
 
     socket.on('playerMovement', (data) => {
-        // Relay movement to others in the room, exclude sender
-        // Pass through timestamp (ts) for interpolation
         if (data.roomId) {
             socket.to(data.roomId).emit('playerMoved', {
                 id: socket.id,
@@ -109,40 +111,30 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('mp_shoot', (data) => {
-        if (data.roomId) {
-            socket.to(data.roomId).emit('mp_remote_shoot', {
-                ownerId: socket.id,
-                pos: data.pos,
-                quat: data.quat,
-                vel: data.vel
-            });
-        }
-    });
-
-    // --- 3. SCORING (Server Authority) ---
+    // --- 3. SCORING ---
 
     socket.on('mp_claim_ring', ({ roomId, ringIndex }) => {
         const rId = (roomId || "").toUpperCase();
         const room = rooms[rId];
+        // Use defaults if Cfg didn't load
+        const RINGS_PER_LAP = Cfg.RINGS_PER_LAP || 4;
+        const TOTAL_RINGS_WIN = Cfg.TOTAL_RINGS_WIN || 8;
 
         if (room && room.status === 'playing') {
             const player = room.players.find(p => p.id === socket.id);
             if (player) {
-                // LOGIC: Check sequence. Player cannot skip rings.
-                const expectedIndex = player.rings % Cfg.RINGS_PER_LAP;
+                // Sequence Check
+                const expectedIndex = player.rings % RINGS_PER_LAP;
                 
                 if (ringIndex === expectedIndex) {
                     player.rings++;
                     
-                    // Broadcast update
                     io.to(rId).emit('mp_score_update', { 
                         id: socket.id, 
                         rings: player.rings 
                     });
 
-                    // Win Condition
-                    if (player.rings >= Cfg.TOTAL_RINGS_WIN) {
+                    if (player.rings >= TOTAL_RINGS_WIN) {
                         room.status = 'finished';
                         io.to(rId).emit('mp_game_over', { winner: player.name });
                     }
@@ -151,10 +143,9 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- 4. CLEANUP (Memory Leak Prevention) ---
+    // --- 4. CLEANUP ---
 
     socket.on('disconnect', () => {
-        // Find which room the player was in
         for (const rId in rooms) {
             const room = rooms[rId];
             const idx = room.players.findIndex(p => p.id === socket.id);
@@ -163,11 +154,8 @@ io.on('connection', (socket) => {
                 room.players.splice(idx, 1);
                 
                 if (room.players.length === 0) {
-                    // Empty room? Delete it immediately to free memory
                     delete rooms[rId];
-                    console.log(`[ROOM] Deleted ${rId} (Empty)`);
                 } else {
-                    // Host left? Assign new host
                     if (room.hostId === socket.id) {
                         room.hostId = room.players[0].id;
                         room.players[0].isHost = true;
