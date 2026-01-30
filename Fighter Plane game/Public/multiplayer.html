@@ -1,533 +1,222 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sky Pilot: Multiplayer Elite</title>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="game-config.js"></script>
     <script src="game-manager.js"></script>
-    <script src="map.js"></script>
     <script src="sfx-manager.js"></script>
-    <script src="music-manager.js"></script>
-
+    <script src="map.js"></script>
     <style>
-        /* --- CORE UI STYLES --- */
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; user-select: none; }
-        #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        
-        /* UI OVERLAY LAYER */
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-        
-        /* HUD ELEMENTS */
-        .hud-panel { position: absolute; padding: 10px; pointer-events: auto; }
-        .top-left { top: 20px; left: 20px; text-align: left; }
-        .top-right { top: 20px; right: 20px; text-align: right; display: flex; gap: 10px; }
-        
-        .stat-bar { width: 200px; height: 10px; background: rgba(0,0,0,0.5); border: 1px solid #555; transform: skewX(-20deg); margin-top: 5px; overflow: hidden; }
-        .fill-bar { height: 100%; width: 100%; transition: width 0.1s linear; }
-        .health-fill { background: linear-gradient(90deg, #ff4444, #ff0000); box-shadow: 0 0 10px #ff0000; }
-        .boost-fill { background: linear-gradient(90deg, #00d2ff, #0088ff); box-shadow: 0 0 10px #00d2ff; }
-        
-        .text-glow { color: #fff; text-shadow: 0 0 5px #00d2ff; font-weight: bold; font-size: 14px; letter-spacing: 1px; }
-        
-        /* MENUS & SCREENS */
-        .screen { 
-            position: absolute; width: 100%; height: 100%; 
-            background: rgba(10, 15, 20, 0.85); backdrop-filter: blur(8px);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 20; transition: opacity 0.3s;
-            pointer-events: auto;
-        }
-        .hidden { opacity: 0; pointer-events: none; display: none !important; }
-
-        .menu-box { 
-            background: rgba(0, 0, 0, 0.8); border: 1px solid #00d2ff; 
-            padding: 40px; border-radius: 10px; text-align: center; 
-            box-shadow: 0 0 30px rgba(0, 210, 255, 0.2); 
-            min-width: 300px;
-        }
-
-        button {
-            background: linear-gradient(180deg, #00d2ff, #0077ff); border: none;
-            padding: 12px 30px; margin: 10px; color: white; font-weight: bold;
-            font-size: 16px; cursor: pointer; transform: skewX(-10deg);
-            transition: all 0.2s; box-shadow: 0 5px 15px rgba(0, 119, 255, 0.4);
-        }
-        button:hover { transform: skewX(-10deg) scale(1.05); filter: brightness(1.2); }
-        button:active { transform: skewX(-10deg) scale(0.95); }
-        input { padding: 10px; background: #222; border: 1px solid #555; color: white; text-align: center; font-size: 16px; margin-bottom: 10px; width: 80%; }
-
-        /* MOBILE CONTROLS */
-        .mobile-controls { display: none; position: absolute; bottom: 20px; width: 100%; height: 120px; z-index: 15; pointer-events: none; }
-        @media (max-width: 1024px) { .mobile-controls { display: flex; justify-content: space-between; padding: 0 20px; } }
-        .touch-btn { width: 70px; height: 70px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; pointer-events: auto; backdrop-filter: blur(4px); }
-        .touch-btn:active { background: rgba(0, 210, 255, 0.5); }
+        body { margin: 0; overflow: hidden; background: #000; color: white; font-family: sans-serif; }
+        #menus, #hud { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .menu-box { pointer-events: auto; background: rgba(0,0,0,0.8); padding: 20px; border: 1px solid #0ff; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        input, button { padding: 10px; margin: 5px; }
+        #pauseOverlay { display: none; position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.5); padding: 10px; pointer-events: auto; }
     </style>
 </head>
 <body>
-
-    <div id="game-canvas"></div>
-
-    <div id="ui-layer" class="hidden">
-        <div class="hud-panel top-left">
-            <div class="text-glow">HULL INTEGRITY</div>
-            <div class="stat-bar"><div id="health-bar" class="fill-bar health-fill"></div></div>
-            <br>
-            <div class="text-glow">RINGS: <span id="score-text" style="color:#ffd700">0/12</span></div>
-            <div id="room-info" style="font-size:10px; color:#666; margin-top:5px;"></div>
+    <div id="game-container"></div>
+    
+    <div id="menus">
+        <div id="main-mp" class="menu-box">
+            <h2>MULTIPLAYER</h2>
+            <input id="pName" placeholder="Username"><br>
+            <button onclick="createRoom()">CREATE LOBBY</button><br>
+            <input id="roomCode" placeholder="Enter Code">
+            <button onclick="joinRoom()">JOIN LOBBY</button><br>
+            <button onclick="location.href='index.html'">BACK</button>
         </div>
-
-        <div class="hud-panel top-right">
-            <div style="text-align:right">
-                <div class="text-glow">THRUST</div>
-                <div class="stat-bar"><div id="boost-bar" class="fill-bar boost-fill"></div></div>
-            </div>
-            <button style="padding:5px 15px; font-size:12px; height:40px;" onclick="Game.leaveGame()">EXIT</button>
-        </div>
-
-        <div class="mobile-controls">
-            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; width: 160px; pointer-events: auto;">
-                <div></div><div class="touch-btn" id="btn-up"></div><div></div>
-                <div class="touch-btn" id="btn-left"></div><div class="touch-btn" id="btn-down"></div><div class="touch-btn" id="btn-right"></div>
-            </div>
-            <div style="display:flex; gap:10px; align-items:flex-end; pointer-events: auto;">
-                <div class="touch-btn" id="btn-fire" style="border-color:#ff4444"></div>
-                <div class="touch-btn" id="btn-boost" style="border-color:#00d2ff"></div>
-            </div>
+        <div id="lobby-ui" class="menu-box" style="display:none;">
+            <h2 id="lobby-id"></h2>
+            <ul id="p-list" style="text-align:left;"></ul>
+            <button id="start-btn" onclick="startGame()" style="display:none;">START MISSION</button>
         </div>
     </div>
 
-    <div id="menu-screen" class="screen">
-        <div class="menu-box">
-            <h1 class="text-glow" style="font-size:40px; margin:0 0 20px 0;">SKY PILOT</h1>
-            <input type="text" id="player-name" placeholder="CALLSIGN (Name)" maxlength="10">
-            <br>
-            <button onclick="Net.createRoom()">HOST MISSION</button>
-            <br>
-            <div style="margin:10px; color:#888">- OR -</div>
-            <input type="text" id="room-code" placeholder="ROOM CODE" maxlength="4" style="text-transform:uppercase">
-            <br>
-            <button onclick="Net.joinRoom()">JOIN SQUADRON</button>
-            <br><br>
-            <button style="background:none; border:1px solid #555;" onclick="window.location.href='index.html'">BACK</button>
+    <div id="hud" style="display:none;">
+        <div style="position:absolute; top:10px; left:10px;">RINGS: <span id="r-count">0</span> | HP: <span id="hp-count">100</span>%</div>
+        <div id="pauseOverlay">
+            <h3>PAUSED (AUTOPILOT ON)</h3>
+            <button onclick="togglePause()">RESUME</button><br>
+            <button onclick="toggleSound()">SOUND</button><br>
+            <button onclick="location.href='index.html'">LEAVE</button>
         </div>
     </div>
 
-    <div id="lobby-screen" class="screen hidden">
-        <div class="menu-box">
-            <h2 class="text-glow">HANGAR LOBBY</h2>
-            <h3 id="lobby-code" style="color:#00d2ff; font-size:30px; letter-spacing:5px; margin:10px;">----</h3>
-            <ul id="player-list" style="list-style:none; padding:0; color:#ccc; text-align:left;"></ul>
-            <div id="host-controls" class="hidden">
-                <button onclick="Net.startGame()">LAUNCH MISSION</button>
-            </div>
-            <div id="client-wait" class="hidden" style="color:#888; margin-top:20px;">Waiting for Commander...</div>
-        </div>
-    </div>
-
-    <div id="end-screen" class="screen hidden">
-        <div class="menu-box">
-            <h1 id="end-title" style="font-size:50px;">VICTORY</h1>
-            <p id="end-reason" style="color:white;">Mission Accomplished</p>
-            <button onclick="location.reload()">RETURN TO BASE</button>
-        </div>
-    </div>
-
-<script>
-/**
- * 🚀 SKY PILOT: MULTIPLAYER CLIENT ENGINE
- * Deep Logic: Delta-Time Physics, Interpolation, Seed Sync, Memory Management.
- */
-
-// --- GLOBAL STATE ---
-const State = {
-    isPlaying: false,
-    myId: null,
-    isHost: false,
-    roomId: null,
-    seed: null,
-    
-    // Physics
-    pos: new THREE.Vector3(0, 500, 0),
-    quat: new THREE.Quaternion(),
-    speed: 0,
-    health: window.SKY_CONFIG.MAX_HEALTH,
-    boost: window.SKY_CONFIG.MAX_BOOST,
-    
-    // Inputs
-    keys: { up:0, down:0, left:0, right:0, boost:0, fire:0 },
-    
-    // Network Interpolation
-    peers: {}, // Stores other players: { id: { mesh, targetPos, targetQuat } }
-    
-    // Timers
-    lastFrame: 0,
-    lastNetworkSend: 0
-};
-
-// --- 1. NETWORK MANAGER ---
-const socket = io(); // Auto-connects to origin
-
-const Net = {
-    init: function() {
-        socket.on('connect', () => { State.myId = socket.id; });
+    <script>
+        const socket = io();
+        let roomId = null;
+        let isHost = false;
+        let gameStarted = false;
         
-        // Lobby Events
-        socket.on('mp_room_created', (data) => {
-            State.roomId = data.roomId;
-            State.isHost = true;
-            UI.showLobby(data.roomId, data.players, true);
-        });
+        // 3JS & Game Vars
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 20000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('game-container').appendChild(renderer.domElement);
         
-        socket.on('mp_room_joined', (data) => {
-            State.roomId = data.roomId;
-            State.isHost = (data.hostId === State.myId);
-            // CRITICAL: SYNC SEED
-            if(data.seed) MapManager.setSeed(data.seed);
-            UI.showLobby(data.roomId, data.players, State.isHost);
-        });
-        
-        socket.on('mp_lobby_update', (data) => {
-            State.isHost = (data.hostId === State.myId);
-            UI.updatePlayerList(data.players);
-            if(State.isHost) document.getElementById('host-controls').classList.remove('hidden');
-        });
-
-        socket.on('mp_error', (data) => alert(data.msg));
-
-        // Game Start (Wait for Seed)
-        socket.on('mp_game_start', (data) => {
-            if(data.seed) MapManager.setSeed(data.seed);
-            Game.start();
-        });
-
-        // Gameplay Events
-        socket.on('playerMoved', (data) => {
-            if (!State.peers[data.id]) Game.spawnPeer(data.id);
-            // INTERPOLATION DATA: Store target, don't jump immediately
-            const p = State.peers[data.id];
-            p.targetPos.set(data.x, data.y, data.z);
-            p.targetQuat.set(data.quaternion._x, data.quaternion._y, data.quaternion._z, data.quaternion._w);
-        });
-
-        socket.on('mp_score_update', (data) => {
-            if (data.id === State.myId) {
-                UI.updateScore(data.rings);
-                if(typeof SFXManager !== 'undefined') SFXManager.playRing(GameManager.state.isSfxOn);
-            }
-        });
-
-        socket.on('playerDisconnected', (id) => {
-            if (State.peers[id]) {
-                Game.scene.remove(State.peers[id].mesh);
-                delete State.peers[id];
-            }
-        });
-
-        socket.on('mp_game_over', (data) => {
-            Game.end(data.winner === document.getElementById('player-name').value);
-        });
-    },
-
-    createRoom: function() {
-        const name = document.getElementById('player-name').value || "Pilot";
-        socket.emit('mp_create_room', { name });
-    },
-
-    joinRoom: function() {
-        const name = document.getElementById('player-name').value || "Wingman";
-        const code = document.getElementById('room-code').value;
-        if(!code) return alert("Enter Room Code");
-        socket.emit('mp_join_room', { roomId: code, name });
-    },
-
-    startGame: function() {
-        socket.emit('mp_start_game', { roomId: State.roomId });
-    },
-    
-    sendUpdate: function() {
-        // Rate Limiting (20Hz is enough for interpolation)
-        const now = Date.now();
-        if (now - State.lastNetworkSend > 50) {
-            socket.emit('playerMovement', {
-                roomId: State.roomId,
-                x: State.pos.x, y: State.pos.y, z: State.pos.z,
-                quaternion: State.quat,
-                // Passing timestamp for future lag compensation logic
-                ts: now
-            });
-            State.lastNetworkSend = now;
-        }
-    }
-};
-
-// --- 2. GAME ENGINE ---
-const Game = {
-    scene: null, camera: null, renderer: null,
-    plane: null, terrain: null, rings: [],
-    clock: new THREE.Clock(),
-
-    init: function() {
-        const canvas = document.getElementById('game-canvas');
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Optimization
-        canvas.appendChild(this.renderer.domElement);
-
-        this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(SKY_CONFIG.TERRAIN_COLORS.SKY);
-        this.scene.fog = new THREE.FogExp2(SKY_CONFIG.TERRAIN_COLORS.SKY, SKY_CONFIG.FOG_DENSITY);
-
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 1, 8000);
-
         // Lighting
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
-        this.scene.add(hemiLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-        dirLight.position.set(100, 200, 100);
-        this.scene.add(dirLight);
-
-        // Inputs
-        this.setupInputs();
-    },
-
-    start: function() {
-        // Hide Menus, Show HUD
-        document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-        document.getElementById('ui-layer').classList.remove('hidden');
-        document.getElementById('room-info').innerText = `ROOM: ${State.roomId}`;
-
-        // Generate World (SYNCED via Seed)
-        if (this.terrain) this.scene.remove(this.terrain);
-        this.terrain = MapManager.generateTerrain(SKY_CONFIG);
-        this.scene.add(this.terrain);
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x444444));
         
-        this.scene.add(MapManager.generateOcean(SKY_CONFIG));
+        let player, peers = {};
+        let rings = [], medkits = [];
+        let isPaused = false;
+        let hp = 100, myRings = 0;
+        let isDead = false;
 
-        // Generate Rings
-        this.rings.forEach(r => this.scene.remove(r));
-        const ringData = MapManager.generateRings(SKY_CONFIG.RINGS_PER_LAP, SKY_CONFIG);
-        this.rings = ringData.rings;
-        this.rings.forEach(r => this.scene.add(r));
-
-        // Create Player
-        this.createLocalPlayer();
-
-        // Audio
-        if(window.MusicManager) {
-            MusicManager.init();
-            MusicManager.playLobby(); // Or combat track
+        // --- NETWORK LOBBY ---
+        function createRoom() {
+            const name = document.getElementById('pName').value || "Pilot";
+            socket.emit('create_room', { name });
         }
-        if(window.SFXManager) SFXManager.init();
-
-        State.isPlaying = true;
-        this.animate();
-    },
-
-    createLocalPlayer: function() {
-        // Simple jet geometry
-        const geo = new THREE.ConeGeometry(2, 10, 8);
-        geo.rotateX(Math.PI / 2);
-        const mat = new THREE.MeshStandardMaterial({ color: 0x00d2ff });
-        this.plane = new THREE.Mesh(geo, mat);
-        this.scene.add(this.plane);
-        
-        // Reset Physics
-        State.pos.set(0, 600, 0); // Safe spawn height
-        State.quat.set(0, 0, 0, 1);
-        State.speed = SKY_CONFIG.NORMAL_SPEED;
-    },
-
-    spawnPeer: function(id) {
-        const geo = new THREE.ConeGeometry(2, 10, 8);
-        geo.rotateX(Math.PI / 2);
-        const mat = new THREE.MeshStandardMaterial({ color: 0xff4444 }); // Enemy Red
-        const mesh = new THREE.Mesh(geo, mat);
-        this.scene.add(mesh);
-        
-        State.peers[id] = {
-            mesh: mesh,
-            targetPos: new THREE.Vector3(0, -1000, 0), // Hidden initially
-            targetQuat: new THREE.Quaternion()
-        };
-    },
-
-    animate: function() {
-        if (!State.isPlaying) return;
-        requestAnimationFrame(() => Game.animate());
-
-        // Delta Time for consistency
-        const dt = Math.min(Game.clock.getDelta(), 0.1); // Cap at 0.1s to prevent huge jumps
-
-        // 1. PHYSICS (Local)
-        const Cfg = SKY_CONFIG;
-        
-        // Boost Logic
-        let targetSpeed = Cfg.NORMAL_SPEED;
-        if (State.keys.boost && State.boost > 0) {
-            targetSpeed = Cfg.BOOST_SPEED;
-            State.boost = Math.max(0, State.boost - (Cfg.BOOST_DRAIN * dt));
-        } else {
-            State.boost = Math.min(Cfg.MAX_BOOST, State.boost + (Cfg.BOOST_REFILL * dt));
+        function joinRoom() {
+            const code = document.getElementById('roomCode').value;
+            const name = document.getElementById('pName').value || "Wingman";
+            socket.emit('join_room', { roomId: code, name });
         }
-        State.speed = THREE.MathUtils.lerp(State.speed, targetSpeed, dt * 2);
+        function startGame() { socket.emit('start_game', roomId); }
 
-        // Movement
-        const moveDist = State.speed * dt;
+        socket.on('room_joined', data => {
+            roomId = data.roomId;
+            isHost = data.isHost;
+            MapManager.setSeed(data.seed); // Sync Seed
+            document.getElementById('main-mp').style.display = 'none';
+            document.getElementById('lobby-ui').style.display = 'block';
+            document.getElementById('lobby-id').innerText = "ROOM: " + roomId;
+        });
+
+        socket.on('update_lobby', players => {
+            const list = document.getElementById('p-list');
+            list.innerHTML = players.map(p => `<li>${p.name} ${p.isHost ? '(HOST)':''}</li>`).join('');
+            if(isHost) document.getElementById('start-btn').style.display = 'inline-block';
+        });
+
+        socket.on('game_started', () => {
+            document.getElementById('lobby-ui').style.display = 'none';
+            document.getElementById('hud').style.display = 'block';
+            initGame();
+        });
         
-        // Rotation (Yaw/Pitch)
-        const turn = Cfg.TURN_SPEED * dt;
-        if (State.keys.left) Game.plane.rotateY(turn);
-        if (State.keys.right) Game.plane.rotateY(-turn);
-        if (State.keys.up) Game.plane.rotateX(turn);
-        if (State.keys.down) Game.plane.rotateX(-turn);
-
-        // Apply forward movement based on rotation
-        Game.plane.translateZ(-moveDist);
-        
-        // Update State Pos for Network
-        State.pos.copy(Game.plane.position);
-        State.quat.copy(Game.plane.quaternion);
-
-        // Terrain Collision (Safety Floor)
-        const groundH = MapManager.getTerrainHeight(State.pos.x, State.pos.z);
-        if (State.pos.y < groundH + 10) {
-            Game.plane.position.y = groundH + 10;
-            // Force nose up
-            Game.plane.rotateX(-0.1); 
-            State.health -= Cfg.COLLISION_DAMAGE * dt; // Damage over time
-            if (State.health <= 0) Game.end(false);
-        }
-
-        // Camera Follow
-        const camOffset = new THREE.Vector3(0, 30, 80);
-        camOffset.applyQuaternion(Game.plane.quaternion);
-        const camPos = State.pos.clone().add(camOffset);
-        this.camera.position.lerp(camPos, 0.1); // Smooth camera
-        this.camera.lookAt(State.pos);
-
-        // 2. NETWORK SYNC
-        Net.sendUpdate();
-
-        // Interpolate Peers
-        for (const id in State.peers) {
-            const p = State.peers[id];
-            p.mesh.position.lerp(p.targetPos, 0.2); // Smooth position
-            p.mesh.quaternion.slerp(p.targetQuat, 0.2); // Smooth rotation
-        }
-
-        // 3. GAME LOGIC (Rings)
-        // Check collision with the NEXT expected ring only
-        // This is client-side prediction, Server verifies it.
-        // We iterate briefly to find visuals, but validation happens on server
-        const myRingIdx = parseInt(document.getElementById('score-text').innerText) || 0;
-        if(myRingIdx < Cfg.TOTAL_RINGS_WIN) {
-            const nextRing = this.rings[myRingIdx % Cfg.RINGS_PER_LAP];
-            if (nextRing && State.pos.distanceTo(nextRing.position) < 80) {
-                // Optimistic UI update (Green flash?)
-                socket.emit('mp_claim_ring', { roomId: State.roomId, ringIndex: myRingIdx % Cfg.RINGS_PER_LAP });
+        socket.on('player_moved', data => {
+            if(!peers[data.id]) {
+                const m = new THREE.Mesh(new THREE.ConeGeometry(2, 10, 8), new THREE.MeshStandardMaterial({color: 0xff0000}));
+                m.rotateX(Math.PI/2);
+                scene.add(m);
+                peers[data.id] = m;
             }
+            // Interpolate
+            peers[data.id].position.lerp(new THREE.Vector3(data.x, data.y, data.z), 0.3);
+            peers[data.id].quaternion.slerp(new THREE.Quaternion(data.qx, data.qy, data.qz, data.qw), 0.3);
+        });
+
+        socket.on('game_over', data => {
+            alert((data.winnerId === socket.id ? "VICTORY!" : "DEFEAT! Winner: " + data.winnerName));
+            location.href = 'index.html';
+        });
+
+        // --- GAMEPLAY ---
+        function initGame() {
+            MapManager.generateTerrain(scene);
+            const objs = MapManager.generateObjects(scene);
+            rings = objs.rings;
+            
+            const pGeo = new THREE.ConeGeometry(2, 10, 8);
+            pGeo.rotateX(Math.PI/2);
+            player = new THREE.Mesh(pGeo, new THREE.MeshStandardMaterial({color: 0x00ff00}));
+            player.position.set(0, 600, 0);
+            scene.add(player);
+            gameStarted = true;
+            animate();
         }
 
-        // 4. UI UPDATE
-        document.getElementById('health-bar').style.width = State.health + '%';
-        document.getElementById('boost-bar').style.width = State.boost + '%';
-        
-        this.renderer.render(this.scene, this.camera);
-    },
-
-    setupInputs: function() {
-        const setK = (k, v) => State.keys[k] = v;
-        const bind = GameManager.state.bindings;
-
-        window.addEventListener('keydown', (e) => {
-            const k = e.key.toLowerCase();
-            if (k === bind.up) setK('up', 1);
-            if (k === bind.down) setK('down', 1);
-            if (k === bind.left) setK('left', 1);
-            if (k === bind.right) setK('right', 1);
-            if (k === bind.boost) setK('boost', 1);
+        // Input
+        let keys = {};
+        window.addEventListener('keydown', e => {
+            if(e.key === 'Escape') togglePause();
+            keys[e.key.toLowerCase()] = true;
         });
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-        window.addEventListener('keyup', (e) => {
-            const k = e.key.toLowerCase();
-            if (k === bind.up) setK('up', 0);
-            if (k === bind.down) setK('down', 0);
-            if (k === bind.left) setK('left', 0);
-            if (k === bind.right) setK('right', 0);
-            if (k === bind.boost) setK('boost', 0);
-        });
-
-        // Touch handling helper
-        const touchBind = (id, action) => {
-            const el = document.getElementById(id);
-            if(!el) return;
-            el.addEventListener('touchstart', (e) => { e.preventDefault(); setK(action, 1); });
-            el.addEventListener('touchend', (e) => { e.preventDefault(); setK(action, 0); });
-        };
-        touchBind('btn-up', 'up'); touchBind('btn-down', 'down');
-        touchBind('btn-left', 'left'); touchBind('btn-right', 'right');
-        touchBind('btn-boost', 'boost'); touchBind('btn-fire', 'fire');
-    },
-
-    end: function(win) {
-        State.isPlaying = false;
-        document.getElementById('end-screen').classList.remove('hidden');
-        document.getElementById('end-title').innerText = win ? "VICTORY" : "FAILURE";
-        document.getElementById('end-title').style.color = win ? "#00ff00" : "#ff4444";
-        document.getElementById('end-reason').innerText = win ? "You ruled the skies!" : "Critical Damage Sustained";
-    },
-
-    leaveGame: function() {
-        window.location.href = 'index.html';
-    }
-};
-
-// --- 3. UI HELPERS ---
-const UI = {
-    showLobby: function(code, players, isHost) {
-        document.getElementById('menu-screen').classList.add('hidden');
-        document.getElementById('lobby-screen').classList.remove('hidden');
-        document.getElementById('lobby-code').innerText = code;
-        this.updatePlayerList(players);
-        
-        const hostDiv = document.getElementById('host-controls');
-        const waitDiv = document.getElementById('client-wait');
-        
-        if (isHost) {
-            hostDiv.classList.remove('hidden');
-            waitDiv.classList.add('hidden');
-        } else {
-            hostDiv.classList.add('hidden');
-            waitDiv.classList.remove('hidden');
+        function togglePause() {
+            isPaused = !isPaused;
+            document.getElementById('pauseOverlay').style.display = isPaused ? 'block' : 'none';
         }
-    },
+        function toggleSound() { GameManager.setSfx(!GameManager.state.isSfxOn); }
 
-    updatePlayerList: function(players) {
-        const list = document.getElementById('player-list');
-        list.innerHTML = '';
-        players.forEach(p => {
-            const li = document.createElement('li');
-            li.innerHTML = `<span style="color:${p.isHost ? '#ffd700':'#fff'}">${p.name}</span> ${p.id === State.myId ? '(YOU)' : ''}`;
-            list.appendChild(li);
-        });
-    },
+        function respawn() {
+            isDead = true;
+            player.visible = false; // Hide plane
+            setTimeout(() => {
+                player.position.set(0, 600, 0); // Reset to start
+                player.rotation.set(0,0,0);
+                player.visible = true;
+                hp = 100;
+                isDead = false;
+            }, 3000); // 3s penalty
+        }
 
-    updateScore: function(rings) {
-        document.getElementById('score-text').innerText = `${rings}/${SKY_CONFIG.TOTAL_RINGS_WIN}`;
-    }
-};
+        function animate() {
+            requestAnimationFrame(animate);
+            if(!gameStarted) return;
 
-// Initialization
-window.onload = () => {
-    Net.init();
-    Game.init();
-};
+            if(!isDead) {
+                // Movement Logic
+                let speed = SKY_CONFIG.NORMAL_SPEED;
+                
+                if (isPaused) {
+                    // Q1 Logic: Autopilot level flight
+                    const levelQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, player.rotation.y, 0));
+                    player.quaternion.slerp(levelQuat, 0.05); // Smooth level
+                } else {
+                    // Normal Control
+                    if(keys[GameManager.state.bindings.boost]) speed = SKY_CONFIG.BOOST_SPEED;
+                    if(keys[GameManager.state.bindings.up]) player.rotateX(SKY_CONFIG.TURN_SPEED);
+                    if(keys[GameManager.state.bindings.down]) player.rotateX(-SKY_CONFIG.TURN_SPEED);
+                    if(keys[GameManager.state.bindings.left]) player.rotateY(SKY_CONFIG.TURN_SPEED);
+                    if(keys[GameManager.state.bindings.right]) player.rotateY(-SKY_CONFIG.TURN_SPEED);
+                }
+                
+                player.translateZ(-speed);
 
-</script>
+                // Collision
+                const gh = MapManager.getTerrainHeight(player.position.x, player.position.z);
+                if(player.position.y < gh + 5) {
+                    player.position.y = gh + 5;
+                    hp -= SKY_CONFIG.TERRAIN_DAMAGE;
+                    if(hp <= 0) respawn();
+                }
+
+                // Rings
+                const nextRing = rings[myRings % SKY_CONFIG.RINGS_TOTAL];
+                if(player.position.distanceTo(nextRing.position) < 80) {
+                    myRings++;
+                    SFXManager.playCollect();
+                    socket.emit('finish_lap', { roomId, rings: myRings });
+                }
+                
+                // Network Sync (20 times per sec approx)
+                if(Math.random() < 0.2) {
+                    socket.emit('update_player', {
+                        roomId, 
+                        x: player.position.x, y: player.position.y, z: player.position.z,
+                        qx: player.quaternion.x, qy: player.quaternion.y, qz: player.quaternion.z, qw: player.quaternion.w
+                    });
+                }
+            }
+
+            // UI
+            document.getElementById('r-count').innerText = myRings;
+            document.getElementById('hp-count').innerText = Math.floor(hp);
+
+            // Camera
+            const camOffset = new THREE.Vector3(0, 30, 80).applyQuaternion(player.quaternion);
+            camera.position.lerp(player.position.clone().add(camOffset), 0.1);
+            camera.lookAt(player.position);
+
+            renderer.render(scene, camera);
+        }
+    </script>
 </body>
 </html>
