@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sky Pilot - Settings</title>
     
-    <!-- IMPORTANT: Link Game Manager -->
     <script src="game-manager.js"></script>
 
     <style>
@@ -22,7 +21,7 @@
         .key-bind-btn:hover { background: #444; border-color: #00d2ff; color: #00d2ff; }
         .toggle-active { background: rgba(0, 255, 0, 0.2); border-color: #00ff00; color: #00ff00; }
         .toggle-inactive { background: rgba(255, 0, 0, 0.2); border-color: #ff0000; color: #ff0000; }
-        .listening { background: #d35400; border-color: #e67e22; animation: pulse 0.5s infinite; }
+        .listening { background: #d35400; border-color: #e67e22; animation: pulse 0.5s infinite; border-width: 2px; }
         .secondary-btn { background: rgba(255,255,255,0.05); border: 1px solid #555; color: white; padding: 15px 30px; font-size: 18px; border-radius: 50px; cursor: pointer; text-transform: uppercase; font-weight: bold; letter-spacing: 2px; transition: 0.2s; width: 100%; margin-top: 10px; }
         .secondary-btn:hover { background: rgba(255,255,255,0.15); border-color: #fff; }
     </style>
@@ -36,24 +35,22 @@
         <div class="settings-grid">
             <div class="setting-row">
                 <span class="setting-label">SFX</span>
-                <!-- Button ab GameManager ka status dikhayega -->
-                <button id="btn-sfx" class="key-bind-btn toggle-active" onclick="toggleSfx()">ON</button>
+                <button id="btn-sfx" class="key-bind-btn" onclick="toggleSfx()">ON</button>
             </div>
             <div class="setting-row">
                 <span class="setting-label">MUSIC</span>
-                <button id="btn-music" class="key-bind-btn toggle-active" onclick="toggleMusic()">ON</button>
+                <button id="btn-music" class="key-bind-btn" onclick="toggleMusic()">ON</button>
             </div>
         </div>
 
         <h2>CONTROLS</h2>
         <div class="settings-grid">
-            <!-- Buttons ab rebind function call karenge -->
-            <div class="setting-row"><span class="setting-label">PITCH UP</span><button id="bind-up" class="key-bind-btn" onclick="rebind('up')">W</button></div>
-            <div class="setting-row"><span class="setting-label">PITCH DOWN</span><button id="bind-down" class="key-bind-btn" onclick="rebind('down')">S</button></div>
-            <div class="setting-row"><span class="setting-label">TURN LEFT</span><button id="bind-left" class="key-bind-btn" onclick="rebind('left')">A</button></div>
-            <div class="setting-row"><span class="setting-label">TURN RIGHT</span><button id="bind-right" class="key-bind-btn" onclick="rebind('right')">D</button></div>
-            <div class="setting-row"><span class="setting-label">BOOST</span><button id="bind-boost" class="key-bind-btn" onclick="rebind('boost')">SPACE</button></div>
-            <div class="setting-row"><span class="setting-label">FIRE</span><button id="bind-fire" class="key-bind-btn" onclick="rebind('fire')">SHIFT</button></div>
+            <div class="setting-row"><span class="setting-label">PITCH UP</span><button id="bind-up" class="key-bind-btn" onclick="rebind('up')">-</button></div>
+            <div class="setting-row"><span class="setting-label">PITCH DOWN</span><button id="bind-down" class="key-bind-btn" onclick="rebind('down')">-</button></div>
+            <div class="setting-row"><span class="setting-label">TURN LEFT</span><button id="bind-left" class="key-bind-btn" onclick="rebind('left')">-</button></div>
+            <div class="setting-row"><span class="setting-label">TURN RIGHT</span><button id="bind-right" class="key-bind-btn" onclick="rebind('right')">-</button></div>
+            <div class="setting-row"><span class="setting-label">BOOST</span><button id="bind-boost" class="key-bind-btn" onclick="rebind('boost')">-</button></div>
+            <div class="setting-row"><span class="setting-label">FIRE</span><button id="bind-fire" class="key-bind-btn" onclick="rebind('fire')">-</button></div>
         </div>
 
         <button class="secondary-btn" onclick="window.location.href='index.html'">BACK TO MENU</button>
@@ -62,76 +59,81 @@
     <script>
         // --- PAGE LOAD ---
         function initUI() {
-            // GameManager se current data uthao aur UI update karo
-            if (typeof GameManager === 'undefined') {
-                console.error("GameManager not loaded! Make sure game-manager.js is linked.");
+            if (typeof GameManager === 'undefined' || !GameManager.data) {
+                // Agar GameManager late load ho raha hai, toh thoda wait karein
+                setTimeout(initUI, 50);
                 return;
             }
             
-            // Set initial button states
+            // Set initial states from GameManager.data
             setButtonState('btn-sfx', GameManager.data.sfx);
             setButtonState('btn-music', GameManager.data.music);
             updateBindUI();
         }
 
-        // --- BUTTON HANDLERS ---
+        // --- TOGGLE HANDLERS ---
         function toggleSfx() {
             const newState = !GameManager.data.sfx;
-            GameManager.setSfx(newState); // Save to manager
+            GameManager.setSfx(newState); // Ye automatically apply() call karega
             setButtonState('btn-sfx', newState);
         }
 
         function toggleMusic() {
             const newState = !GameManager.data.music;
-            GameManager.setMusic(newState); // Save to manager
+            GameManager.setMusic(newState); // Ye automatically apply() call karega
             setButtonState('btn-music', newState);
         }
 
-        // --- HELPER UI ---
+        // --- UI HELPERS ---
         function setButtonState(btnId, isOn) {
             const btn = document.getElementById(btnId);
-            if (isOn) {
-                btn.innerText = "ON";
-                btn.classList.remove('toggle-inactive');
-                btn.classList.add('toggle-active');
-            } else {
-                btn.innerText = "OFF";
-                btn.classList.remove('toggle-active');
-                btn.classList.add('toggle-inactive');
-            }
+            if (!btn) return;
+            btn.innerText = isOn ? "ON" : "OFF";
+            btn.className = `key-bind-btn ${isOn ? 'toggle-active' : 'toggle-inactive'}`;
         }
 
         function updateBindUI() {
             const binds = GameManager.data.bindings;
             for (const [action, key] of Object.entries(binds)) {
                 const btn = document.getElementById('bind-' + action);
-                if (btn) btn.innerText = key === ' ' ? 'SPACE' : key.toUpperCase();
+                if (btn) {
+                    // Logic fix: New GameManager saves ' ' as 'space' string
+                    btn.innerText = (key === ' ' || key === 'space') ? 'SPACE' : key.toUpperCase();
+                }
             }
         }
 
-        // --- REBINDING LOGIC ---
+        // --- REBIND LOGIC ---
         function rebind(action) {
             const btn = document.getElementById('bind-' + action);
+            if (!btn) return;
+
+            // Visual feedback for listening
+            const originalText = btn.innerText;
             btn.innerText = "...";
             btn.classList.add('listening');
 
-            const handler = (e) => {
+            const keyHandler = (e) => {
                 e.preventDefault();
-                let key = e.key.toLowerCase();
-                if(key === ' ') key = ' ';
-
-                // Save via GameManager
-                GameManager.saveBinding(action, key);
                 
+                // key capture: ' ' ko explicitly handle kar rahe hain 
+                // taaki GameManager.saveBinding ka internal logic (key === ' ' ? 'space' : key) trigger ho
+                let capturedKey = e.key; 
+
+                // Save via New API
+                GameManager.saveBinding(action, capturedKey);
+                
+                // Cleanup
                 btn.classList.remove('listening');
                 updateBindUI();
-                window.removeEventListener('keydown', handler);
+                window.removeEventListener('keydown', keyHandler);
             };
             
-            window.addEventListener('keydown', handler, { once: true });
+            // Use once: true as a backup, but manual remove is cleaner here
+            window.addEventListener('keydown', keyHandler, { once: true });
         }
 
-        // Wait for window load to ensure GameManager is ready
+        // Boot
         window.onload = initUI;
     </script>
 
