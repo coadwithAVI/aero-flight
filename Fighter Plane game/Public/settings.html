@@ -21,7 +21,7 @@
         .key-bind-btn:hover { background: #444; border-color: #00d2ff; color: #00d2ff; }
         .toggle-active { background: rgba(0, 255, 0, 0.2); border-color: #00ff00; color: #00ff00; }
         .toggle-inactive { background: rgba(255, 0, 0, 0.2); border-color: #ff0000; color: #ff0000; }
-        .listening { background: #d35400; border-color: #e67e22; animation: pulse 0.5s infinite; border-width: 2px; }
+        .listening { background: #d35400; border-color: #e67e22; animation: pulse 0.5s infinite; }
         .secondary-btn { background: rgba(255,255,255,0.05); border: 1px solid #555; color: white; padding: 15px 30px; font-size: 18px; border-radius: 50px; cursor: pointer; text-transform: uppercase; font-weight: bold; letter-spacing: 2px; transition: 0.2s; width: 100%; margin-top: 10px; }
         .secondary-btn:hover { background: rgba(255,255,255,0.15); border-color: #fff; }
     </style>
@@ -35,61 +35,61 @@
         <div class="settings-grid">
             <div class="setting-row">
                 <span class="setting-label">SFX</span>
-                <button id="btn-sfx" class="key-bind-btn" onclick="toggleSfx()">ON</button>
+                <button id="btn-sfx" class="key-bind-btn toggle-active" onclick="toggleSfx()">ON</button>
             </div>
             <div class="setting-row">
                 <span class="setting-label">MUSIC</span>
-                <button id="btn-music" class="key-bind-btn" onclick="toggleMusic()">ON</button>
+                <button id="btn-music" class="key-bind-btn toggle-active" onclick="toggleMusic()">ON</button>
             </div>
         </div>
 
         <h2>CONTROLS</h2>
         <div class="settings-grid">
-            <div class="setting-row"><span class="setting-label">PITCH UP</span><button id="bind-up" class="key-bind-btn" onclick="rebind('up')">-</button></div>
-            <div class="setting-row"><span class="setting-label">PITCH DOWN</span><button id="bind-down" class="key-bind-btn" onclick="rebind('down')">-</button></div>
-            <div class="setting-row"><span class="setting-label">TURN LEFT</span><button id="bind-left" class="key-bind-btn" onclick="rebind('left')">-</button></div>
-            <div class="setting-row"><span class="setting-label">TURN RIGHT</span><button id="bind-right" class="key-bind-btn" onclick="rebind('right')">-</button></div>
-            <div class="setting-row"><span class="setting-label">BOOST</span><button id="bind-boost" class="key-bind-btn" onclick="rebind('boost')">-</button></div>
-            <div class="setting-row"><span class="setting-label">FIRE</span><button id="bind-fire" class="key-bind-btn" onclick="rebind('fire')">-</button></div>
+            <div class="setting-row"><span class="setting-label">PITCH UP</span><button id="bind-up" class="key-bind-btn" onclick="rebind('up')">W</button></div>
+            <div class="setting-row"><span class="setting-label">PITCH DOWN</span><button id="bind-down" class="key-bind-btn" onclick="rebind('down')">S</button></div>
+            <div class="setting-row"><span class="setting-label">TURN LEFT</span><button id="bind-left" class="key-bind-btn" onclick="rebind('left')">A</button></div>
+            <div class="setting-row"><span class="setting-label">TURN RIGHT</span><button id="bind-right" class="key-bind-btn" onclick="rebind('right')">D</button></div>
+            <div class="setting-row"><span class="setting-label">BOOST</span><button id="bind-boost" class="key-bind-btn" onclick="rebind('boost')">SPACE</button></div>
+            <div class="setting-row"><span class="setting-label">FIRE</span><button id="bind-fire" class="key-bind-btn" onclick="rebind('fire')">SHIFT</button></div>
         </div>
 
         <button class="secondary-btn" onclick="window.location.href='index.html'">BACK TO MENU</button>
     </div>
 
     <script>
-        // --- PAGE LOAD ---
         function initUI() {
-            if (typeof GameManager === 'undefined' || !GameManager.data) {
-                // Agar GameManager late load ho raha hai, toh thoda wait karein
-                setTimeout(initUI, 50);
+            if (typeof GameManager === 'undefined') {
+                console.error("GameManager not loaded!");
                 return;
             }
-            
-            // Set initial states from GameManager.data
             setButtonState('btn-sfx', GameManager.data.sfx);
             setButtonState('btn-music', GameManager.data.music);
             updateBindUI();
         }
 
-        // --- TOGGLE HANDLERS ---
         function toggleSfx() {
             const newState = !GameManager.data.sfx;
-            GameManager.setSfx(newState); // Ye automatically apply() call karega
+            GameManager.setSfx(newState); 
             setButtonState('btn-sfx', newState);
         }
 
         function toggleMusic() {
             const newState = !GameManager.data.music;
-            GameManager.setMusic(newState); // Ye automatically apply() call karega
+            GameManager.setMusic(newState);
             setButtonState('btn-music', newState);
         }
 
-        // --- UI HELPERS ---
         function setButtonState(btnId, isOn) {
             const btn = document.getElementById(btnId);
-            if (!btn) return;
-            btn.innerText = isOn ? "ON" : "OFF";
-            btn.className = `key-bind-btn ${isOn ? 'toggle-active' : 'toggle-inactive'}`;
+            if (isOn) {
+                btn.innerText = "ON";
+                btn.classList.remove('toggle-inactive');
+                btn.classList.add('toggle-active');
+            } else {
+                btn.innerText = "OFF";
+                btn.classList.remove('toggle-active');
+                btn.classList.add('toggle-inactive');
+            }
         }
 
         function updateBindUI() {
@@ -97,45 +97,31 @@
             for (const [action, key] of Object.entries(binds)) {
                 const btn = document.getElementById('bind-' + action);
                 if (btn) {
-                    // Logic fix: New GameManager saves ' ' as 'space' string
+                    // Fix: check for both ' ' and 'space' string
                     btn.innerText = (key === ' ' || key === 'space') ? 'SPACE' : key.toUpperCase();
                 }
             }
         }
 
-        // --- REBIND LOGIC ---
         function rebind(action) {
             const btn = document.getElementById('bind-' + action);
-            if (!btn) return;
-
-            // Visual feedback for listening
-            const originalText = btn.innerText;
             btn.innerText = "...";
             btn.classList.add('listening');
 
-            const keyHandler = (e) => {
+            const handler = (e) => {
                 e.preventDefault();
-                
-                // key capture: ' ' ko explicitly handle kar rahe hain 
-                // taaki GameManager.saveBinding ka internal logic (key === ' ' ? 'space' : key) trigger ho
-                let capturedKey = e.key; 
+                let key = e.key; // Directly pass original key to manager
 
-                // Save via New API
-                GameManager.saveBinding(action, capturedKey);
+                GameManager.saveBinding(action, key);
                 
-                // Cleanup
                 btn.classList.remove('listening');
                 updateBindUI();
-                window.removeEventListener('keydown', keyHandler);
+                window.removeEventListener('keydown', handler);
             };
-            
-            // Use once: true as a backup, but manual remove is cleaner here
-            window.addEventListener('keydown', keyHandler, { once: true });
+            window.addEventListener('keydown', handler, { once: true });
         }
 
-        // Boot
         window.onload = initUI;
     </script>
-
 </body>
 </html>
