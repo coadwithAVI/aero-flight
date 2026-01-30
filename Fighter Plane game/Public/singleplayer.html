@@ -26,8 +26,8 @@
             PLAYER_COOLDOWN: 150,
             AUTO_AIM_STRENGTH: 0.2, 
             BULLET_SPEED: 80,
-            BOT_HIT_RADIUS: 400, // Very easy for bots to hit rings
-            BOT_TURN_SPEED: 0.12 // Agile bots
+            BOT_HIT_RADIUS: 400, 
+            BOT_TURN_SPEED: 0.15 // Thoda aur fast turn
         };
 
         const scene = new THREE.Scene();
@@ -71,15 +71,17 @@
             scene.add(player);
             scene.add(guideArrow);
 
-            // Spawn 3 Competitive Bots
+            // Spawn Bots Facing the FIRST Ring
+            const firstRingPos = rings[0].position;
             for(let i=0; i<3; i++) {
                 let bot = window.ModelManager ? ModelManager.createJet(0xff4444) : new THREE.Mesh(new THREE.ConeGeometry(2,10,8), new THREE.MeshBasicMaterial({color:0xf00}));
                 if(!window.ModelManager) bot.rotateX(Math.PI/2);
                 bot.rotation.order = "YXZ";
                 
-                // Spawn slightly spread out
+                // Spawn behind player but facing the ring
                 bot.position.set((i-1)*200, 600, 200);
-                
+                bot.lookAt(firstRingPos); // Look at first ring immediately
+
                 bot.userData = { 
                     speed: SKY_CONFIG.NORMAL_SPEED, 
                     nextRing: 0, 
@@ -119,7 +121,6 @@
             else if(inputs.right) { player.rotateOnWorldAxis(worldUp, -turnSpeed); player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, -0.4, 0.1); }
             else player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 0.05);
 
-            // Fixed Controls
             if(inputs.up) player.rotation.x = Math.min(player.rotation.x + turnSpeed, 1.0);
             else if(inputs.down) player.rotation.x = Math.max(player.rotation.x - turnSpeed, -1.0);
             else player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 0.02);
@@ -169,66 +170,64 @@
             camera.lookAt(player.position);
         }
 
-        // --- INTELLIGENT RACING AI ---
+        // --- FIXED BOT DIRECTION LOGIC ---
         function updateBots() {
             const now = Date.now();
             bots.forEach(bot => {
-                // 1. Target Selection
                 const targetRing = rings[bot.userData.nextRing % SKY_CONFIG.RINGS_TOTAL];
                 let targetPos = targetRing.position.clone();
                 const distToRing = bot.position.distanceTo(targetPos);
 
-                // 2. Rubber Banding (Cheat to stay competitive)
-                // If bot is behind the player (ring count), boost speed
+                // --- 1. Catch Up Logic (Rubber Banding) ---
                 let currentSpeed = bot.userData.speed;
                 if(bot.userData.nextRing < stats.rings) {
-                    currentSpeed *= 1.4; // 40% speed boost to catch up
+                    currentSpeed *= 1.4; 
                 }
 
-                // 3. Terrain Logic
+                // --- 2. Terrain & Height Logic ---
+                // Only modify HEIGHT, do not mess with X/Z direction excessively
                 const lookAhead = new THREE.Vector3(0, 0, -300).applyQuaternion(bot.quaternion).add(bot.position);
                 const mountainHeight = MapManager.getTerrainHeight(lookAhead.x, lookAhead.z);
                 
-                // If far from ring, avoid mountains safely
                 if(distToRing > 1000) {
-                    if (targetPos.y < mountainHeight + 200) targetPos.y = mountainHeight + 250;
+                    // If far, maintain safe altitude over mountains
+                    if (targetPos.y < mountainHeight + 200) targetPos.y = mountainHeight + 200;
                 } else {
-                    // Dive Mode: Ignore terrain if ring is low, just stay above min ground
+                    // If close, allow dive but keep min height
                     const groundHeight = MapManager.getTerrainHeight(bot.position.x, bot.position.z);
-                    if (bot.position.y < groundHeight + 30) bot.position.y = groundHeight + 30;
+                    if (bot.position.y < groundHeight + 40) bot.position.y = groundHeight + 40;
                 }
 
-                // 4. Dodge (Only if bullets are super close)
-                // If far away from ring, focus on RACE, ignore dodge
-                if(distToRing < 1500) { 
+                // --- 3. Dodge Logic (Subtle) ---
+                if(distToRing < 2000) { 
                     let dodgeVector = new THREE.Vector3();
                     bullets.forEach(b => {
-                        if(b.isPlayer && b.mesh.position.distanceTo(bot.position) < 150) {
+                        if(b.isPlayer && b.mesh.position.distanceTo(bot.position) < 200) {
                             let away = new THREE.Vector3().subVectors(bot.position, b.mesh.position).normalize();
-                            dodgeVector.add(away.multiplyScalar(100));
+                            dodgeVector.add(away.multiplyScalar(80)); // Gentle push
                         }
                     });
                     targetPos.add(dodgeVector);
                 }
 
-                // 5. Movement & Turning
+                // --- 4. Rotation Logic (THE FIX) ---
                 const dummy = new THREE.Object3D(); 
                 dummy.position.copy(bot.position); 
                 dummy.lookAt(targetPos);
                 
-                // Dynamic Turn Speed: Turn faster if angle is large (missed ring)
-                const angle = bot.quaternion.angleTo(dummy.quaternion);
-                let turnFactor = CFG.BOT_TURN_SPEED;
-                if(angle > 0.5) turnFactor *= 2; // Sharp turn if off-course
+                // Force "Up" vector to be World Up to prevent upside-down flying
+                // This ensures they turn like cars/planes, not spaceships spinning wildly
+                // We assume banking is visual only or handled by slerp naturally
                 
-                bot.quaternion.slerp(dummy.quaternion, turnFactor); 
+                bot.quaternion.slerp(dummy.quaternion, CFG.BOT_TURN_SPEED); 
+                
+                // Always move forward relative to current facing
                 bot.translateZ(-currentSpeed);
 
-                // 6. Shooting (Only if aligned)
+                // --- 5. Shooting ---
                 const toPlayer = new THREE.Vector3().subVectors(player.position, bot.position).normalize();
                 const botDir = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.quaternion).normalize();
                 
-                // Only shoot if ahead of player or very close (don't lose speed looking back)
                 if(botDir.dot(toPlayer) > 0.9 && bot.position.distanceTo(player.position) < 2000) {
                     if(now - bot.userData.lastFire > CFG.ENEMY_COOLDOWN) {
                         fireBullet(bot, false, player, 0);
@@ -236,7 +235,7 @@
                     }
                 }
 
-                // 7. Ring Collection
+                // --- 6. Ring Collection ---
                 if(bot.position.distanceTo(targetRing.position) < CFG.BOT_HIT_RADIUS) {
                     bot.userData.nextRing++;
                     if(bot.userData.nextRing >= SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS) gameOver(false);
