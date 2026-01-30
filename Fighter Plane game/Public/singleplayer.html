@@ -25,9 +25,9 @@
             ENEMY_COOLDOWN: 1000,
             PLAYER_COOLDOWN: 150,
             AUTO_AIM_STRENGTH: 0.2, 
-            BULLET_SPEED: 70,
-            BOT_HIT_RADIUS: 300, 
-            BOT_TURN_SPEED: 0.1 
+            BULLET_SPEED: 80,
+            BOT_HIT_RADIUS: 400, // Very easy for bots to hit rings
+            BOT_TURN_SPEED: 0.12 // Agile bots
         };
 
         const scene = new THREE.Scene();
@@ -53,8 +53,6 @@
             if(window.MusicManager) { MusicManager.init(); MusicManager.playCombat(); }
             if(window.SFXManager) SFXManager.init();
             UIManager.hideStartScreen();
-            
-            // Enable Mobile Controls binding
             bindMobileControls();
 
             MapManager.generateTerrain(scene);
@@ -73,14 +71,17 @@
             scene.add(player);
             scene.add(guideArrow);
 
-            // Spawn Bots
+            // Spawn 3 Competitive Bots
             for(let i=0; i<3; i++) {
                 let bot = window.ModelManager ? ModelManager.createJet(0xff4444) : new THREE.Mesh(new THREE.ConeGeometry(2,10,8), new THREE.MeshBasicMaterial({color:0xf00}));
                 if(!window.ModelManager) bot.rotateX(Math.PI/2);
                 bot.rotation.order = "YXZ";
+                
+                // Spawn slightly spread out
                 bot.position.set((i-1)*200, 600, 200);
+                
                 bot.userData = { 
-                    speed: SKY_CONFIG.NORMAL_SPEED * 1.05, 
+                    speed: SKY_CONFIG.NORMAL_SPEED, 
                     nextRing: 0, 
                     lastFire: 0, 
                     id: i 
@@ -114,27 +115,18 @@
             const turnSpeed = SKY_CONFIG.TURN_SPEED * 1.5;
             const worldUp = new THREE.Vector3(0,1,0);
 
-            // Left/Right
             if(inputs.left) { player.rotateOnWorldAxis(worldUp, turnSpeed); player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0.4, 0.1); }
             else if(inputs.right) { player.rotateOnWorldAxis(worldUp, -turnSpeed); player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, -0.4, 0.1); }
             else player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 0.05);
 
-            // --- FIXED PITCH LOGIC (DIRECT CONTROLS) ---
-            if(inputs.up) {
-                // UP Key = Nose UP (Positive Rotation) -> Screen Up
-                player.rotation.x = Math.min(player.rotation.x + turnSpeed, 1.0);
-            }
-            else if(inputs.down) {
-                // DOWN Key = Nose DOWN (Negative Rotation) -> Screen Down
-                player.rotation.x = Math.max(player.rotation.x - turnSpeed, -1.0);
-            }
-            else {
-                player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 0.02);
-            }
+            // Fixed Controls
+            if(inputs.up) player.rotation.x = Math.min(player.rotation.x + turnSpeed, 1.0);
+            else if(inputs.down) player.rotation.x = Math.max(player.rotation.x - turnSpeed, -1.0);
+            else player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 0.02);
 
             player.translateZ(-speed);
 
-            // Objects
+            // Ring Logic
             if(rings.length > 0) {
                 const t = rings[ringTargetIndex % SKY_CONFIG.RINGS_TOTAL].position;
                 guideArrow.position.copy(player.position); guideArrow.position.y += 40; guideArrow.lookAt(t);
@@ -169,7 +161,7 @@
             updateBots();
             updateBullets();
             checkMedkits();
-            UIManager.updateHUD(stats, SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS); // Fixed total count pass
+            UIManager.updateHUD(stats, SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS);
             UIManager.drawMinimap(player, rings, bots);
 
             const camOff = new THREE.Vector3(0, 30, 80).applyQuaternion(player.quaternion);
@@ -177,55 +169,74 @@
             camera.lookAt(player.position);
         }
 
-        // --- AI LOGIC ---
+        // --- INTELLIGENT RACING AI ---
         function updateBots() {
             const now = Date.now();
             bots.forEach(bot => {
+                // 1. Target Selection
                 const targetRing = rings[bot.userData.nextRing % SKY_CONFIG.RINGS_TOTAL];
                 let targetPos = targetRing.position.clone();
-
                 const distToRing = bot.position.distanceTo(targetPos);
-                
-                // Terrain Avoidance
-                if (distToRing > 1000) {
-                    const lookAhead = new THREE.Vector3(0, 0, -300).applyQuaternion(bot.quaternion).add(bot.position);
-                    const mountainHeight = MapManager.getTerrainHeight(lookAhead.x, lookAhead.z);
-                    if (targetPos.y < mountainHeight + 150) {
-                        targetPos.y = mountainHeight + 200;
-                    }
-                } else {
-                    // Dive Logic
-                    const groundHeight = MapManager.getTerrainHeight(bot.position.x, bot.position.z);
-                    if (bot.position.y < groundHeight + 20) {
-                        bot.position.y = groundHeight + 20;
-                    }
+
+                // 2. Rubber Banding (Cheat to stay competitive)
+                // If bot is behind the player (ring count), boost speed
+                let currentSpeed = bot.userData.speed;
+                if(bot.userData.nextRing < stats.rings) {
+                    currentSpeed *= 1.4; // 40% speed boost to catch up
                 }
 
-                // Dodge
-                let dodgeVector = new THREE.Vector3();
-                bullets.forEach(b => {
-                    if(b.isPlayer && b.mesh.position.distanceTo(bot.position) < 200) {
-                        let away = new THREE.Vector3().subVectors(bot.position, b.mesh.position).normalize();
-                        dodgeVector.add(away.multiplyScalar(150));
-                    }
-                });
-                targetPos.add(dodgeVector);
+                // 3. Terrain Logic
+                const lookAhead = new THREE.Vector3(0, 0, -300).applyQuaternion(bot.quaternion).add(bot.position);
+                const mountainHeight = MapManager.getTerrainHeight(lookAhead.x, lookAhead.z);
+                
+                // If far from ring, avoid mountains safely
+                if(distToRing > 1000) {
+                    if (targetPos.y < mountainHeight + 200) targetPos.y = mountainHeight + 250;
+                } else {
+                    // Dive Mode: Ignore terrain if ring is low, just stay above min ground
+                    const groundHeight = MapManager.getTerrainHeight(bot.position.x, bot.position.z);
+                    if (bot.position.y < groundHeight + 30) bot.position.y = groundHeight + 30;
+                }
 
+                // 4. Dodge (Only if bullets are super close)
+                // If far away from ring, focus on RACE, ignore dodge
+                if(distToRing < 1500) { 
+                    let dodgeVector = new THREE.Vector3();
+                    bullets.forEach(b => {
+                        if(b.isPlayer && b.mesh.position.distanceTo(bot.position) < 150) {
+                            let away = new THREE.Vector3().subVectors(bot.position, b.mesh.position).normalize();
+                            dodgeVector.add(away.multiplyScalar(100));
+                        }
+                    });
+                    targetPos.add(dodgeVector);
+                }
+
+                // 5. Movement & Turning
                 const dummy = new THREE.Object3D(); 
                 dummy.position.copy(bot.position); 
                 dummy.lookAt(targetPos);
-                bot.quaternion.slerp(dummy.quaternion, CFG.BOT_TURN_SPEED); 
-                bot.translateZ(-bot.userData.speed);
+                
+                // Dynamic Turn Speed: Turn faster if angle is large (missed ring)
+                const angle = bot.quaternion.angleTo(dummy.quaternion);
+                let turnFactor = CFG.BOT_TURN_SPEED;
+                if(angle > 0.5) turnFactor *= 2; // Sharp turn if off-course
+                
+                bot.quaternion.slerp(dummy.quaternion, turnFactor); 
+                bot.translateZ(-currentSpeed);
 
+                // 6. Shooting (Only if aligned)
                 const toPlayer = new THREE.Vector3().subVectors(player.position, bot.position).normalize();
                 const botDir = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.quaternion).normalize();
-                if(botDir.dot(toPlayer) > 0.9 && bot.position.distanceTo(player.position) < 2500) {
+                
+                // Only shoot if ahead of player or very close (don't lose speed looking back)
+                if(botDir.dot(toPlayer) > 0.9 && bot.position.distanceTo(player.position) < 2000) {
                     if(now - bot.userData.lastFire > CFG.ENEMY_COOLDOWN) {
                         fireBullet(bot, false, player, 0);
                         bot.userData.lastFire = now;
                     }
                 }
 
+                // 7. Ring Collection
                 if(bot.position.distanceTo(targetRing.position) < CFG.BOT_HIT_RADIUS) {
                     bot.userData.nextRing++;
                     if(bot.userData.nextRing >= SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS) gameOver(false);
@@ -304,17 +315,16 @@
             });
         }
         
-        window.togglePause = function() { isPaused = !isPaused; UIManager.togglePause(isPaused); if(window.SFXManager) SFXManager.stopBoost(); };
-        window.toggleSound = function() { const s = !GameManager.state.isSfxOn; GameManager.setSfx(s); GameManager.setMusic(s); };
         function gameOver(win) {
             gameActive = false; MusicManager.stop(); if(SFXManager.stopBoost) SFXManager.stopBoost();
             if(win) SFXManager.playCollect(); else SFXManager.playHit();
-            alert(win ? "VICTORY!" : "CRASHED!"); location.href = 'index.html';
+            UIManager.showGameOver(win);
         }
 
-        // --- CONTROLS BINDING ---
+        window.togglePause = function() { isPaused = !isPaused; UIManager.togglePause(isPaused); if(window.SFXManager) SFXManager.stopBoost(); };
+        window.toggleSound = function() { const s = !GameManager.state.isSfxOn; GameManager.setSfx(s); GameManager.setMusic(s); };
+
         function bindMobileControls() {
-            // Helper to bind touch events to input state
             const bind = (id, key) => {
                 const el = document.getElementById(id);
                 if(!el) return;
@@ -325,13 +335,8 @@
                     if(key === 'boost' && window.SFXManager) SFXManager.stopBoost();
                 });
             };
-            
-            bind('btn-up', 'up');
-            bind('btn-down', 'down');
-            bind('btn-left', 'left');
-            bind('btn-right', 'right');
-            bind('btn-fire', 'fire');
-            bind('btn-boost', 'boost');
+            bind('btn-up', 'up'); bind('btn-down', 'down'); bind('btn-left', 'left'); bind('btn-right', 'right');
+            bind('btn-fire', 'fire'); bind('btn-boost', 'boost');
         }
 
         function handleInput(e, isDown) {
