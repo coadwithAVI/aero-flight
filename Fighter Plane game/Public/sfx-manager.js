@@ -161,3 +161,4 @@ const SFXManager = {
 };
 
 window.SFXManager = SFXManager;
+
