@@ -48,7 +48,7 @@
     #minimap-container { position: absolute; bottom: 20px; left: 20px; width: 140px; height: 140px; background: rgba(0,10,30,0.8); border: 2px solid #00d2ff; border-radius: 50%; overflow: hidden; }
     #minimap-canvas { width: 100%; height: 100%; }
 
-    /* ORIGINAL MOBILE CONTROLS */
+    /* MOBILE CONTROLS */
     .mobile-controls { display: none; position: absolute; bottom: 20px; width: 100%; padding: 0 20px; box-sizing: border-box; justify-content: space-between; pointer-events: none; }
     @media (max-width: 1024px) { .mobile-controls { display: flex; } }
     .control-group { pointer-events: auto; display: flex; gap: 10px; }
@@ -137,11 +137,13 @@
   </div>
 
 <script>
-  // --- CONFIG (As per your request) ---
+  // --- ✅ FIX: OVERRIDE DEFAULT CONFIG (Correct Way) ---
+  // Const declare karne ki jagah object ki properties update karo
+  if (window.SKY_CONFIG) {
+      window.SKY_CONFIG.RINGS_PER_LAP = 4;
+      window.SKY_CONFIG.TOTAL_RINGS_WIN = 8;
+  }
   const Cfg = window.SKY_CONFIG || {};
-  // Overriding configured rings for Singleplayer specific request
-  const RINGS_PER_LAP = 4;
-  const TOTAL_RINGS_WIN = 8; 
 
   // --- GLOBALS ---
   let scene, camera, renderer, planeRig, planeMesh, guideArrow;
@@ -154,7 +156,7 @@
   let health = 100, boostLevel = 100;
   let playerStats = { name: "PLAYER", rings: 0, progress: 0 };
   let enemiesAliveCount = 4;
-  let playerLastRingIndex = -1; // To prevent double counting
+  let playerLastRingIndex = -1; 
   let enemyStats = [
       { name: "ACE", rings: 0, obj: null }, 
       { name: "VIPER", rings: 0, obj: null }, 
@@ -162,36 +164,30 @@
       { name: "HAWK", rings: 0, obj: null }
   ];
 
-  // Logic Vars
   let lastFireTime = 0;
-  let lastCrashTime = 0;
   let visualRoll = 0, visualPitch = 0;
   let miniTick = 0;
-  
-  // Framerate independence attempt (basic)
   let lastTime = performance.now();
   let frameCount = 0;
   const fpsElem = document.getElementById('fps-counter');
   const minimapCtx = document.getElementById('minimap-canvas').getContext('2d');
-  
-  // Controls
   const activeKeys = {};
 
-  // --- AUDIO FIX ---
-  // Music logic ko start button par move kiya hai
+  // --- AUDIO INIT ---
   function initAudio() {
       if(window.MusicManager) {
           MusicManager.init();
-          MusicManager.playCombat(); // Playing Combat music for race
+          MusicManager.playCombat(); 
       }
       if(window.SFXManager) {
           SFXManager.init();
       }
   }
 
-  // --- INPUT HANDLING (YOUR ORIGINAL LOGIC) ---
+  // --- INPUT HANDLING ---
   function getBindings() {
-      if (window.GameManager && window.GameManager.data && window.GameManager.data.bindings) return window.GameManager.data.bindings;
+      if (window.GameManager && window.GameManager.state && window.GameManager.state.bindings) return window.GameManager.state.bindings;
+      // Fallback
       return { up:'w', down:'s', left:'a', right:'d', boost:' ', fire:'shift' };
   }
   
@@ -230,14 +226,13 @@
       return activeKeys[binds[id]] || activeKeys['arrow'+id]; 
   }
 
-  // --- TOUCH SCROLL LOCK ---
   function preventTouch(e) { e.preventDefault(); }
   function lockTouchScroll() { document.body.addEventListener("touchmove", preventTouch, { passive: false }); }
   function unlockTouchScroll() { document.body.removeEventListener("touchmove", preventTouch); }
 
-  // --- GAME START ---
+  // --- GAME START FUNCTION (Previously missing) ---
   window.startSinglePlayer = function() {
-      initAudio(); // Activate Audio Context
+      initAudio(); 
       initGame();
   }
 
@@ -246,13 +241,11 @@
     document.getElementById('start-screen').classList.add('hidden');
     const container = document.getElementById('game-container');
     
-    // Cleanup logic
     if(renderer) { renderer.dispose(); container.innerHTML = ''; }
     
-    // Scene Setup
     scene = new THREE.Scene(); 
-    scene.background = new THREE.Color(0x87CEEB); 
-    scene.fog = new THREE.Fog(0x87CEEB, 2000, 15000);
+    scene.background = new THREE.Color(Cfg.TERRAIN_COLORS.SKY || 0x87CEEB); 
+    scene.fog = new THREE.Fog(Cfg.TERRAIN_COLORS.SKY || 0x87CEEB, 2000, 15000);
     
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 15000);
     renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
@@ -263,25 +256,22 @@
     scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
     const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(100, 200, 50); scene.add(dl);
 
-    // Map Generation (Using MapManager)
-    // NOTE: Generating specific ring count (4 per lap)
     terrainMesh = MapManager.generateTerrain(Cfg); scene.add(terrainMesh);
     oceanMesh = MapManager.generateOcean(Cfg); scene.add(oceanMesh);
     
-    // Pass RINGS_PER_LAP here
-    const ringData = MapManager.generateRings(RINGS_PER_LAP); 
+    // Use Overridden Config value
+    const ringData = MapManager.generateRings(Cfg.RINGS_PER_LAP, Cfg); 
     rings = ringData.rings; 
     ringWaypoints = ringData.waypoints;
     rings.forEach(r => scene.add(r));
 
-    // Reset Stats
     playerStats = { name: "PLAYER", rings: 0, progress: 0 };
     enemyStats.forEach(e => e.rings = 0);
-    health = 100; boostLevel = 100;
+    health = Cfg.MAX_HEALTH; boostLevel = Cfg.MAX_BOOST;
     
     createPlaneSystem();
     createGuideArrow();
-    createEnemies(); // 4 Enemies
+    createEnemies();
     updateRingVisuals();
     updateLeaderboard();
 
@@ -289,7 +279,6 @@
     animate();
   }
 
-  // --- CREATION FUNCTIONS ---
   function createPlaneMesh(color) {
       const g = new THREE.Group(); 
       const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.4 });
@@ -302,7 +291,7 @@
 
   function createPlaneSystem() { 
       planeRig = new THREE.Group(); 
-      planeRig.position.set(0, 400, 800); // Start Pos
+      planeRig.position.set(0, 400, 800); 
       scene.add(planeRig); 
       planeMesh = createPlaneMesh(0x555555); 
       planeRig.add(planeMesh); 
@@ -318,16 +307,13 @@
       scene.add(guideArrow); 
   }
 
-  // --- ENEMY AI (ORIGINAL - NO CHANGES) ---
   function createEnemies() {
       enemies = [];
       for(let i=0; i<4; i++) { 
           const e = new THREE.Group(); 
           e.add(createPlaneMesh(0xaa0000)); 
-          // Start positions staggered
           e.position.set((i - 1.5) * 200, 400, 400); 
           e.name = enemyStats[i].name;
-          // Simple AI Stats
           e.userData = { 
               alive: true, health: 300, 
               speed: Cfg.NORMAL_SPEED || 5, 
@@ -342,90 +328,75 @@
 
   function spawnBullet(isPlayer, origin, quat) {
       if(window.SFXManager && isPlayer) SFXManager.playGun(true);
-      
       const geo = new THREE.SphereGeometry(isPlayer ? 2 : 4, 8, 8);
       const mat = new THREE.MeshBasicMaterial({ color: isPlayer ? 0xffaa00 : 0xff0000 });
       const bullet = new THREE.Mesh(geo, mat);
-      
       bullet.position.copy(origin);
-      // Speed multiplier logic
       const speed = isPlayer ? 25 : 40; 
       const v = new THREE.Vector3(0,0,-1).applyQuaternion(quat).multiplyScalar(speed);
-      
       bullets.push({ mesh: bullet, velocity: v, life: 100, isPlayer: isPlayer });
       scene.add(bullet);
   }
 
-  // --- GAME LOOP ---
   function animate() {
     if(!isPlaying || isPaused) return;
     
-    // FPS Calc
     const now = performance.now();
     frameCount++;
     if(now - lastTime >= 1000) { fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastTime = now; }
 
-    // 1. Player Movement (Original Logic)
     let spd = isActionActive('boost') && boostLevel > 0 ? (Cfg.BOOST_SPEED || 10) : (Cfg.NORMAL_SPEED || 5);
     
     if(isActionActive('boost') && boostLevel > 0) { 
-        boostLevel -= 0.5; 
+        boostLevel -= Cfg.BOOST_DRAIN; 
         planeMesh.getObjectByName("EngineGlow").material.opacity = 0.8; 
     } else { 
-        boostLevel = Math.min(100, boostLevel + 0.1); 
+        boostLevel = Math.min(Cfg.MAX_BOOST, boostLevel + Cfg.BOOST_REFILL); 
         planeMesh.getObjectByName("EngineGlow").material.opacity = 0; 
     }
     document.getElementById('boost-fill').style.width = boostLevel + '%';
 
     planeRig.translateZ(-spd);
 
-    if(isActionActive('left')) { planeRig.rotation.y += 0.03; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); }
-    else if(isActionActive('right')) { planeRig.rotation.y -= 0.03; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); }
+    if(isActionActive('left')) { planeRig.rotation.y += Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); }
+    else if(isActionActive('right')) { planeRig.rotation.y -= Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); }
     else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
     
-    if(isActionActive('up')) { planeRig.position.y += 5; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.4, 0.1); }
-    else if(isActionActive('down')) { planeRig.position.y -= 5; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.4, 0.1); }
+    if(isActionActive('up')) { planeRig.position.y += Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.4, 0.1); }
+    else if(isActionActive('down')) { planeRig.position.y -= Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.4, 0.1); }
     else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
 
     planeMesh.rotation.z = visualRoll; 
     planeMesh.rotation.x = visualPitch;
 
-    // Player Shooting
-    if(isActionActive('fire') && Date.now() - lastFireTime > 150) {
+    if(isActionActive('fire') && Date.now() - lastFireTime > Cfg.FIRE_RATE) {
         spawnBullet(true, planeRig.position, planeRig.quaternion);
         lastFireTime = Date.now();
     }
 
-    // Camera
     const ct = new THREE.Vector3(0, 100, 300).applyMatrix4(planeRig.matrixWorld); 
     camera.position.lerp(ct, 0.1); 
     camera.lookAt(planeRig.position);
 
-    // 2. Enemy AI (ORIGINAL LOGIC - NO RAYCASTING)
+    // SIMPLE AI LOGIC (No complex raycasting, just fly to target)
     enemies.forEach(e => {
         if(!e.userData.alive) return;
-        
-        // Find current target ring
-        const targetRingIndex = e.userData.progress % RINGS_PER_LAP;
+        const targetRingIndex = e.userData.progress % Cfg.RINGS_PER_LAP;
         const wp = ringWaypoints[targetRingIndex];
         
         if(wp) {
             const target = new THREE.Vector3(wp.x, wp.y, wp.z);
-            // Simple LookAt and Move
             const dummy = new THREE.Object3D(); 
             dummy.position.copy(e.position); 
             dummy.lookAt(target); 
-            // Fix orientation (Model was rotated X -90)
             dummy.rotateY(Math.PI); 
             
             e.quaternion.slerp(dummy.quaternion, 0.03); 
             e.translateZ(-e.userData.speed);
 
-            // Simple Floor Clamp (Original behavior)
             const h = MapManager.getTerrainHeight(e.position.x, e.position.z);
             if(e.position.y < h + 50) e.position.y = h + 50;
 
-            // Check Ring Collection for AI
             if(e.position.distanceTo(target) < 200 && e.userData.lastRingIndex !== targetRingIndex) {
                 e.userData.lastRingIndex = targetRingIndex;
                 e.userData.progress++;
@@ -434,7 +405,6 @@
         }
     });
 
-    // 3. Bullets & Collisions
     for(let i=bullets.length-1; i>=0; i--) {
         const b = bullets[i];
         b.mesh.position.add(b.velocity);
@@ -442,30 +412,25 @@
         
         if(b.life <= 0) { scene.remove(b.mesh); bullets.splice(i,1); continue; }
         
-        // Simple hit check (Player hitting Enemy)
         if(b.isPlayer) {
             enemies.forEach(e => {
                 if(e.userData.alive && b.mesh.position.distanceTo(e.position) < 100) {
-                    // Hit logic
                     scene.remove(b.mesh); bullets.splice(i,1);
-                    // No visual damage for now, just cleanup
                 }
             });
         }
     }
 
-    // 4. Player Terrain Collision
     const ph = MapManager.getTerrainHeight(planeRig.position.x, planeRig.position.z);
     if(planeRig.position.y < ph + 20) {
         planeRig.position.y = ph + 20;
-        health -= 0.5; // Damage on drag
+        health -= 0.5; 
         if(window.SFXManager && Math.random() > 0.9) SFXManager.playExplosion();
         if(health <= 0) endGame(false, "CRASHED");
     }
     document.getElementById('health-fill').style.width = health + '%';
 
-    // 5. Player Ring Collection
-    const currentTargetIndex = playerStats.progress % RINGS_PER_LAP;
+    const currentTargetIndex = playerStats.progress % Cfg.RINGS_PER_LAP;
     const playerTargetObj = rings[currentTargetIndex];
     
     updateRingVisuals(currentTargetIndex);
@@ -476,7 +441,6 @@
         guideArrow.lookAt(playerTargetObj.position);
         
         if(planeRig.position.distanceTo(playerTargetObj.position) < 150) {
-             // Sequence Check
              if (playerLastRingIndex !== currentTargetIndex) {
                  playerLastRingIndex = currentTargetIndex;
                  playerStats.progress++;
@@ -484,8 +448,7 @@
                  
                  if(window.SFXManager) SFXManager.playRing(true);
                  
-                 // Win Check
-                 if(playerStats.rings >= TOTAL_RINGS_WIN) {
+                 if(playerStats.rings >= Cfg.TOTAL_RINGS_WIN) {
                      endGame(true, "CHAMPION!");
                  }
                  updateLeaderboard();
@@ -493,19 +456,15 @@
         }
     }
 
-    // Minimap
     miniTick++; if(miniTick > 5) { drawMinimap(); miniTick=0; }
     
     requestAnimationFrame(animate);
   }
 
-  // --- HELPERS ---
   function enemyRingCollected(name) {
       const e = enemyStats.find(x => x.name === name);
       if(e) e.rings++;
-      
-      // Check Enemy Win
-      if(e.rings >= TOTAL_RINGS_WIN) {
+      if(e.rings >= Cfg.TOTAL_RINGS_WIN) {
           endGame(false, `${name} WON THE RACE!`);
       }
       updateLeaderboard();
@@ -517,7 +476,7 @@
               r.material.emissive.setHex(0xffaa00); 
               r.visible = true; 
           } else { 
-              r.visible = true; // Keep all visible or hide based on preference
+              r.visible = true; 
               r.material.emissive.setHex(0x000000);
           }
       });
@@ -529,20 +488,13 @@
       list.innerHTML = "";
       
       let racers = [playerStats, ...enemyStats];
-      // Map enemy object rings to stat rings
-      racers.forEach(r => {
-          if(r.name !== "PLAYER" && r.obj) {
-              // using the stat object we tracked in enemyRingCollected
-          }
-      });
-      
       racers.sort((a, b) => b.rings - a.rings);
       
       racers.forEach((r, i) => {
           const row = document.createElement("div"); row.className = "lb-row";
           if(r.name === "PLAYER") row.classList.add("lb-player");
           if(i === 0) row.classList.add("lb-rank-1");
-          row.innerHTML = `<span>${i+1}. ${r.name}</span><span>${r.rings}/${TOTAL_RINGS_WIN}</span>`;
+          row.innerHTML = `<span>${i+1}. ${r.name}</span><span>${r.rings}/${Cfg.TOTAL_RINGS_WIN}</span>`;
           list.appendChild(row);
       });
   }
@@ -556,13 +508,11 @@
       minimapCtx.translate(cx,cy);
       minimapCtx.rotate(-planeRig.rotation.y+Math.PI);
       
-      // Player Dot
       minimapCtx.beginPath();
       minimapCtx.moveTo(0,-6); minimapCtx.lineTo(-4,4); minimapCtx.lineTo(4,4);
       minimapCtx.fillStyle="#00ff00"; minimapCtx.fill();
       minimapCtx.restore();
       
-      // Enemies
       enemies.forEach(e => {
           if(!e.userData.alive) return;
           const dx=(e.position.x-planeRig.position.x)*scale;
@@ -572,8 +522,7 @@
           minimapCtx.fillStyle="#ff0000"; minimapCtx.fill();
       });
       
-      // Target Ring
-      const tidx = playerStats.progress % RINGS_PER_LAP;
+      const tidx = playerStats.progress % Cfg.RINGS_PER_LAP;
       if(rings[tidx]) {
           const r = rings[tidx];
           const dx=(r.position.x-planeRig.position.x)*scale;
