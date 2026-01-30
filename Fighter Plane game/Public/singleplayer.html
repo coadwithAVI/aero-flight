@@ -119,10 +119,18 @@
             else if(inputs.right) { player.rotateOnWorldAxis(worldUp, -turnSpeed); player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, -0.4, 0.1); }
             else player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 0.05);
 
-            // Pitch (Reversed: Up key = Up, Down key = Down)
-            if(inputs.up) player.rotation.x = Math.max(player.rotation.x - turnSpeed, -1.0);
-            else if(inputs.down) player.rotation.x = Math.min(player.rotation.x + turnSpeed, 1.0);
-            else player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 0.02);
+            // --- FIXED PITCH LOGIC (DIRECT CONTROLS) ---
+            if(inputs.up) {
+                // UP Key = Nose UP (Positive Rotation) -> Screen Up
+                player.rotation.x = Math.min(player.rotation.x + turnSpeed, 1.0);
+            }
+            else if(inputs.down) {
+                // DOWN Key = Nose DOWN (Negative Rotation) -> Screen Down
+                player.rotation.x = Math.max(player.rotation.x - turnSpeed, -1.0);
+            }
+            else {
+                player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 0.02);
+            }
 
             player.translateZ(-speed);
 
