@@ -1,7 +1,6 @@
 /**
  * 🔊 SKY PILOT: SFX MANAGER
- * Generates procedural audio using Web Audio API (No MP3s required).
- * Handles Engine Drone, Gunshots, Explosions, and UI sounds.
+ * (Original Heavy Engine Sound + Crash Fixes)
  */
 
 const SFXManager = {
@@ -26,20 +25,27 @@ const SFXManager = {
         this.masterGain.gain.value = GameManager.state.isSfxOn ? GameManager.state.sfxVolume : 0;
         this.masterGain.connect(this.ctx.destination);
 
+        // Resume context if suspended (Browser policy fix)
+        if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+
         this.createEngineSound();
     },
 
-    // --- ✈️ JET ENGINE DRONE ---
+    // --- ✈️ ORIGINAL JET ENGINE DRONE (User's Choice) ---
     createEngineSound: function() {
+        const t = this.ctx.currentTime;
+
         // 1. Low Rumble (Triangle Wave)
         this.engineOsc = this.ctx.createOscillator();
         this.engineOsc.type = 'sawtooth';
         this.engineOsc.frequency.value = 100;
         
         this.engineGain = this.ctx.createGain();
-        this.engineGain.gain.value = 0; // Start silent
+        this.engineGain.gain.value = 0.1; // Base volume set directly
         
-        // Lowpass filter to muffle the harsh saw wave
+        // Lowpass filter
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.value = 400;
@@ -49,10 +55,11 @@ const SFXManager = {
         this.engineGain.connect(this.masterGain);
         this.engineOsc.start();
 
-        // 2. Wind Noise (Buffer)
-        const bufferSize = this.ctx.sampleRate * 2; // 2 seconds
+        // 2. Wind Noise (Buffer) - The Heavy Sound
+        const bufferSize = this.ctx.sampleRate * 2;
         const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
         const data = buffer.getChannelData(0);
+        
         for (let i = 0; i < bufferSize; i++) {
             data[i] = Math.random() * 2 - 1;
         }
@@ -62,9 +69,8 @@ const SFXManager = {
         this.windNode.loop = true;
 
         this.windGain = this.ctx.createGain();
-        this.windGain.gain.value = 0;
+        this.windGain.gain.value = 0.05;
         
-        // Bandpass filter for "whoosh" sound
         const windFilter = this.ctx.createBiquadFilter();
         windFilter.type = 'bandpass';
         windFilter.frequency.value = 1000;
@@ -80,72 +86,88 @@ const SFXManager = {
         if (!this.ctx || !GameManager.state.isSfxOn) return;
         
         const now = this.ctx.currentTime;
+        
         // Pitch goes up with speed
         this.engineOsc.frequency.setTargetAtTime(100 + (speedRatio * 300), now, 0.1);
+        
         // Volume logic
-        this.engineGain.gain.setTargetAtTime(0.2 + (speedRatio * 0.1), now, 0.1);
+        this.engineGain.gain.setTargetAtTime(0.1 + (speedRatio * 0.1), now, 0.1);
         this.windGain.gain.setTargetAtTime(speedRatio * 0.4, now, 0.1);
+    },
+
+    // --- 🛠️ CRASH FIXES (Empty Functions) ---
+    // Singleplayer.html inko dhund raha tha, isliye error aa raha tha.
+    // Hum inhe khali chhod denge kyunki awaaz already 'updateEngine' se control ho rahi hai.
+    
+    startBoost: function() {
+        // Just ensure audio is running
+        if(this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    },
+
+    stopBoost: function() {
+        // Do nothing, let updateEngine handle the pitch drop
     },
 
     // --- 💥 ONE-SHOT EFFECTS ---
 
-    playGun: function() {
+    playFire: function() {
         if (!this._check()) return;
         const t = this.ctx.currentTime;
-        
         const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        
+        const g = this.ctx.createGain();
         osc.type = 'square';
         osc.frequency.setValueAtTime(800, t);
         osc.frequency.exponentialRampToValueAtTime(100, t + 0.1);
-        
-        gain.gain.setValueAtTime(0.1, t);
-        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
-        
-        osc.connect(gain);
-        gain.connect(this.masterGain);
-        osc.start();
-        osc.stop(t + 0.15);
+        g.gain.setValueAtTime(0.1, t);
+        g.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+        osc.connect(g); g.connect(this.masterGain);
+        osc.start(); osc.stop(t + 0.15);
+    },
+
+    playHit: function() { // Added playHit for compatibility
+        if (!this._check()) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(100, t);
+        osc.frequency.exponentialRampToValueAtTime(10, t + 0.3);
+        g.gain.setValueAtTime(0.3, t);
+        g.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+        osc.connect(g); g.connect(this.masterGain);
+        osc.start(); osc.stop(t + 0.3);
+    },
+
+    playCollect: function() { // Added playCollect for compatibility
+        if (!this._check()) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1000, t);
+        osc.frequency.linearRampToValueAtTime(2000, t + 0.1);
+        g.gain.setValueAtTime(0.3, t);
+        g.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+        osc.connect(g); g.connect(this.masterGain);
+        osc.start(); osc.stop(t + 0.5);
     },
 
     playRing: function() {
-        if (!this._check()) return;
-        const t = this.ctx.currentTime;
-        
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1200, t);
-        osc.frequency.linearRampToValueAtTime(2000, t + 0.1); // "Ding"
-        
-        gain.gain.setValueAtTime(0.3, t);
-        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
-        
-        osc.connect(gain);
-        gain.connect(this.masterGain);
-        osc.start();
-        osc.stop(t + 0.5);
+        this.playCollect(); // Mapping old name to new name
     },
 
     playExplosion: function() {
         if (!this._check()) return;
         const t = this.ctx.currentTime;
-        
-        // Use Noise for explosion
         const noise = this.ctx.createBufferSource();
         noise.buffer = this.windNode.buffer; // Reuse buffer
-        
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.setValueAtTime(1000, t);
         filter.frequency.exponentialRampToValueAtTime(100, t + 1);
-
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(1, t);
         gain.gain.exponentialRampToValueAtTime(0.01, t + 1);
-
         noise.connect(filter);
         filter.connect(gain);
         gain.connect(this.masterGain);
@@ -161,4 +183,3 @@ const SFXManager = {
 };
 
 window.SFXManager = SFXManager;
-
