@@ -1,125 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SKY PILOT - MAIN MENU</title>
-    
-    <script src="game-manager.js"></script>
-    <script src="music-manager.js"></script>
-    <script src="sfx-manager.js"></script>
-
+    <title>Sky Pilot</title>
     <style>
-        body {
-            margin: 0; background: #000; overflow: hidden;
-            font-family: 'Segoe UI', sans-serif;
-            display: flex; align-items: center; justify-content: center;
-            height: 100vh; color: white;
-            background: radial-gradient(circle at center, #1a2a3a 0%, #000 100%);
-        }
-
-        .container {
-            text-align: center; z-index: 10;
-            animation: float 6s ease-in-out infinite;
-        }
-
-        h1 {
-            font-size: 80px; margin: 0; letter-spacing: 10px;
-            background: -webkit-linear-gradient(#fff, #00d2ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: 0 0 30px rgba(0, 210, 255, 0.5);
-        }
-
-        p { color: #888; margin-bottom: 40px; letter-spacing: 2px; }
-
-        .btn-group { display: flex; flex-direction: column; gap: 20px; width: 300px; margin: 0 auto; }
-
-        button {
-            padding: 20px; font-size: 18px; font-weight: 900;
-            color: white; background: rgba(255,255,255,0.05);
-            border: 1px solid #00d2ff;
-            cursor: pointer; transition: 0.3s;
-            text-transform: uppercase;
-            clip-path: polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%);
-        }
-
-        button:hover {
-            background: #00d2ff; color: #000;
-            box-shadow: 0 0 20px #00d2ff;
-            transform: scale(1.05);
-        }
-
-        .settings-panel {
-            margin-top: 30px; padding: 20px;
-            border-top: 1px solid #333;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-20px); }
-        }
-
-        /* 3D Background Effect (Optional/Lightweight) */
-        #bg-canvas { position: absolute; top: 0; left: 0; z-index: 1; opacity: 0.3; }
+        body { background: #111; color: #0ff; font-family: sans-serif; text-align: center; margin-top: 100px; }
+        button { padding: 15px 30px; font-size: 20px; background: #000; color: #0ff; border: 2px solid #0ff; margin: 10px; cursor: pointer; }
+        button:hover { background: #0ff; color: #000; }
     </style>
 </head>
 <body>
-
-    <div class="container">
-        <h1>SKY PILOT</h1>
-        <p>AERIAL COMBAT SIMULATOR</p>
-
-        <div class="btn-group">
-            <button onclick="navigate('singleplayer.html')">Solo Campaign</button>
-            <button onclick="navigate('multiplayer.html')">Multiplayer</button>
-            <button onclick="toggleSettings()">Settings</button>
-        </div>
-
-        <div id="settings" class="settings-panel" style="display:none">
-            <button onclick="toggleAudio()" id="btn-audio" style="font-size:12px; padding:10px;">AUDIO: ON</button>
-        </div>
-    </div>
-
-    <script>
-        // Init Audio on first interaction
-        let audioInit = false;
-
-        function navigate(url) {
-            if (!audioInit) {
-                // Unlock Audio Context before navigating
-                if(window.SFXManager) SFXManager.init();
-                if(window.MusicManager) MusicManager.init();
-                audioInit = true;
-            }
-            window.location.href = url;
-        }
-
-        function toggleSettings() {
-            const el = document.getElementById('settings');
-            el.style.display = el.style.display === 'none' ? 'block' : 'none';
-        }
-
-        function toggleAudio() {
-            const newState = GameManager.toggleMusic();
-            GameManager.toggleSfx();
-            document.getElementById('btn-audio').innerText = newState ? "AUDIO: ON" : "AUDIO: OFF";
-            if(newState && window.MusicManager) MusicManager.playLobby();
-        }
-
-        // Start Ambient Music on Load (after click)
-        window.addEventListener('click', () => {
-            if (!audioInit) {
-                MusicManager.playLobby();
-                audioInit = true;
-            }
-        }, { once: true });
-        
-        // Load Saved Settings State
-        window.onload = () => {
-            const isOn = GameManager.state.isMusicOn;
-            document.getElementById('btn-audio').innerText = isOn ? "AUDIO: ON" : "AUDIO: OFF";
-        };
-    </script>
+    <h1>SKY PILOT</h1>
+    <button onclick="location.href='singleplayer.html'">SINGLEPLAYER</button><br>
+    <button onclick="location.href='multiplayer.html'">MULTIPLAYER</button><br>
+    <button onclick="location.href='settings.html'">SETTINGS</button>
 </body>
 </html>
