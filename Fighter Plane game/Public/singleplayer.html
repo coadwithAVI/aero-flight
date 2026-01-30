@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Sky Pilot - Ace Combat</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
@@ -17,37 +18,21 @@
     <div id="game-container"></div>
 
     <script>
-        // --- CONFIGURATION ---
+        // --- CONFIG ---
         const CFG = {
             DMG_PLAYER: 7,
             DMG_ENEMY: 5,
-            
-            // Increased Speeds
-            PLAYER_SPEED: 4.5,    // Base Speed
-            PLAYER_BOOST: 7.0,    // Boost Speed
-            
-            PLAYER_COOLDOWN: 150, // Fast firing
-            
-            // Auto Aim
-            AUTO_AIM_ANGLE: 0.6,   // Wide search angle
-            AUTO_AIM_STRENGTH: 0.25, // Stronger homing curve
-            BULLET_SPEED: 85,      // Faster bullets
-            
-            // Bot Settings
-            BOT_HIT_RADIUS: 400    // Easier for bots to grab rings
+            ENEMY_COOLDOWN: 1000,
+            PLAYER_COOLDOWN: 150,
+            AUTO_AIM_STRENGTH: 0.2, 
+            BULLET_SPEED: 70,
+            BOT_HIT_RADIUS: 300, 
+            BOT_TURN_SPEED: 0.1 
         };
 
-        // --- BOT PERSONALITIES ---
-        const PERSONALITIES = [
-            { type: 'RACER', color: 0xffff00, speedMod: 1.3, aggro: 0.2, turnMod: 0.04 }, // Fast, ignores fights
-            { type: 'AGGRESSOR', color: 0xff0000, speedMod: 1.0, aggro: 0.9, turnMod: 0.06 }, // Hunts you
-            { type: 'DODGER', color: 0x00ffff, speedMod: 1.1, aggro: 0.5, turnMod: 0.08 }  // Evades bullets
-        ];
-
-        // --- SETUP ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(SKY_CONFIG.COLORS.SKY);
-        scene.fog = new THREE.Fog(SKY_CONFIG.COLORS.SKY, 2000, 25000);
+        scene.fog = new THREE.Fog(SKY_CONFIG.COLORS.SKY, 2000, 20000);
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 1, 40000);
         const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -63,17 +48,19 @@
         let lastPlayerFire = 0;
         const inputs = { up:false, down:false, left:false, right:false, boost:false, fire:false };
 
-        // --- START GAME ---
+        // --- START ---
         window.startGame = function() {
             if(window.MusicManager) { MusicManager.init(); MusicManager.playCombat(); }
             if(window.SFXManager) SFXManager.init();
             UIManager.hideStartScreen();
+            
+            // Enable Mobile Controls binding
+            bindMobileControls();
 
             MapManager.generateTerrain(scene);
             const objs = MapManager.generateObjects(scene);
             rings = objs.rings; medkits = objs.medkits;
 
-            // Spawn Player
             if(window.ModelManager) {
                 player = ModelManager.createJet(0x00d2ff);
                 guideArrow = ModelManager.createArrow();
@@ -86,27 +73,18 @@
             scene.add(player);
             scene.add(guideArrow);
 
-            // Spawn Bots with Personalities
+            // Spawn Bots
             for(let i=0; i<3; i++) {
-                const p = PERSONALITIES[i % 3]; // Assign 0, 1, 2
-                
-                let bot = window.ModelManager ? ModelManager.createJet(p.color) : new THREE.Mesh(new THREE.ConeGeometry(2,10,8), new THREE.MeshBasicMaterial({color:p.color}));
+                let bot = window.ModelManager ? ModelManager.createJet(0xff4444) : new THREE.Mesh(new THREE.ConeGeometry(2,10,8), new THREE.MeshBasicMaterial({color:0xf00}));
                 if(!window.ModelManager) bot.rotateX(Math.PI/2);
-                
                 bot.rotation.order = "YXZ";
-                bot.position.set((i-1)*300, 600, 300); // Start ahead
-                
+                bot.position.set((i-1)*200, 600, 200);
                 bot.userData = { 
-                    id: i,
-                    role: p.type,
-                    speed: CFG.PLAYER_SPEED * p.speedMod,
-                    turnSpeed: p.turnMod,
-                    aggro: p.aggro,
+                    speed: SKY_CONFIG.NORMAL_SPEED * 1.05, 
                     nextRing: 0, 
-                    lastFire: 0,
-                    hp: 100 // Bots have HP now
+                    lastFire: 0, 
+                    id: i 
                 };
-                
                 scene.add(bot); bots.push(bot);
             }
 
@@ -117,15 +95,14 @@
 
         window.onload = () => { if(window.UIManager) UIManager.init(); };
 
-        // --- UPDATE LOOP ---
+        // --- UPDATE ---
         function update() {
             if(!gameActive || isPaused) return;
 
-            // 1. Player Physics
-            let currentSpeed = CFG.PLAYER_SPEED;
+            // Player Physics
+            let speed = SKY_CONFIG.NORMAL_SPEED;
             if(inputs.boost && stats.boost > 0) {
-                currentSpeed = CFG.PLAYER_BOOST; 
-                stats.boost -= SKY_CONFIG.BOOST_DRAIN;
+                speed = SKY_CONFIG.BOOST_SPEED; stats.boost -= SKY_CONFIG.BOOST_DRAIN;
                 const glow = player.getObjectByName("EngineGlow"); if(glow) glow.scale.set(1.5,1.5,1.5);
                 if(window.SFXManager && SFXManager.startBoost) SFXManager.startBoost();
             } else {
@@ -134,21 +111,22 @@
                 if(window.SFXManager && SFXManager.stopBoost) SFXManager.stopBoost();
             }
 
-            // Controls
             const turnSpeed = SKY_CONFIG.TURN_SPEED * 1.5;
             const worldUp = new THREE.Vector3(0,1,0);
 
+            // Left/Right
             if(inputs.left) { player.rotateOnWorldAxis(worldUp, turnSpeed); player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0.4, 0.1); }
             else if(inputs.right) { player.rotateOnWorldAxis(worldUp, -turnSpeed); player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, -0.4, 0.1); }
             else player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 0.05);
 
+            // Pitch (Reversed: Up key = Up, Down key = Down)
             if(inputs.up) player.rotation.x = Math.max(player.rotation.x - turnSpeed, -1.0);
             else if(inputs.down) player.rotation.x = Math.min(player.rotation.x + turnSpeed, 1.0);
             else player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 0.02);
 
-            player.translateZ(-currentSpeed);
+            player.translateZ(-speed);
 
-            // 2. World Interactions
+            // Objects
             if(rings.length > 0) {
                 const t = rings[ringTargetIndex % SKY_CONFIG.RINGS_TOTAL].position;
                 guideArrow.position.copy(player.position); guideArrow.position.y += 40; guideArrow.lookAt(t);
@@ -156,25 +134,24 @@
 
             const gh = MapManager.getTerrainHeight(player.position.x, player.position.z);
             if(player.position.y < gh + 15) {
-                player.position.y = gh + 15; currentSpeed *= 0.5;
+                player.position.y = gh + 15; speed *= 0.5;
                 stats.hp -= SKY_CONFIG.TERRAIN_DAMAGE;
                 if(stats.hp <= 0) gameOver(false);
             }
 
             const ring = rings[ringTargetIndex % SKY_CONFIG.RINGS_TOTAL];
-            if(player.position.distanceTo(ring.position) < 150) { // Easier collection for player too
+            if(player.position.distanceTo(ring.position) < 120) {
                 SFXManager.playCollect();
                 stats.rings++; ringTargetIndex++;
                 updateRingVisibility();
                 if(stats.rings >= SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS) gameOver(true);
             }
 
-            // 3. Shooting
+            // Fire
             if(inputs.fire) {
                 const now = Date.now();
                 if(now - lastPlayerFire > CFG.PLAYER_COOLDOWN) {
                     const targetBot = getAutoAimTarget(player);
-                    // Dual Guns
                     fireBullet(player, true, targetBot, -3);
                     fireBullet(player, true, targetBot, 3);
                     lastPlayerFire = now;
@@ -184,107 +161,87 @@
             updateBots();
             updateBullets();
             checkMedkits();
-            UIManager.updateHUD(stats, SKY_CONFIG);
+            UIManager.updateHUD(stats, SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS); // Fixed total count pass
             UIManager.drawMinimap(player, rings, bots);
 
-            // Camera
             const camOff = new THREE.Vector3(0, 30, 80).applyQuaternion(player.quaternion);
             camera.position.lerp(player.position.clone().add(camOff), 0.2);
             camera.lookAt(player.position);
         }
 
-        // --- BOT AI LOGIC (PERSONALITIES) ---
+        // --- AI LOGIC ---
         function updateBots() {
             const now = Date.now();
-            
-            for(let i=bots.length-1; i>=0; i--) {
-                const bot = bots[i];
+            bots.forEach(bot => {
                 const targetRing = rings[bot.userData.nextRing % SKY_CONFIG.RINGS_TOTAL];
-                const distToRing = bot.position.distanceTo(targetRing.position);
+                let targetPos = targetRing.position.clone();
+
+                const distToRing = bot.position.distanceTo(targetPos);
                 
-                // --- 1. Base Target: The Ring ---
-                // We create a temp object to calculate rotation without modifying position
-                const dummy = new THREE.Object3D(); 
-                dummy.position.copy(bot.position);
-                dummy.lookAt(targetRing.position); // Initially look at ring
-                
-                // --- 2. Terrain Avoidance (Priority High) ---
-                const lookAhead = new THREE.Vector3(0, 0, -250).applyQuaternion(bot.quaternion).add(bot.position);
-                const th = MapManager.getTerrainHeight(lookAhead.x, lookAhead.z);
-                
-                // If heading into ground, force look UP
-                if(lookAhead.y < th + 150) {
-                     dummy.lookAt(lookAhead.x, th + 300, lookAhead.z);
+                // Terrain Avoidance
+                if (distToRing > 1000) {
+                    const lookAhead = new THREE.Vector3(0, 0, -300).applyQuaternion(bot.quaternion).add(bot.position);
+                    const mountainHeight = MapManager.getTerrainHeight(lookAhead.x, lookAhead.z);
+                    if (targetPos.y < mountainHeight + 150) {
+                        targetPos.y = mountainHeight + 200;
+                    }
+                } else {
+                    // Dive Logic
+                    const groundHeight = MapManager.getTerrainHeight(bot.position.x, bot.position.z);
+                    if (bot.position.y < groundHeight + 20) {
+                        bot.position.y = groundHeight + 20;
+                    }
                 }
 
-                // --- 3. Dodge Logic (Based on Personality) ---
-                // Dodgers evade more aggressively
-                const evadeRange = bot.userData.role === 'DODGER' ? 300 : 150;
-                
+                // Dodge
+                let dodgeVector = new THREE.Vector3();
                 bullets.forEach(b => {
-                    // Avoid bullets that are close AND moving towards me
-                    if(b.mesh.position.distanceTo(bot.position) < evadeRange) {
-                        // Simple check: is bullet getting closer?
-                        // Just roll away
-                        dummy.rotateZ(0.1); 
-                        dummy.rotateY(0.1);
+                    if(b.isPlayer && b.mesh.position.distanceTo(bot.position) < 200) {
+                        let away = new THREE.Vector3().subVectors(bot.position, b.mesh.position).normalize();
+                        dodgeVector.add(away.multiplyScalar(150));
                     }
                 });
+                targetPos.add(dodgeVector);
 
-                // --- 4. Apply Rotation ---
-                bot.quaternion.slerp(dummy.quaternion, bot.userData.turnSpeed);
+                const dummy = new THREE.Object3D(); 
+                dummy.position.copy(bot.position); 
+                dummy.lookAt(targetPos);
+                bot.quaternion.slerp(dummy.quaternion, CFG.BOT_TURN_SPEED); 
                 bot.translateZ(-bot.userData.speed);
 
-                // --- 5. Aggression (Shooting) ---
-                // Aggressors aim at player OR other bots
-                if(now - bot.userData.lastFire > 800) { // Base enemy cooldown
-                    let target = null;
-                    
-                    // Logic: Aggressor attacks Player mainly. Racer ignores. 
-                    if(bot.userData.role === 'AGGRESSOR') {
-                        if(bot.position.distanceTo(player.position) < 3000) target = player;
-                    } 
-                    // All bots defend themselves if close
-                    else if(bot.position.distanceTo(player.position) < 1000) {
-                        target = player;
-                    }
-                    
-                    // Also check other bots (Bot War)
-                    if(!target) {
-                        bots.forEach(other => {
-                            if(other !== bot && bot.position.distanceTo(other.position) < 1500) target = other;
-                        });
-                    }
-
-                    // If we have a target and we are facing it
-                    if(target) {
-                        const toTarget = new THREE.Vector3().subVectors(target.position, bot.position).normalize();
-                        const botFwd = new THREE.Vector3(0,0,-1).applyQuaternion(bot.quaternion).normalize();
-                        
-                        if(botFwd.dot(toTarget) > 0.8) { // 0.8 means mostly facing
-                            // Aggressors shoot faster
-                            if(Math.random() < bot.userData.aggro) { 
-                                fireBullet(bot, false, target, 0);
-                                bot.userData.lastFire = now;
-                            }
-                        }
+                const toPlayer = new THREE.Vector3().subVectors(player.position, bot.position).normalize();
+                const botDir = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.quaternion).normalize();
+                if(botDir.dot(toPlayer) > 0.9 && bot.position.distanceTo(player.position) < 2500) {
+                    if(now - bot.userData.lastFire > CFG.ENEMY_COOLDOWN) {
+                        fireBullet(bot, false, player, 0);
+                        bot.userData.lastFire = now;
                     }
                 }
 
-                // --- 6. Collect Ring ---
-                if(distToRing < CFG.BOT_HIT_RADIUS) {
+                if(bot.position.distanceTo(targetRing.position) < CFG.BOT_HIT_RADIUS) {
                     bot.userData.nextRing++;
                     if(bot.userData.nextRing >= SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS) gameOver(false);
                 }
-            }
+            });
         }
 
-        // --- BULLETS & COLLISION ---
+        function getAutoAimTarget(shooter) {
+            let bestTarget = null;
+            let maxDot = 0.65;
+            const shooterDir = new THREE.Vector3(0, 0, -1).applyQuaternion(shooter.quaternion).normalize();
+            bots.forEach(bot => {
+                const toBot = new THREE.Vector3().subVectors(bot.position, shooter.position).normalize();
+                const dot = shooterDir.dot(toBot);
+                if(dot > maxDot) { maxDot = dot; bestTarget = bot; }
+            });
+            return bestTarget;
+        }
+
         function fireBullet(origin, isPlayer, targetObj, xOffset) {
             SFXManager.playFire();
             const color = isPlayer ? 0xffff00 : 0xff0000;
             const b = new THREE.Mesh(new THREE.SphereGeometry(isPlayer ? 0.6 : 0.8), new THREE.MeshBasicMaterial({color:color}));
-            const offset = new THREE.Vector3(xOffset, 0, -10).applyQuaternion(origin.quaternion);
+            const offset = new THREE.Vector3(xOffset, 0, -8).applyQuaternion(origin.quaternion);
             b.position.copy(origin.position).add(offset);
             b.quaternion.copy(origin.quaternion);
             bullets.push({ mesh: b, life: 100, isPlayer, target: targetObj });
@@ -294,83 +251,37 @@
         function updateBullets() {
             for (let i = bullets.length - 1; i >= 0; i--) {
                 let b = bullets[i];
-                
-                // Homing
                 if(b.target) {
-                    // Check if target still exists (for bots)
-                    if(!b.isPlayer || bots.includes(b.target) || b.target === player) {
-                        const toTarget = new THREE.Vector3().subVectors(b.target.position, b.mesh.position).normalize();
-                        const currentDir = new THREE.Vector3(0, 0, -1).applyQuaternion(b.mesh.quaternion).normalize();
-                        currentDir.lerp(toTarget, CFG.AUTO_AIM_STRENGTH).normalize();
-                        const dummy = new THREE.Object3D(); dummy.position.copy(b.mesh.position); dummy.lookAt(b.mesh.position.clone().add(currentDir));
-                        b.mesh.quaternion.copy(dummy.quaternion);
-                    }
+                    const toTarget = new THREE.Vector3().subVectors(b.target.position, b.mesh.position).normalize();
+                    const currentDir = new THREE.Vector3(0, 0, -1).applyQuaternion(b.mesh.quaternion).normalize();
+                    currentDir.lerp(toTarget, CFG.AUTO_AIM_STRENGTH).normalize();
+                    const dummy = new THREE.Object3D(); dummy.position.copy(b.mesh.position); dummy.lookAt(b.mesh.position.clone().add(currentDir));
+                    b.mesh.quaternion.copy(dummy.quaternion);
                 }
-
                 b.mesh.translateZ(-CFG.BULLET_SPEED);
                 b.life--;
 
-                let hit = false;
-
-                // Player Shoots Bot
                 if(b.isPlayer) {
-                    for (let j=bots.length-1; j>=0; j--) {
-                        let bot = bots[j];
+                    for (let bot of bots) {
                         if (b.mesh.position.distanceTo(bot.position) < 40) {
                             SFXManager.playHit();
-                            bot.userData.hp -= CFG.DMG_PLAYER;
-                            
-                            // Bot Death
-                            if(bot.userData.hp <= 0) {
-                                scene.remove(bot);
-                                bots.splice(j, 1);
-                                SFXManager.playExplosion();
-                            } else {
-                                bot.translateZ(20); // Knockback
-                            }
-                            hit = true; break;
+                            bot.translateZ(20); 
+                            scene.remove(b.mesh); bullets.splice(i, 1); return;
                         }
                     }
-                } 
-                // Enemy Shoots Player or Bot
-                else {
-                    // Hit Player?
-                    if (b.mesh.position.distanceTo(player.position) < 30) {
+                } else {
+                    if (b.mesh.position.distanceTo(player.position) < 25) {
                         SFXManager.playHit();
                         stats.hp -= CFG.DMG_ENEMY;
+                        scene.remove(b.mesh); bullets.splice(i, 1);
                         if(stats.hp <= 0) gameOver(false);
-                        hit = true;
-                    }
-                    // Hit other Bot? (Friendly Fire / Chaos)
-                    else {
-                        for(let other of bots) {
-                            if(other !== b.target && b.mesh.position.distanceTo(other.position) < 40) {
-                                other.userData.hp -= 2; // Reduced damage to each other
-                                hit = true; break;
-                            }
-                        }
+                        return;
                     }
                 }
-
-                if(hit || b.life <= 0) { scene.remove(b.mesh); bullets.splice(i, 1); }
+                if(b.life <= 0) { scene.remove(b.mesh); bullets.splice(i, 1); }
             }
         }
 
-        function getAutoAimTarget(shooter) {
-            let bestTarget = null;
-            let maxDot = 0.65;
-            const shooterDir = new THREE.Vector3(0, 0, -1).applyQuaternion(shooter.quaternion).normalize();
-            
-            // Player aims at Bots
-            bots.forEach(bot => {
-                const toBot = new THREE.Vector3().subVectors(bot.position, shooter.position).normalize();
-                const dot = shooterDir.dot(toBot);
-                if(dot > maxDot) { maxDot = dot; bestTarget = bot; }
-            });
-            return bestTarget;
-        }
-
-        // --- UTILS ---
         function updateRingVisibility() {
             rings.forEach(r => { r.visible = false; r.material.emissiveIntensity = 0.2; });
             const active = rings[ringTargetIndex % SKY_CONFIG.RINGS_TOTAL];
@@ -384,13 +295,37 @@
                 }
             });
         }
+        
         window.togglePause = function() { isPaused = !isPaused; UIManager.togglePause(isPaused); if(window.SFXManager) SFXManager.stopBoost(); };
         window.toggleSound = function() { const s = !GameManager.state.isSfxOn; GameManager.setSfx(s); GameManager.setMusic(s); };
         function gameOver(win) {
             gameActive = false; MusicManager.stop(); if(SFXManager.stopBoost) SFXManager.stopBoost();
             if(win) SFXManager.playCollect(); else SFXManager.playHit();
-            alert(win ? "MISSION SUCCESS! SKY ACE!" : "CRITICAL FAILURE!"); location.href = 'index.html';
+            alert(win ? "VICTORY!" : "CRASHED!"); location.href = 'index.html';
         }
+
+        // --- CONTROLS BINDING ---
+        function bindMobileControls() {
+            // Helper to bind touch events to input state
+            const bind = (id, key) => {
+                const el = document.getElementById(id);
+                if(!el) return;
+                el.addEventListener('touchstart', (e) => { e.preventDefault(); inputs[key] = true; });
+                el.addEventListener('touchend', (e) => { 
+                    e.preventDefault(); 
+                    inputs[key] = false; 
+                    if(key === 'boost' && window.SFXManager) SFXManager.stopBoost();
+                });
+            };
+            
+            bind('btn-up', 'up');
+            bind('btn-down', 'down');
+            bind('btn-left', 'left');
+            bind('btn-right', 'right');
+            bind('btn-fire', 'fire');
+            bind('btn-boost', 'boost');
+        }
+
         function handleInput(e, isDown) {
             const k = e.key.toLowerCase(); const c = e.code; const binds = GameManager.state.bindings;
             if(k===binds.up||c==='ArrowUp') inputs.up=isDown;
