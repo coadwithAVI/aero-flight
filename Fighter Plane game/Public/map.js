@@ -9,9 +9,9 @@ const MapManager = {
     groundMesh: null,
     
     // Config
-    CHUNK_SIZE: 10000, // World size
+    CHUNK_SIZE: 30000, // World size
     SEGMENTS: 150,     // Detail level (Higher = smoother, more lag)
-    MAX_HEIGHT: 800,   // Mountain Peak height
+    MAX_HEIGHT: 1000,   // Mountain Peak height
 
     init: function() {
         if (!this.noise) {
