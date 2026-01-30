@@ -241,11 +241,16 @@
     document.getElementById('start-screen').classList.add('hidden');
     const container = document.getElementById('game-container');
     
+    // Cleanup old renderer if exists
     if(renderer) { renderer.dispose(); container.innerHTML = ''; }
     
+    // --- 🛡️ SAFETY FIX: Colors Fallback ---
+    // Agar Config load nahi hui, toh Crash mat hone do, Default Blue use karo
+    const skyColor = (Cfg.TERRAIN_COLORS && Cfg.TERRAIN_COLORS.SKY) ? Cfg.TERRAIN_COLORS.SKY : 0x87CEEB;
+    
     scene = new THREE.Scene(); 
-    scene.background = new THREE.Color(Cfg.TERRAIN_COLORS.SKY || 0x87CEEB); 
-    scene.fog = new THREE.Fog(Cfg.TERRAIN_COLORS.SKY || 0x87CEEB, 2000, 15000);
+    scene.background = new THREE.Color(skyColor); 
+    scene.fog = new THREE.Fog(skyColor, 2000, 15000);
     
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 15000);
     renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
@@ -256,18 +261,30 @@
     scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
     const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(100, 200, 50); scene.add(dl);
 
-    terrainMesh = MapManager.generateTerrain(Cfg); scene.add(terrainMesh);
-    oceanMesh = MapManager.generateOcean(Cfg); scene.add(oceanMesh);
+    // --- 🛡️ SAFETY FIX: Map Generation ---
+    // Agar config empty hai toh MapManager ko khali object mat bhejo, default values bhejo
+    const safeConfig = {
+        WORLD_SIZE: Cfg.WORLD_SIZE || 50000,
+        TERRAIN_COLORS: Cfg.TERRAIN_COLORS || {
+            SAND: 0xE6C288, GRASS: 0x567D46, ROCK: 0x5A5A5A, SNOW: 0xFFFFFF, WATER: 0x1E90FF
+        }
+    };
+
+    terrainMesh = MapManager.generateTerrain(safeConfig); scene.add(terrainMesh);
+    oceanMesh = MapManager.generateOcean(safeConfig); scene.add(oceanMesh);
     
     // Use Overridden Config value
-    const ringData = MapManager.generateRings(Cfg.RINGS_PER_LAP, Cfg); 
+    const ringData = MapManager.generateRings(SP_RINGS_PER_LAP, safeConfig); 
     rings = ringData.rings; 
     ringWaypoints = ringData.waypoints;
     rings.forEach(r => scene.add(r));
 
     playerStats = { name: "PLAYER", rings: 0, progress: 0 };
     enemyStats.forEach(e => e.rings = 0);
-    health = Cfg.MAX_HEALTH; boostLevel = Cfg.MAX_BOOST;
+    
+    // Stats Safety
+    health = Cfg.MAX_HEALTH || 100; 
+    boostLevel = Cfg.MAX_BOOST || 100;
     
     createPlaneSystem();
     createGuideArrow();
@@ -561,3 +578,4 @@
 </script>
 </body>
 </html>
+
