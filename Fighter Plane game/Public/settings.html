@@ -11,17 +11,23 @@
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; color: white; user-select: none; }
         .bg-gradient { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle at center, #1a2a3a 0%, #000 100%); z-index: -1; }
         .menu-box { background: rgba(12, 20, 30, 0.9); border: 2px solid #00d2ff; border-radius: 20px; padding: 40px; text-align: center; box-shadow: 0 0 50px rgba(0, 210, 255, 0.25), inset 0 0 30px rgba(0, 210, 255, 0.1); width: 500px; max-width: 90%; max-height: 90vh; overflow-y: auto; animation: glowPulse 4s infinite alternate; }
+        
         @keyframes glowPulse { from { box-shadow: 0 0 30px rgba(0, 210, 255, 0.2); } to { box-shadow: 0 0 60px rgba(0, 210, 255, 0.4); } }
+        /* Fix #7: Added missing pulse animation */
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        
         h2 { color: #00d2ff; font-weight: 900; margin-bottom: 20px; letter-spacing: 2px; font-size: 24px; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
         .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; text-align: left; }
         .setting-row { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 12px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); transition: 0.2s; }
         .setting-row:hover { background: rgba(255,255,255,0.1); border-color: rgba(0, 210, 255, 0.3); }
         .setting-label { color: #aaa; font-size: 14px; font-weight: bold; letter-spacing: 1px; }
+        
         .key-bind-btn { background: #222; border: 1px solid #555; color: #fff; padding: 6px 15px; border-radius: 4px; cursor: pointer; font-family: monospace; font-weight: bold; min-width: 80px; text-align: center; transition: all 0.2s; }
         .key-bind-btn:hover { background: #444; border-color: #00d2ff; color: #00d2ff; }
         .toggle-active { background: rgba(0, 255, 0, 0.2); border-color: #00ff00; color: #00ff00; }
         .toggle-inactive { background: rgba(255, 0, 0, 0.2); border-color: #ff0000; color: #ff0000; }
-        .listening { background: #d35400; border-color: #e67e22; animation: pulse 0.5s infinite; }
+        .listening { background: #d35400 !important; border-color: #ff9d00 !important; animation: pulse 0.6s infinite; }
+        
         .secondary-btn { background: rgba(255,255,255,0.05); border: 1px solid #555; color: white; padding: 15px 30px; font-size: 18px; border-radius: 50px; cursor: pointer; text-transform: uppercase; font-weight: bold; letter-spacing: 2px; transition: 0.2s; width: 100%; margin-top: 10px; }
         .secondary-btn:hover { background: rgba(255,255,255,0.15); border-color: #fff; }
     </style>
@@ -35,60 +41,70 @@
         <div class="settings-grid">
             <div class="setting-row">
                 <span class="setting-label">SFX</span>
-                <button id="btn-sfx" class="key-bind-btn toggle-active" onclick="toggleSfx()">ON</button>
+                <button id="btn-sfx" class="key-bind-btn" onclick="toggleSfx()">...</button>
             </div>
             <div class="setting-row">
                 <span class="setting-label">MUSIC</span>
-                <button id="btn-music" class="key-bind-btn toggle-active" onclick="toggleMusic()">ON</button>
+                <button id="btn-music" class="key-bind-btn" onclick="toggleMusic()">...</button>
             </div>
         </div>
 
         <h2>CONTROLS</h2>
         <div class="settings-grid">
-            <div class="setting-row"><span class="setting-label">PITCH UP</span><button id="bind-up" class="key-bind-btn" onclick="rebind('up')">W</button></div>
-            <div class="setting-row"><span class="setting-label">PITCH DOWN</span><button id="bind-down" class="key-bind-btn" onclick="rebind('down')">S</button></div>
-            <div class="setting-row"><span class="setting-label">TURN LEFT</span><button id="bind-left" class="key-bind-btn" onclick="rebind('left')">A</button></div>
-            <div class="setting-row"><span class="setting-label">TURN RIGHT</span><button id="bind-right" class="key-bind-btn" onclick="rebind('right')">D</button></div>
-            <div class="setting-row"><span class="setting-label">BOOST</span><button id="bind-boost" class="key-bind-btn" onclick="rebind('boost')">SPACE</button></div>
-            <div class="setting-row"><span class="setting-label">FIRE</span><button id="bind-fire" class="key-bind-btn" onclick="rebind('fire')">SHIFT</button></div>
+            <div class="setting-row"><span class="setting-label">PITCH UP</span><button id="bind-up" class="key-bind-btn" onclick="rebind('up')">...</button></div>
+            <div class="setting-row"><span class="setting-label">PITCH DOWN</span><button id="bind-down" class="key-bind-btn" onclick="rebind('down')">...</button></div>
+            <div class="setting-row"><span class="setting-label">TURN LEFT</span><button id="bind-left" class="key-bind-btn" onclick="rebind('left')">...</button></div>
+            <div class="setting-row"><span class="setting-label">TURN RIGHT</span><button id="bind-right" class="key-bind-btn" onclick="rebind('right')">...</button></div>
+            <div class="setting-row"><span class="setting-label">BOOST</span><button id="bind-boost" class="key-bind-btn" onclick="rebind('boost')">...</button></div>
+            <div class="setting-row"><span class="setting-label">FIRE</span><button id="bind-fire" class="key-bind-btn" onclick="rebind('fire')">...</button></div>
         </div>
 
         <button class="secondary-btn" onclick="window.location.href='index.html'">BACK TO MENU</button>
     </div>
 
     <script>
+        let isRebinding = false;
+
+        // Fix #1: Retry Loop for GameManager load timing
         function initUI() {
-            if (typeof GameManager === 'undefined') {
-                console.error("GameManager not loaded!");
+            if (typeof GameManager === 'undefined' || !GameManager.data) {
+                console.log("Waiting for GameManager...");
+                setTimeout(initUI, 100); 
                 return;
             }
+            
             setButtonState('btn-sfx', GameManager.data.sfx);
             setButtonState('btn-music', GameManager.data.music);
             updateBindUI();
         }
 
         function toggleSfx() {
+            if(isRebinding) return;
             const newState = !GameManager.data.sfx;
-            GameManager.setSfx(newState); 
-            setButtonState('btn-sfx', newState);
+            GameManager.setSfx(newState);
+            // Fix #9: Update UI based on actual saved state
+            setButtonState('btn-sfx', GameManager.data.sfx);
         }
 
         function toggleMusic() {
+            if(isRebinding) return;
             const newState = !GameManager.data.music;
             GameManager.setMusic(newState);
-            setButtonState('btn-music', newState);
+            setButtonState('btn-music', GameManager.data.music);
         }
 
+        // Fix #3: Null-check added
         function setButtonState(btnId, isOn) {
             const btn = document.getElementById(btnId);
+            if (!btn) return; 
+            
+            btn.innerText = isOn ? "ON" : "OFF";
             if (isOn) {
-                btn.innerText = "ON";
-                btn.classList.remove('toggle-inactive');
-                btn.classList.add('toggle-active');
+                btn.classList.replace('toggle-inactive', 'toggle-active');
+                if(!btn.classList.contains('toggle-active')) btn.classList.add('toggle-active');
             } else {
-                btn.innerText = "OFF";
-                btn.classList.remove('toggle-active');
-                btn.classList.add('toggle-inactive');
+                btn.classList.replace('toggle-active', 'toggle-inactive');
+                if(!btn.classList.contains('toggle-inactive')) btn.classList.add('toggle-inactive');
             }
         }
 
@@ -97,28 +113,50 @@
             for (const [action, key] of Object.entries(binds)) {
                 const btn = document.getElementById('bind-' + action);
                 if (btn) {
-                    // Fix: check for both ' ' and 'space' string
                     btn.innerText = (key === ' ' || key === 'space') ? 'SPACE' : key.toUpperCase();
                 }
             }
         }
 
+        // Fix #4, #5, #6: Enhanced Rebind Logic
         function rebind(action) {
+            if (isRebinding) return;
+            
             const btn = document.getElementById('bind-' + action);
-            btn.innerText = "...";
+            if (!btn) return;
+
+            isRebinding = true;
+            const originalText = btn.innerText;
+            btn.innerText = "PRESS KEY";
             btn.classList.add('listening');
 
-            const handler = (e) => {
+            const keyHandler = (e) => {
                 e.preventDefault();
-                let key = e.key; // Directly pass original key to manager
-
-                GameManager.saveBinding(action, key);
                 
+                // Fix #4: Block system keys
+                const blockedKeys = ['Escape', 'Tab', 'Control', 'Alt', 'Meta', 'CapsLock'];
+                
+                if (e.key === 'Escape') {
+                    // Fix #5: Cancel on Escape
+                    finishRebind();
+                    return;
+                }
+
+                if (blockedKeys.includes(e.key)) return;
+
+                // Save key
+                GameManager.saveBinding(action, e.key);
+                finishRebind();
+            };
+
+            function finishRebind() {
+                isRebinding = false;
                 btn.classList.remove('listening');
                 updateBindUI();
-                window.removeEventListener('keydown', handler);
-            };
-            window.addEventListener('keydown', handler, { once: true });
+                window.removeEventListener('keydown', keyHandler);
+            }
+
+            window.addEventListener('keydown', keyHandler);
         }
 
         window.onload = initUI;
