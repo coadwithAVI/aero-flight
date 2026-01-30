@@ -1,17 +1,146 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Sky Pilot</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKY PILOT - PRO</title>
+    
+    <script src="game-manager.js"></script>
+    <script src="sfx-manager.js"></script>
+    <script src="music-manager.js"></script>
+
     <style>
-        body { background: #111; color: #0ff; font-family: sans-serif; text-align: center; margin-top: 100px; }
-        button { padding: 15px 30px; font-size: 20px; background: #000; color: #0ff; border: 2px solid #0ff; margin: 10px; cursor: pointer; }
-        button:hover { background: #0ff; color: #000; }
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050510;
+            font-family: 'Courier New', Courier, monospace;
+            color: #00d2ff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        /* Animated Background Grid */
+        .grid-bg {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: 
+                linear-gradient(transparent 95%, rgba(0, 210, 255, 0.3) 50%),
+                linear-gradient(90deg, transparent 95%, rgba(0, 210, 255, 0.3) 50%);
+            background-size: 50px 50px;
+            transform: perspective(500px) rotateX(60deg) translateY(100px) scale(2);
+            animation: gridMove 20s linear infinite;
+            z-index: -1;
+            opacity: 0.2;
+        }
+
+        @keyframes gridMove {
+            0% { background-position: 0 0; }
+            100% { background-position: 0 1000px; }
+        }
+
+        .container {
+            text-align: center;
+            z-index: 10;
+            border: 2px solid #00d2ff;
+            padding: 40px;
+            background: rgba(0, 20, 40, 0.8);
+            box-shadow: 0 0 30px rgba(0, 210, 255, 0.2);
+            backdrop-filter: blur(5px);
+        }
+
+        h1 {
+            font-size: 60px;
+            margin: 0 0 10px 0;
+            text-shadow: 0 0 20px #00d2ff;
+            letter-spacing: 5px;
+        }
+
+        p {
+            color: #aaa;
+            margin-bottom: 40px;
+            font-size: 14px;
+            letter-spacing: 2px;
+        }
+
+        .btn {
+            display: block;
+            width: 250px;
+            padding: 15px;
+            margin: 15px auto;
+            background: transparent;
+            border: 1px solid #00d2ff;
+            color: #00d2ff;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+            text-transform: uppercase;
+        }
+
+        .btn:hover {
+            background: #00d2ff;
+            color: #000;
+            box-shadow: 0 0 20px #00d2ff;
+            transform: scale(1.05);
+        }
+
+        /* Initial Overlay to Unlock Audio */
+        #start-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 100;
+            cursor: pointer;
+        }
+        #start-text {
+            font-size: 24px;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
-    <h1>SKY PILOT</h1>
-    <button onclick="location.href='singleplayer.html'">SINGLEPLAYER</button><br>
-    <button onclick="location.href='multiplayer.html'">MULTIPLAYER</button><br>
-    <button onclick="location.href='settings.html'">SETTINGS</button>
+
+    <div class="grid-bg"></div>
+
+    <div id="start-overlay" onclick="unlockAudio()">
+        <div id="start-text">CLICK TO INITIALIZE SYSTEMS</div>
+    </div>
+
+    <div class="container">
+        <h1>SKY PILOT</h1>
+        <p>ADVANCED FLIGHT SIMULATOR</p>
+
+        <button class="btn" onclick="location.href='singleplayer.html'">Solo Mission</button>
+        <button class="btn" onclick="location.href='multiplayer.html'">Multiplayer</button>
+        <button class="btn" onclick="location.href='settings.html'">Settings</button>
+    </div>
+
+    <script>
+        function unlockAudio() {
+            // Remove overlay
+            document.getElementById('start-overlay').style.display = 'none';
+
+            // Init Managers Logic
+            if(window.GameManager) GameManager.init();
+            
+            // Critical: Resume Audio Context
+            if(window.MusicManager) {
+                MusicManager.init();
+                MusicManager.ctx.resume().then(() => {
+                    MusicManager.playLobby();
+                });
+            }
+            if(window.SFXManager) {
+                SFXManager.init();
+                SFXManager.ctx.resume();
+            }
+        }
+    </script>
+
 </body>
 </html>
