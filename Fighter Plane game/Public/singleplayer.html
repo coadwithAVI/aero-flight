@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Sky Pilot - Ace Combat</title>
+    <title>Sky Pilot - Ultimate Dogfight</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
     <script src="game-config.js"></script>
@@ -13,37 +13,82 @@
     <script src="models.js"></script>
 
     <style>
+        /* --- GLOBAL STYLES --- */
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; user-select: none; }
         
+        /* --- HUD LAYER --- */
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         
-        .hud-panel { position: absolute; padding: 10px; }
+        .hud-panel { position: absolute; padding: 15px; }
+        
+        /* Top Left: Health & Score */
         .top-left { top: 10px; left: 10px; text-align: left; }
+        .hud-label { color: #00d2ff; font-weight: 900; font-size: 16px; margin-bottom: 5px; text-shadow: 0 0 5px #000; letter-spacing: 2px; }
+        
+        .bar-frame { 
+            width: 250px; height: 15px; 
+            background: rgba(0,0,0,0.6); 
+            border: 2px solid #555; 
+            transform: skewX(-20deg); 
+            margin-bottom: 10px; 
+            overflow: hidden; 
+        }
+        
+        #hp-fill { 
+            height: 100%; 
+            background: linear-gradient(90deg, #ff3333, #ff0000); 
+            width: 100%; 
+            transition: width 0.1s linear; 
+            box-shadow: 0 0 15px #f00; 
+        }
+        
+        /* Top Right: Boost & Radar */
         .top-right { top: 10px; right: 10px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
         
-        .hud-label { color: #00d2ff; font-weight: 900; font-size: 14px; margin-bottom: 5px; text-shadow: 0 0 5px #000; letter-spacing: 1px; }
-        .bar-frame { width: 220px; height: 12px; background: rgba(0,0,0,0.6); border: 2px solid #555; transform: skewX(-20deg); margin-bottom: 10px; overflow: hidden; }
-        
-        #hp-fill { height: 100%; background: linear-gradient(90deg, #ff3333, #ff0000); width: 100%; transition: width 0.2s; box-shadow: 0 0 10px #f00; }
-        #boost-fill { height: 100%; background: linear-gradient(90deg, #00d2ff, #0088ff); width: 100%; transition: width 0.1s; box-shadow: 0 0 10px #00f; }
+        #boost-fill { 
+            height: 100%; 
+            background: linear-gradient(90deg, #00d2ff, #0088ff); 
+            width: 100%; 
+            transition: width 0.1s linear; 
+            box-shadow: 0 0 15px #00f; 
+        }
 
         #minimap-container {
-            width: 150px; height: 150px;
-            background: rgba(0, 10, 20, 0.8);
+            width: 160px; height: 160px;
+            background: rgba(0, 10, 20, 0.85);
             border: 2px solid #00d2ff;
             border-radius: 50%;
-            margin-top: 10px;
+            margin-top: 15px;
             position: relative;
             overflow: hidden;
-            box-shadow: 0 0 20px rgba(0, 210, 255, 0.2);
+            box-shadow: 0 0 20px rgba(0, 210, 255, 0.3);
         }
         #minimap-canvas { width: 100%; height: 100%; }
 
-        #start-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; pointer-events: auto; }
-        .btn { background: rgba(0, 210, 255, 0.1); color: #00d2ff; border: 1px solid #00d2ff; padding: 15px 50px; font-size: 20px; font-weight: bold; cursor: pointer; transition: 0.3s; transform: skewX(-10deg); }
-        .btn:hover { background: #00d2ff; color: #000; }
+        /* --- MENUS --- */
+        #start-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: radial-gradient(circle, rgba(10,20,40,0.98) 0%, rgba(0,0,0,1) 100%); 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+            z-index: 100; pointer-events: auto; 
+        }
+        
+        h1 { color: #fff; font-size: 60px; margin-bottom: 10px; text-shadow: 0 0 30px #00d2ff; border-bottom: 3px solid #00d2ff; padding-bottom: 15px; }
+        
+        .btn { 
+            background: rgba(0, 210, 255, 0.1); color: #00d2ff; border: 2px solid #00d2ff; 
+            padding: 15px 50px; font-size: 20px; font-weight: bold; cursor: pointer; 
+            transition: 0.3s; transform: skewX(-10deg); margin-top: 20px; 
+        }
+        .btn:hover { background: #00d2ff; color: #000; box-shadow: 0 0 30px #00d2ff; transform: skewX(-10deg) scale(1.05); }
 
-        #pause-menu { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); border: 1px solid white; padding: 40px; text-align: center; pointer-events: auto; }
+        #pause-menu { 
+            display: none; position: absolute; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); 
+            background: rgba(0, 15, 30, 0.95); border: 2px solid white; 
+            padding: 50px; text-align: center; pointer-events: auto; 
+            box-shadow: 0 0 50px rgba(0,0,0,0.8); z-index: 90;
+        }
     </style>
 </head>
 <body>
@@ -51,98 +96,140 @@
     <div id="game-container"></div>
 
     <div id="start-overlay">
-        <h1 style="color:white; font-size:50px; text-shadow:0 0 20px #00d2ff;">SKY PILOT</h1>
-        <div style="color:#aaa; margin-bottom:30px;">DOGFIGHT & RACE</div>
+        <h1>SKY PILOT</h1>
+        <div style="color:#aaa; margin-bottom:30px; letter-spacing: 3px;">MISSION: TACTICAL DOGFIGHT</div>
         <button class="btn" onclick="startGame()">LAUNCH MISSION</button>
         <button class="btn" style="border-color:#555; color:#777; margin-top:15px; font-size:14px;" onclick="location.href='index.html'">ABORT</button>
     </div>
 
     <div id="ui-layer" style="display:none;">
         <div class="hud-panel top-left">
-            <div class="hud-label">HEALTH</div>
+            <div class="hud-label">HULL INTEGRITY</div>
             <div class="bar-frame"><div id="hp-fill"></div></div>
-            <div class="hud-label" style="font-size:12px; color:#ffd700;">RINGS: <span id="ring-txt">0/8</span></div>
+            <div class="hud-label" style="font-size:18px; color:#ffd700; margin-top:10px;">
+                TARGETS: <span id="ring-txt">0/8</span>
+            </div>
+            <div class="hud-label" style="font-size:14px; color:#aaa;">LAP: <span id="lap-txt">1</span>/2</div>
         </div>
 
         <div class="hud-panel top-right">
-            <div class="hud-label">BOOST</div>
+            <div class="hud-label">AFTERBURNER</div>
             <div class="bar-frame"><div id="boost-fill"></div></div>
             <div id="minimap-container">
-                <canvas id="minimap-canvas" width="150" height="150"></canvas>
+                <canvas id="minimap-canvas" width="160" height="160"></canvas>
             </div>
         </div>
     </div>
 
     <div id="pause-menu">
-        <h2 style="color:white;">PAUSED</h2>
+        <h2 style="color:white; letter-spacing: 5px; margin-bottom: 30px;">SYSTEM PAUSED</h2>
         <button class="btn" onclick="togglePause()">RESUME</button><br><br>
-        <button class="btn" onclick="toggleSound()">SOUND</button><br><br>
-        <button class="btn" style="border-color:#f00; color:#f00;" onclick="location.href='index.html'">EXIT</button>
+        <button class="btn" onclick="toggleSound()">TOGGLE SOUND</button><br><br>
+        <button class="btn" style="border-color:#ff4444; color:#ff4444;" onclick="location.href='index.html'">EXIT MISSION</button>
     </div>
 
     <script>
-        // --- ADVANCED CONFIG ---
+        // =========================================================
+        // 1. ADVANCED CONFIGURATION & GLOBALS
+        // =========================================================
         const CFG = {
-            DMG_PLAYER: 7,
-            DMG_ENEMY: 5,
-            
-            // Fire Rates (ms)
-            ENEMY_COOLDOWN: 1000, // Bots shoot slow
-            PLAYER_COOLDOWN: 150, // Player shoots FAST (Machine gun)
-            
-            // Aiming
-            AUTO_AIM_ANGLE: 0.7,  // Widen the cone (easier to lock on)
-            AUTO_AIM_STRENGTH: 0.15 // Higher = Stronger Homing Missile effect
+            DMG_PLAYER: 7,       // My damage
+            DMG_ENEMY: 5,        // Enemy damage
+            ENEMY_COOLDOWN: 1000, // Bots fire every 1s
+            PLAYER_COOLDOWN: 150, // I fire every 0.15s (Machine Gun)
+            AUTO_AIM_ANGLE: 0.75, // Wide angle for locking
+            AUTO_AIM_STRENGTH: 0.15, // Strong Homing effect
+            DODGE_STRENGTH: 200   // AI Dodge power
         };
 
+        // Scene Setup
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(SKY_CONFIG.COLORS.SKY);
         scene.fog = new THREE.Fog(SKY_CONFIG.COLORS.SKY, 2000, 20000);
+
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 1, 40000);
         const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
         document.getElementById('game-container').appendChild(renderer.domElement);
 
+        // Lighting
         scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
-        const dl = new THREE.DirectionalLight(0xffffff, 1.2); dl.position.set(100, 1000, 500); scene.add(dl);
+        const dl = new THREE.DirectionalLight(0xffffff, 1.2);
+        dl.position.set(100, 1000, 500);
+        dl.castShadow = true;
+        scene.add(dl);
 
+        // Game Variables
         let player, guideArrow;
         let rings = [], medkits = [], bots = [], bullets = [];
         let stats = { hp: 100, rings: 0, boost: 100 };
         let isPaused = false, gameActive = false, ringTargetIndex = 0;
         let lastPlayerFire = 0;
+        
+        // Input State
         const inputs = { up:false, down:false, left:false, right:false, boost:false, fire:false };
-
+        
+        // Canvas Context
         const mapCtx = document.getElementById('minimap-canvas').getContext('2d');
 
+        // =========================================================
+        // 2. GAME INITIALIZATION
+        // =========================================================
         function startGame() {
-            if(window.MusicManager) { MusicManager.init(); if(MusicManager.ctx.state ==='suspended') MusicManager.ctx.resume(); MusicManager.playCombat(); }
+            // Audio System Startup (Browser Policy Fix)
+            if(window.MusicManager) {
+                MusicManager.init();
+                if(MusicManager.ctx && MusicManager.ctx.state === 'suspended') {
+                    MusicManager.ctx.resume();
+                }
+                MusicManager.playCombat(); 
+            }
             if(window.SFXManager) SFXManager.init();
 
+            // Switch UI
             document.getElementById('start-overlay').style.display = 'none';
             document.getElementById('ui-layer').style.display = 'block';
 
+            // Generate Map
             MapManager.generateTerrain(scene);
             const objs = MapManager.generateObjects(scene);
-            rings = objs.rings; medkits = objs.medkits;
+            rings = objs.rings; 
+            medkits = objs.medkits;
 
+            // Create Player (Using models.js)
             if(window.ModelManager) {
                 player = ModelManager.createJet(0x00d2ff);
                 guideArrow = ModelManager.createArrow();
             } else {
+                // Fallback (Just in case)
+                console.warn("Models.js not loaded!");
                 const g=new THREE.Group(); const m=new THREE.Mesh(new THREE.ConeGeometry(2,10,8), new THREE.MeshBasicMaterial({color:0x00f})); m.rotateX(Math.PI/2); g.add(m); player=g;
                 guideArrow=new THREE.Mesh(new THREE.ConeGeometry(2,5,8), new THREE.MeshBasicMaterial({color:0x0f0}));
             }
+            
+            // Set Player Initial State
+            player.rotation.order = "YXZ"; // CRITICAL: Prevents Flipping
             player.position.set(0, 600, 0);
             scene.add(player);
             scene.add(guideArrow);
 
+            // Create Bots
             for(let i=0; i<4; i++) {
                 let bot = window.ModelManager ? ModelManager.createJet(0xff4444) : new THREE.Mesh(new THREE.ConeGeometry(2,10,8), new THREE.MeshBasicMaterial({color:0xf00}));
                 if(!window.ModelManager) bot.rotateX(Math.PI/2);
-                bot.position.set((i-1.5)*200, 600, 400);
-                bot.userData = { speed: SKY_CONFIG.NORMAL_SPEED, nextRing: 0, lastFire: 0, id: i };
-                scene.add(bot); bots.push(bot);
+                
+                bot.rotation.order = "YXZ";
+                bot.position.set((i-1.5)*200, 600, 400); // Spawn ahead
+                bot.userData = { 
+                    speed: SKY_CONFIG.NORMAL_SPEED, 
+                    nextRing: 0, 
+                    lastFire: 0, 
+                    id: i,
+                    turnSpeed: 0.03 + Math.random() * 0.02
+                };
+                scene.add(bot); 
+                bots.push(bot);
             }
 
             updateRingVisibility();
@@ -150,97 +237,125 @@
             animate();
         }
 
+        // =========================================================
+        // 3. MAIN GAME LOOP
+        // =========================================================
         function update() {
             if(!gameActive || isPaused) return;
 
-            // --- MOVEMENT (Reduced Roll) ---
+            // --- A. PLAYER PHYSICS (STABLE FLIGHT) ---
             let speed = SKY_CONFIG.NORMAL_SPEED;
+            
+            // Boost Logic
             if(inputs.boost && stats.boost > 0) {
-                speed = SKY_CONFIG.BOOST_SPEED; stats.boost -= SKY_CONFIG.BOOST_DRAIN;
-                const glow = player.getObjectByName("EngineGlow"); if(glow) glow.scale.set(1.5,1.5,1.5);
-                if(window.SFXManager && SFXManager.startBoost) SFXManager.startBoost();
+                speed = SKY_CONFIG.BOOST_SPEED; 
+                stats.boost -= SKY_CONFIG.BOOST_DRAIN;
+                const glow = player.getObjectByName("EngineGlow"); 
+                if(glow) glow.scale.set(1.5,1.5,1.5);
+                if(window.SFXManager && typeof SFXManager.startBoost === 'function') SFXManager.startBoost();
             } else {
                 stats.boost = Math.min(100, stats.boost + SKY_CONFIG.BOOST_REFILL);
-                const glow = player.getObjectByName("EngineGlow"); if(glow) glow.scale.set(1,1,1);
-                if(window.SFXManager && SFXManager.stopBoost) SFXManager.stopBoost();
+                const glow = player.getObjectByName("EngineGlow"); 
+                if(glow) glow.scale.set(1,1,1);
+                if(window.SFXManager && typeof SFXManager.stopBoost === 'function') SFXManager.stopBoost();
             }
 
-            const turnSpeed = SKY_CONFIG.TURN_SPEED;
-            const worldUp = new THREE.Vector3(0,1,0);
+            // Stable Turning Logic (No Flip)
+            const turnSpeed = SKY_CONFIG.TURN_SPEED * 1.5;
             
-            // Reduced Roll Angle (0.8 -> 0.3) for stability
             if(inputs.left) { 
-                player.rotateOnWorldAxis(worldUp, turnSpeed); 
+                player.rotation.y += turnSpeed; 
                 player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0.4, 0.1); 
             }
             else if(inputs.right) { 
-                player.rotateOnWorldAxis(worldUp, -turnSpeed); 
+                player.rotation.y -= turnSpeed; 
                 player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, -0.4, 0.1); 
             }
             else {
-                player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 0.05);
+                player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 0.05); // Level out
             }
 
-            if(inputs.up && player.rotation.x > -1.0) player.rotateX(turnSpeed);
-            else if(inputs.down && player.rotation.x < 1.0) player.rotateX(-turnSpeed);
-            else player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 0.02);
+            if(inputs.up) {
+                // Pitch Up (Clamped)
+                player.rotation.x = Math.max(player.rotation.x - turnSpeed, -1.0);
+            }
+            else if(inputs.down) {
+                // Pitch Down (Clamped)
+                player.rotation.x = Math.min(player.rotation.x + turnSpeed, 1.0);
+            }
+            else {
+                player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, 0, 0.02); // Level pitch
+            }
 
             player.translateZ(-speed);
 
+            // --- B. WORLD INTERACTIONS ---
+            
             // Guide Arrow
             if(rings.length > 0) {
                 const t = rings[ringTargetIndex % SKY_CONFIG.RINGS_TOTAL].position;
-                guideArrow.position.copy(player.position); guideArrow.position.y += 40; guideArrow.lookAt(t);
+                guideArrow.position.copy(player.position); 
+                guideArrow.position.y += 40; 
+                guideArrow.lookAt(t);
             }
 
-            // Collision
+            // Terrain Collision
             const gh = MapManager.getTerrainHeight(player.position.x, player.position.z);
             if(player.position.y < gh + 15) {
-                player.position.y = gh + 15; speed *= 0.5;
+                player.position.y = gh + 15; 
+                speed *= 0.5; // Friction
                 stats.hp -= SKY_CONFIG.TERRAIN_DAMAGE;
                 if(stats.hp <= 0) gameOver(false);
             }
 
-            // Rings
+            // Ring Collection
             const ring = rings[ringTargetIndex % SKY_CONFIG.RINGS_TOTAL];
             if(player.position.distanceTo(ring.position) < 120) {
                 SFXManager.playCollect();
-                stats.rings++; ringTargetIndex++;
+                stats.rings++; 
+                ringTargetIndex++;
                 updateRingVisibility();
                 if(stats.rings >= SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS) gameOver(true);
             }
 
-            // --- DUAL GUNS SHOOTING ---
+            // --- C. COMBAT & SHOOTING ---
+            
+            // Player Shooting (Dual Guns + Auto Aim)
             if(inputs.fire) {
                 const now = Date.now();
                 if(now - lastPlayerFire > CFG.PLAYER_COOLDOWN) {
                     const targetBot = getAutoAimTarget(player);
                     
-                    // Left Gun (Offset x: -3)
+                    // Left Gun
                     fireBullet(player, true, targetBot, -3);
-                    // Right Gun (Offset x: +3)
+                    // Right Gun
                     fireBullet(player, true, targetBot, 3);
                     
                     lastPlayerFire = now;
                 }
             }
 
+            // Run Systems
             updateBots();
             updateBullets();
             checkMedkits();
 
-            // UI
+            // --- D. UPDATE UI & CAMERA ---
             document.getElementById('hp-fill').style.width = Math.max(0, stats.hp) + "%";
             document.getElementById('boost-fill').style.width = Math.max(0, stats.boost) + "%";
             document.getElementById('ring-txt').innerText = stats.rings + "/" + (SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS);
+            document.getElementById('lap-txt').innerText = Math.ceil((stats.rings+0.1)/SKY_CONFIG.RINGS_TOTAL);
+            
             drawMinimap();
 
-            const camOff = new THREE.Vector3(0, 30, 80).applyQuaternion(player.quaternion);
+            const camOff = new THREE.Vector3(0, 35, 90).applyQuaternion(player.quaternion);
             camera.position.lerp(player.position.clone().add(camOff), 0.2);
             camera.lookAt(player.position);
         }
 
-        // --- COMBAT SYSTEM ---
+        // =========================================================
+        // 4. AI & BULLET LOGIC
+        // =========================================================
 
         function updateBots() {
             const now = Date.now();
@@ -248,29 +363,33 @@
                 const targetRing = rings[bot.userData.nextRing % SKY_CONFIG.RINGS_TOTAL];
                 let moveDir = targetRing.position.clone();
 
-                // Dodge bullets
+                // 1. Dodge Logic
                 let dodgeVector = new THREE.Vector3();
                 bullets.forEach(b => {
-                    if(b.isPlayer && b.mesh.position.distanceTo(bot.position) < 200) {
+                    if(b.isPlayer && b.mesh.position.distanceTo(bot.position) < 250) {
                         let away = new THREE.Vector3().subVectors(bot.position, b.mesh.position).normalize();
-                        dodgeVector.add(away.multiplyScalar(300));
+                        dodgeVector.add(away.multiplyScalar(CFG.DODGE_STRENGTH));
                     }
                 });
                 if(dodgeVector.length() > 0) moveDir.add(dodgeVector);
 
-                // Terrain Avoidance
+                // 2. Terrain Avoidance
                 const lookAhead = new THREE.Vector3(0, 0, -300).applyQuaternion(bot.quaternion).add(bot.position);
                 const th = MapManager.getTerrainHeight(lookAhead.x, lookAhead.z);
-                if(moveDir.y < th + 200) moveDir.y = th + 250;
+                if(moveDir.y < th + 250) moveDir.y = th + 300;
 
-                const dummy = new THREE.Object3D(); dummy.position.copy(bot.position); dummy.lookAt(moveDir);
-                bot.quaternion.slerp(dummy.quaternion, 0.05);
+                // 3. Move Bot
+                const dummy = new THREE.Object3D(); 
+                dummy.position.copy(bot.position); 
+                dummy.lookAt(moveDir);
+                bot.quaternion.slerp(dummy.quaternion, bot.userData.turnSpeed);
                 bot.translateZ(-bot.userData.speed);
 
-                // Bot Shooting
+                // 4. Attack Player
                 const toPlayer = new THREE.Vector3().subVectors(player.position, bot.position).normalize();
                 const botDir = new THREE.Vector3(0, 0, -1).applyQuaternion(bot.quaternion).normalize();
                 
+                // If looking roughly at player
                 if(botDir.dot(toPlayer) > 0.85 && bot.position.distanceTo(player.position) < 3000) {
                     if(now - bot.userData.lastFire > CFG.ENEMY_COOLDOWN) {
                         fireBullet(bot, false, player, 0);
@@ -278,6 +397,7 @@
                     }
                 }
 
+                // 5. Ring Logic
                 if(bot.position.distanceTo(targetRing.position) < 120) {
                     bot.userData.nextRing++;
                     if(bot.userData.nextRing >= SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS) gameOver(false);
@@ -289,6 +409,7 @@
             let bestTarget = null;
             let maxDot = CFG.AUTO_AIM_ANGLE;
             const shooterDir = new THREE.Vector3(0, 0, -1).applyQuaternion(shooter.quaternion).normalize();
+            
             bots.forEach(bot => {
                 const toBot = new THREE.Vector3().subVectors(bot.position, shooter.position).normalize();
                 const dot = shooterDir.dot(toBot);
@@ -302,18 +423,12 @@
             const color = isPlayer ? 0xffff00 : 0xff0000;
             const b = new THREE.Mesh(new THREE.SphereGeometry(isPlayer?1.5:2), new THREE.MeshBasicMaterial({color:color}));
             
-            // Apply Offset for Wings
+            // Wing Offset Logic
             const offset = new THREE.Vector3(xOffset, 0, -10).applyQuaternion(origin.quaternion);
             b.position.copy(origin.position).add(offset);
-            
             b.quaternion.copy(origin.quaternion);
             
-            bullets.push({ 
-                mesh: b, 
-                life: 100, 
-                isPlayer: isPlayer, 
-                target: targetObj 
-            });
+            bullets.push({ mesh: b, life: 100, isPlayer: isPlayer, target: targetObj });
             scene.add(b);
         }
 
@@ -321,13 +436,14 @@
             for (let i = bullets.length - 1; i >= 0; i--) {
                 let b = bullets[i];
                 
-                // Strong Auto-Aim
+                // Homing Missile Logic
                 if(b.target) {
                     const toTarget = new THREE.Vector3().subVectors(b.target.position, b.mesh.position).normalize();
                     const currentDir = new THREE.Vector3(0, 0, -1).applyQuaternion(b.mesh.quaternion).normalize();
-                    currentDir.lerp(toTarget, CFG.AUTO_AIM_STRENGTH).normalize(); // Stronger turn
-                    const dummy = new THREE.Object3D();
-                    dummy.position.copy(b.mesh.position);
+                    currentDir.lerp(toTarget, CFG.AUTO_AIM_STRENGTH).normalize();
+                    
+                    const dummy = new THREE.Object3D(); 
+                    dummy.position.copy(b.mesh.position); 
                     dummy.lookAt(b.mesh.position.clone().add(currentDir));
                     b.mesh.quaternion.copy(dummy.quaternion);
                 }
@@ -335,11 +451,12 @@
                 b.mesh.translateZ(-SKY_CONFIG.BULLET_SPEED);
                 b.life--;
 
+                // Collisions
                 if(b.isPlayer) {
                     for (let bot of bots) {
-                        if (b.mesh.position.distanceTo(bot.position) < 40) { // Hitbox size
+                        if (b.mesh.position.distanceTo(bot.position) < 40) {
                             SFXManager.playHit();
-                            bot.translateZ(30); // Hit knockback
+                            bot.translateZ(30); // Knockback
                             scene.remove(b.mesh); bullets.splice(i, 1); return;
                         }
                     }
@@ -357,20 +474,28 @@
             }
         }
 
-        // --- MINIMAP ---
+        // =========================================================
+        // 5. MINIMAP & UTILS
+        // =========================================================
         function drawMinimap() {
-            mapCtx.fillStyle = 'rgba(0, 10, 20, 0.6)'; mapCtx.fillRect(0, 0, 150, 150);
-            const range = 4000; const center = 75;
-            mapCtx.save(); mapCtx.translate(center, center); mapCtx.rotate(-player.rotation.y);
+            mapCtx.fillStyle = 'rgba(0, 10, 20, 0.6)'; 
+            mapCtx.fillRect(0, 0, 160, 160);
+            
+            const range = 4000; const center = 80;
+            mapCtx.save(); 
+            mapCtx.translate(center, center); 
+            mapCtx.rotate(-player.rotation.y); // Rotate map with player
 
+            // Rings (Yellow)
             mapCtx.fillStyle = '#ffd700';
             rings.forEach(r => {
                 if(!r.visible) return;
                 const dx = (r.position.x - player.position.x)/range*center;
                 const dz = (r.position.z - player.position.z)/range*center;
-                mapCtx.beginPath(); mapCtx.arc(dx, dz, 3, 0, Math.PI*2); mapCtx.fill();
+                mapCtx.beginPath(); mapCtx.arc(dx, dz, 4, 0, Math.PI*2); mapCtx.fill();
             });
 
+            // Enemies (Red)
             mapCtx.fillStyle = '#ff0000';
             bots.forEach(b => {
                 const dx = (b.position.x - player.position.x)/range*center;
@@ -378,12 +503,12 @@
                 mapCtx.beginPath(); mapCtx.arc(dx, dz, 3, 0, Math.PI*2); mapCtx.fill();
             });
 
+            // Player (Green Triangle)
             mapCtx.fillStyle = '#00ff00';
-            mapCtx.beginPath(); mapCtx.moveTo(0, -5); mapCtx.lineTo(-4, 4); mapCtx.lineTo(4, 4); mapCtx.fill();
+            mapCtx.beginPath(); mapCtx.moveTo(0, -6); mapCtx.lineTo(-5, 5); mapCtx.lineTo(5, 5); mapCtx.fill();
             mapCtx.restore();
         }
 
-        // --- HELPERS ---
         function updateRingVisibility() {
             rings.forEach(r => { r.visible = false; r.material.emissiveIntensity = 0.2; });
             const active = rings[ringTargetIndex % SKY_CONFIG.RINGS_TOTAL];
@@ -405,28 +530,65 @@
             document.getElementById('pause-menu').style.display = isPaused ? 'block' : 'none';
             if(window.SFXManager && SFXManager.stopBoost) SFXManager.stopBoost();
         }
-        function toggleSound() { const s = !GameManager.state.isSfxOn; GameManager.setSfx(s); GameManager.setMusic(s); }
-        function gameOver(win) {
-            gameActive = false; MusicManager.stop();
-            if(SFXManager.stopBoost) SFXManager.stopBoost();
-            if(win) SFXManager.playCollect(); else SFXManager.playHit();
-            alert(win ? "VICTORY!" : "DEFEAT!"); location.href = 'index.html';
+
+        function toggleSound() {
+            const s = !GameManager.state.isSfxOn;
+            GameManager.setSfx(s); GameManager.setMusic(s);
         }
 
+        function gameOver(win) {
+            gameActive = false; MusicManager.stop();
+            if(window.SFXManager && SFXManager.stopBoost) SFXManager.stopBoost();
+            if(win) SFXManager.playCollect(); else SFXManager.playHit();
+            const msg = win ? "MISSION ACCOMPLISHED!\nYOU RULE THE SKIES!" : "MISSION FAILED!\nSHOT DOWN OR CRASHED.";
+            alert(msg); location.href = 'index.html';
+        }
+
+        // =========================================================
+        // 6. INPUT HANDLING (Keyboard)
+        // =========================================================
         function handleInput(e, isDown) {
-            const k = e.key.toLowerCase(); const c = e.code; const binds = GameManager.state.bindings;
+            const k = e.key.toLowerCase(); const c = e.code; 
+            const binds = GameManager.state.bindings;
+
+            // Movement (Arrows OR WASD)
             if(k===binds.up || c==='ArrowUp') inputs.up=isDown;
             if(k===binds.down || c==='ArrowDown') inputs.down=isDown;
             if(k===binds.left || c==='ArrowLeft') inputs.left=isDown;
             if(k===binds.right || c==='ArrowRight') inputs.right=isDown;
+            
+            // Boost (Space OR Bind)
             if(k===binds.boost || c==='Space') inputs.boost=isDown;
+            
+            // Fire (Any Shift OR Bind)
             if(k===binds.fire || c==='ShiftLeft' || c==='ShiftRight') inputs.fire=isDown;
         }
-        window.addEventListener('keydown', e => { if(e.key==='Escape') togglePause(); handleInput(e,true); });
-        window.addEventListener('keyup', e => { handleInput(e,false); if((e.code==='Space'||e.key===GameManager.state.bindings.boost)&&window.SFXManager&&SFXManager.stopBoost) SFXManager.stopBoost(); });
-        window.addEventListener('resize', () => { camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
-        function animate() { requestAnimationFrame(animate); update(); renderer.render(scene, camera); }
+        window.addEventListener('keydown', e => { 
+            if(e.key==='Escape') togglePause(); 
+            handleInput(e,true); 
+        });
+        
+        window.addEventListener('keyup', e => { 
+            handleInput(e,false); 
+            // Handle sound stop safely
+            if((e.code==='Space'||e.key===GameManager.state.bindings.boost)&&window.SFXManager&&SFXManager.stopBoost) {
+                SFXManager.stopBoost();
+            }
+        });
+
+        window.addEventListener('resize', () => { 
+            camera.aspect=window.innerWidth/window.innerHeight; 
+            camera.updateProjectionMatrix(); 
+            renderer.setSize(window.innerWidth, window.innerHeight); 
+        });
+
+        // Loop
+        function animate() { 
+            requestAnimationFrame(animate); 
+            update(); 
+            renderer.render(scene, camera); 
+        }
     </script>
 </body>
 </html>
