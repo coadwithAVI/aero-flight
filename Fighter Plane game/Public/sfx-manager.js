@@ -1,6 +1,6 @@
 /**
  * 🔊 SKY PILOT: SFX MANAGER
- * (Original Heavy Engine Sound + Crash Fixes)
+ * (Menu Silent, Game Heavy)
  */
 
 const SFXManager = {
@@ -16,16 +16,13 @@ const SFXManager = {
     init: function() {
         if (this.ctx) return;
         
-        // Browser compatibility
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         this.ctx = new AudioContext();
         
-        // Master Volume Control
         this.masterGain = this.ctx.createGain();
         this.masterGain.gain.value = GameManager.state.isSfxOn ? GameManager.state.sfxVolume : 0;
         this.masterGain.connect(this.ctx.destination);
 
-        // Resume context if suspended (Browser policy fix)
         if (this.ctx.state === 'suspended') {
             this.ctx.resume();
         }
@@ -33,19 +30,19 @@ const SFXManager = {
         this.createEngineSound();
     },
 
-    // --- ✈️ ORIGINAL JET ENGINE DRONE (User's Choice) ---
+    // --- ✈️ ORIGINAL JET ENGINE DRONE ---
     createEngineSound: function() {
         const t = this.ctx.currentTime;
 
-        // 1. Low Rumble (Triangle Wave)
+        // 1. Low Rumble
         this.engineOsc = this.ctx.createOscillator();
         this.engineOsc.type = 'sawtooth';
         this.engineOsc.frequency.value = 100;
         
         this.engineGain = this.ctx.createGain();
-        this.engineGain.gain.value = 0.1; // Base volume set directly
+        // FIX: Start with 0 Volume (Silent in Menu)
+        this.engineGain.gain.value = 0; 
         
-        // Lowpass filter
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.value = 400;
@@ -55,7 +52,7 @@ const SFXManager = {
         this.engineGain.connect(this.masterGain);
         this.engineOsc.start();
 
-        // 2. Wind Noise (Buffer) - The Heavy Sound
+        // 2. Wind Noise
         const bufferSize = this.ctx.sampleRate * 2;
         const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
         const data = buffer.getChannelData(0);
@@ -69,7 +66,8 @@ const SFXManager = {
         this.windNode.loop = true;
 
         this.windGain = this.ctx.createGain();
-        this.windGain.gain.value = 0.05;
+        // FIX: Start with 0 Volume (Silent in Menu)
+        this.windGain.gain.value = 0;
         
         const windFilter = this.ctx.createBiquadFilter();
         windFilter.type = 'bandpass';
@@ -81,35 +79,30 @@ const SFXManager = {
         this.windNode.start();
     },
 
-    // Called every frame to update pitch based on speed
-    updateEngine: function(speedRatio) { // 0.0 to 1.0
+    // --- UPDATE LOGIC (Called ONLY when Game Starts) ---
+    updateEngine: function(speedRatio) { 
         if (!this.ctx || !GameManager.state.isSfxOn) return;
         
         const now = this.ctx.currentTime;
         
-        // Pitch goes up with speed
+        // Pitch logic
         this.engineOsc.frequency.setTargetAtTime(100 + (speedRatio * 300), now, 0.1);
         
-        // Volume logic
+        // Volume Logic: Ab ye volume badhayega (0 -> Audible)
         this.engineGain.gain.setTargetAtTime(0.1 + (speedRatio * 0.1), now, 0.1);
         this.windGain.gain.setTargetAtTime(speedRatio * 0.4, now, 0.1);
     },
 
-    // --- 🛠️ CRASH FIXES (Empty Functions) ---
-    // Singleplayer.html inko dhund raha tha, isliye error aa raha tha.
-    // Hum inhe khali chhod denge kyunki awaaz already 'updateEngine' se control ho rahi hai.
-    
+    // --- CRASH FIXES ---
     startBoost: function() {
-        // Just ensure audio is running
         if(this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
     },
 
     stopBoost: function() {
-        // Do nothing, let updateEngine handle the pitch drop
+        // Handled by updateEngine
     },
 
-    // --- 💥 ONE-SHOT EFFECTS ---
-
+    // --- ONE-SHOT EFFECTS ---
     playFire: function() {
         if (!this._check()) return;
         const t = this.ctx.currentTime;
@@ -124,7 +117,7 @@ const SFXManager = {
         osc.start(); osc.stop(t + 0.15);
     },
 
-    playHit: function() { // Added playHit for compatibility
+    playHit: function() {
         if (!this._check()) return;
         const t = this.ctx.currentTime;
         const osc = this.ctx.createOscillator();
@@ -138,7 +131,7 @@ const SFXManager = {
         osc.start(); osc.stop(t + 0.3);
     },
 
-    playCollect: function() { // Added playCollect for compatibility
+    playCollect: function() {
         if (!this._check()) return;
         const t = this.ctx.currentTime;
         const osc = this.ctx.createOscillator();
@@ -152,15 +145,13 @@ const SFXManager = {
         osc.start(); osc.stop(t + 0.5);
     },
 
-    playRing: function() {
-        this.playCollect(); // Mapping old name to new name
-    },
+    playRing: function() { this.playCollect(); },
 
     playExplosion: function() {
         if (!this._check()) return;
         const t = this.ctx.currentTime;
         const noise = this.ctx.createBufferSource();
-        noise.buffer = this.windNode.buffer; // Reuse buffer
+        noise.buffer = this.windNode.buffer; 
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
         filter.frequency.setValueAtTime(1000, t);
