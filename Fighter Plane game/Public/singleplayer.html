@@ -1,184 +1,473 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <title>Sky Pilot - Solo Campaign</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
     <script src="game-config.js"></script>
     <script src="game-manager.js"></script>
     <script src="sfx-manager.js"></script>
     <script src="music-manager.js"></script>
     <script src="map.js"></script>
+
     <style>
-        body { margin: 0; overflow: hidden; }
-        #ui { position: absolute; top: 10px; left: 10px; color: white; font-family: monospace; }
-        #pauseMenu { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); padding: 20px; text-align: center; border: 2px solid white; color: white; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        
+        /* HUD Design */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .hud-text { color: #00d2ff; font-weight: bold; text-shadow: 0 0 5px #000; font-size: 18px; margin: 15px; }
+        .top-left { position: absolute; top: 10px; left: 10px; }
+        .top-right { position: absolute; top: 10px; right: 10px; text-align: right; }
+        
+        /* Health Bar */
+        .bar-container { width: 200px; height: 10px; background: rgba(0,0,0,0.5); border: 1px solid #555; transform: skewX(-20deg); margin-top: 5px; }
+        #hp-bar { height: 100%; background: linear-gradient(90deg, #ff4444, #ff0000); width: 100%; transition: width 0.1s; }
+        #boost-bar { height: 100%; background: linear-gradient(90deg, #00d2ff, #0088ff); width: 100%; transition: width 0.1s; }
+
+        /* Start Screen Overlay */
+        #start-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 10, 20, 0.95);
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            z-index: 100; pointer-events: auto;
+        }
+        h1 { color: #fff; font-size: 50px; margin-bottom: 10px; letter-spacing: 5px; text-shadow: 0 0 20px #00d2ff; }
+        .btn {
+            background: transparent; color: #00d2ff; border: 2px solid #00d2ff;
+            padding: 15px 40px; font-size: 20px; font-weight: bold;
+            cursor: pointer; transition: 0.3s; text-transform: uppercase;
+            margin-top: 20px;
+        }
+        .btn:hover { background: #00d2ff; color: #000; box-shadow: 0 0 30px #00d2ff; }
+
+        /* Pause Menu */
+        #pause-menu {
+            display: none; position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8); border: 1px solid #fff;
+            padding: 40px; text-align: center; pointer-events: auto;
+        }
     </style>
 </head>
 <body>
-    <div id="ui">RINGS: 0 | HP: 100% | LAP: 1</div>
-    <div id="pauseMenu">
-        <h1>PAUSED</h1>
-        <button onclick="togglePause()">RESUME</button><br>
-        <button onclick="toggleSound()">TOGGLE SOUND</button><br>
-        <button onclick="location.href='index.html'">ABORT MISSION</button>
+
+    <div id="game-container"></div>
+
+    <div id="start-overlay">
+        <h1>SKY PILOT</h1>
+        <div style="color:#aaa; margin-bottom: 20px;">MISSION: SOLO RACE</div>
+        <button class="btn" onclick="startGame()">LAUNCH MISSION</button>
+        <button class="btn" style="border-color:#555; color:#aaa; margin-top:10px; font-size:14px;" onclick="location.href='index.html'">ABORT</button>
     </div>
-    
+
+    <div id="ui-layer" style="display:none;">
+        <div class="top-left">
+            <div class="hud-text">RINGS: <span id="ring-count" style="color:#ffd700">0</span></div>
+            <div class="hud-text">LAP: <span id="lap-count">1</span>/2</div>
+        </div>
+        <div class="top-right">
+            <div class="hud-text">
+                INTEGRITY
+                <div class="bar-container"><div id="hp-bar"></div></div>
+            </div>
+            <div class="hud-text">
+                THRUST
+                <div class="bar-container"><div id="boost-bar"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="pause-menu">
+        <h2 style="color:white; margin-top:0;">SYSTEM PAUSED</h2>
+        <button class="btn" onclick="togglePause()">RESUME</button><br><br>
+        <button class="btn" onclick="toggleSound()">TOGGLE SOUND</button><br><br>
+        <button class="btn" style="border-color:#ff4444; color:#ff4444;" onclick="location.href='index.html'">EXIT TO MENU</button>
+    </div>
+
     <script>
-        // Setup
+        // --- 1. SETUP & GLOBALS ---
+        const container = document.getElementById('game-container');
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(SKY_CONFIG.COLORS.SKY);
-        scene.fog = new THREE.Fog(SKY_CONFIG.COLORS.SKY, 1000, 15000);
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 20000);
-        const renderer = new THREE.WebGLRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+        scene.fog = new THREE.Fog(SKY_CONFIG.COLORS.SKY, 2000, 20000);
 
-        // Lighting
-        const hemi = new THREE.HemisphereLight(0xffffff, 0x444444);
-        scene.add(hemi);
-        const dir = new THREE.DirectionalLight(0xffffff);
-        dir.position.set(100, 200, 100);
-        scene.add(dir);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 1, 30000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        // Lights
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        scene.add(hemiLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(100, 500, 300);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
 
         // Game State
-        let player, terrain;
+        let player, guideArrow;
         let rings = [], medkits = [];
-        let bullets = [];
-        let bots = [];
+        let bots = [], bullets = [];
         let keys = {};
         let stats = { hp: 100, rings: 0, lap: 1, boost: 100 };
-        let isPaused = false;
-        let gameActive = true;
+        let isPaused = false, gameActive = false;
+        let ringTargetIndex = 0;
+        let lastFireTime = 0;
 
-        // Init
-        MapManager.generateTerrain(scene);
-        const mapData = MapManager.generateObjects(scene);
-        rings = mapData.rings;
-        medkits = mapData.medkits;
+        // --- 2. ADVANCED MODELS ---
 
-        // Player Plane
-        const pGeo = new THREE.ConeGeometry(2, 10, 8);
-        pGeo.rotateX(Math.PI/2);
-        const pMat = new THREE.MeshStandardMaterial({ color: 0x00d2ff });
-        player = new THREE.Mesh(pGeo, pMat);
-        player.position.set(0, 600, 0);
-        scene.add(player);
+        function createJetModel(color) {
+            const jetGroup = new THREE.Group();
+            const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.3, metalness: 0.6 });
+            const darkMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0x00d2ff, roughness: 0.1, metalness: 0.9 });
 
-        // Bots
-        for(let i=0; i<4; i++) {
-            const bot = new THREE.Mesh(pGeo, new THREE.MeshStandardMaterial({color: 0xff0000}));
-            bot.position.set(i*50 - 100, 600, 0);
-            bot.userData = { speed: SKY_CONFIG.NORMAL_SPEED * (0.9 + Math.random()*0.2), nextRing: 0 };
-            scene.add(bot);
-            bots.push(bot);
+            // Fuselage (Body)
+            const bodyGeo = new THREE.ConeGeometry(3, 30, 8);
+            bodyGeo.rotateX(Math.PI / 2);
+            const body = new THREE.Mesh(bodyGeo, mat);
+            jetGroup.add(body);
+
+            // Cockpit
+            const cockpit = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 8), glassMat);
+            cockpit.position.set(0, 1.5, 2);
+            jetGroup.add(cockpit);
+
+            // Wings
+            const wingGeo = new THREE.BoxGeometry(24, 0.5, 8);
+            const wings = new THREE.Mesh(wingGeo, mat);
+            wings.position.set(0, 0, 2);
+            // Wing tips style
+            const wingTipL = new THREE.Mesh(new THREE.BoxGeometry(2, 4, 8), mat);
+            wingTipL.position.set(-12, 0, 2);
+            const wingTipR = new THREE.Mesh(new THREE.BoxGeometry(2, 4, 8), mat);
+            wingTipR.position.set(12, 0, 2);
+            wings.add(wingTipL, wingTipR);
+            jetGroup.add(wings);
+
+            // Tail
+            const tailGeo = new THREE.BoxGeometry(10, 0.5, 6);
+            const tail = new THREE.Mesh(tailGeo, mat);
+            tail.position.set(0, 0, 12);
+            // Vertical Stabilizer
+            const vStab = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 6), mat);
+            vStab.position.set(0, 4, 12);
+            // Skew tail
+            vStab.rotation.x = -0.3;
+            jetGroup.add(tail, vStab);
+
+            // Engine Glow
+            const glow = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 0.5, 2, 8), new THREE.MeshBasicMaterial({ color: 0x00d2ff }));
+            glow.rotation.x = Math.PI / 2;
+            glow.position.z = 15;
+            glow.name = "EngineGlow";
+            jetGroup.add(glow);
+
+            return jetGroup;
         }
 
-        // Inputs
-        window.addEventListener('keydown', e => {
-            if(e.key === 'Escape') togglePause();
-            keys[e.key.toLowerCase()] = true;
-            if(keys[GameManager.state.bindings.fire] && !isPaused) fireBullet();
-        });
-        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
-        function togglePause() {
-            isPaused = !isPaused;
-            document.getElementById('pauseMenu').style.display = isPaused ? 'block' : 'none';
-        }
-        
-        function toggleSound() {
-            GameManager.setSfx(!GameManager.state.isSfxOn);
+        function createGuideArrow() {
+            const arrowGroup = new THREE.Group();
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 });
+            
+            const cone = new THREE.Mesh(new THREE.ConeGeometry(3, 8, 8), mat);
+            cone.rotation.x = Math.PI/2;
+            
+            const box = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 6), mat);
+            box.position.z = 5;
+            
+            arrowGroup.add(cone, box);
+            return arrowGroup;
         }
 
-        function fireBullet() {
-            SFXManager.playFire();
-            const b = new THREE.Mesh(new THREE.SphereGeometry(1), new THREE.MeshBasicMaterial({color:0xffff00}));
-            b.position.copy(player.position);
-            b.quaternion.copy(player.quaternion);
-            scene.add(b);
-            bullets.push({ mesh: b, life: 100 });
+        // --- 3. INIT GAME LOGIC ---
+
+        function startGame() {
+            // Unlock Audio Context
+            if(window.MusicManager) {
+                MusicManager.init();
+                MusicManager.ctx.resume().then(() => {
+                    MusicManager.playCombat(); // BG Music Fix
+                });
+            }
+            if(window.SFXManager) SFXManager.init();
+
+            // UI Switch
+            document.getElementById('start-overlay').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'block';
+
+            // World Gen
+            MapManager.generateTerrain(scene);
+            const mapObjects = MapManager.generateObjects(scene);
+            rings = mapObjects.rings;
+            medkits = mapObjects.medkits;
+
+            // Player Setup
+            player = createJetModel(0x00d2ff);
+            player.position.set(0, 600, 0);
+            scene.add(player);
+
+            // Guide Arrow
+            guideArrow = createGuideArrow();
+            scene.add(guideArrow);
+
+            // Smart Bots Setup
+            for(let i=0; i<4; i++) {
+                const bot = createJetModel(0xff4444);
+                bot.position.set((i-1.5)*100, 600, 100);
+                // Smart AI Properties
+                bot.userData = { 
+                    speed: SKY_CONFIG.NORMAL_SPEED, 
+                    nextRing: 0,
+                    turnSpeed: 0.02 + Math.random() * 0.01 // Slight variance
+                };
+                scene.add(bot);
+                bots.push(bot);
+            }
+
+            updateRingVisibility();
+            gameActive = true;
+            animate();
         }
+
+        // --- 4. GAME LOOP ---
 
         function update() {
-            if(isPaused || !gameActive) return;
+            if(!gameActive || isPaused) return;
 
-            // 1. Player Movement
+            // --- A. Player Physics ---
             let speed = keys[GameManager.state.bindings.boost] && stats.boost > 0 ? SKY_CONFIG.BOOST_SPEED : SKY_CONFIG.NORMAL_SPEED;
-            if(speed > SKY_CONFIG.NORMAL_SPEED) stats.boost -= SKY_CONFIG.BOOST_DRAIN;
-            else stats.boost = Math.min(100, stats.boost + SKY_CONFIG.BOOST_REFILL);
+            
+            // Boost Logic
+            if(speed > SKY_CONFIG.NORMAL_SPEED) {
+                stats.boost -= SKY_CONFIG.BOOST_DRAIN;
+                player.getObjectByName("EngineGlow").scale.set(1.5, 1.5, 1.5);
+                if(window.SFXManager) SFXManager.updateEngine(1.0);
+            } else {
+                stats.boost = Math.min(100, stats.boost + SKY_CONFIG.BOOST_REFILL);
+                player.getObjectByName("EngineGlow").scale.set(1, 1, 1);
+                if(window.SFXManager) SFXManager.updateEngine(0.3);
+            }
 
+            // Controls
             if(keys[GameManager.state.bindings.up]) player.rotateX(SKY_CONFIG.TURN_SPEED);
             if(keys[GameManager.state.bindings.down]) player.rotateX(-SKY_CONFIG.TURN_SPEED);
             if(keys[GameManager.state.bindings.left]) player.rotateY(SKY_CONFIG.TURN_SPEED);
             if(keys[GameManager.state.bindings.right]) player.rotateY(-SKY_CONFIG.TURN_SPEED);
 
+            // Auto-leveling (slight)
+            if(!keys[GameManager.state.bindings.left] && !keys[GameManager.state.bindings.right]) {
+                player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, 0, 0.05);
+            }
+
             player.translateZ(-speed);
 
-            // 2. Terrain Collision (Slow Drain)
+            // --- B. Guide Arrow Logic ---
+            if(rings.length > 0) {
+                // Next active ring
+                const targetPos = rings[ringTargetIndex % SKY_CONFIG.RINGS_TOTAL].position;
+                
+                // Position arrow above player
+                guideArrow.position.copy(player.position);
+                guideArrow.position.y += 40; // Height offset
+                guideArrow.lookAt(targetPos);
+            }
+
+            // --- C. Terrain Collision (Sliding) ---
             const groundH = MapManager.getTerrainHeight(player.position.x, player.position.z);
-            if (player.position.y < groundH + 5) {
-                player.position.y = groundH + 5; // Slide on top
+            if(player.position.y < groundH + 10) {
+                player.position.y = groundH + 10;
+                // Friction slows down
+                speed *= 0.8;
                 stats.hp -= SKY_CONFIG.TERRAIN_DAMAGE;
                 if(stats.hp <= 0) gameOver(false);
             }
 
-            // 3. Rings & Medkits
-            const nextRingIdx = stats.rings % SKY_CONFIG.RINGS_TOTAL;
-            const targetRing = rings[nextRingIdx];
-            if(player.position.distanceTo(targetRing.position) < 80) {
+            // --- D. Ring Logic (Sequential) ---
+            const currentTargetRing = rings[ringTargetIndex % SKY_CONFIG.RINGS_TOTAL];
+            if(player.position.distanceTo(currentTargetRing.position) < 100) {
                 SFXManager.playCollect();
                 stats.rings++;
-                targetRing.visible = false; // Hide collected
+                ringTargetIndex++;
+                updateRingVisibility();
+
+                // Win Condition
                 if(stats.rings >= SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS) gameOver(true);
             }
 
+            // --- E. Shooting ---
+            if(keys[GameManager.state.bindings.fire]) {
+                const now = Date.now();
+                if(now - lastFireTime > SKY_CONFIG.FIRE_RATE) {
+                    fireBullet(player, true);
+                    lastFireTime = now;
+                }
+            }
+
+            // --- F. Smart Enemy AI ---
+            bots.forEach(bot => {
+                const targetRing = rings[bot.userData.nextRing % SKY_CONFIG.RINGS_TOTAL];
+                
+                // 1. Pathfinding (Look at ring)
+                const targetPos = targetRing.position.clone();
+                
+                // 2. Terrain Avoidance (Smart AI)
+                const terrainAhead = MapManager.getTerrainHeight(bot.position.x, bot.position.z - 200); // Look ahead
+                if (targetPos.y < terrainAhead + 100) {
+                    targetPos.y = terrainAhead + 150; // Fly higher if terrain is high
+                }
+
+                // 3. Smooth Turning (Slerp)
+                const lookDummy = new THREE.Object3D();
+                lookDummy.position.copy(bot.position);
+                lookDummy.lookAt(targetPos);
+                bot.quaternion.slerp(lookDummy.quaternion, bot.userData.turnSpeed);
+
+                // 4. Move
+                bot.translateZ(-bot.userData.speed);
+
+                // 5. Check Ring
+                if(bot.position.distanceTo(targetRing.position) < 100) {
+                    bot.userData.nextRing++;
+                    if(bot.userData.nextRing >= SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS) gameOver(false);
+                }
+            });
+
+            // --- G. Bullets & Medkits ---
+            updateProjectiles();
+            checkMedkits();
+
+            // Update UI
+            document.getElementById('hp-bar').style.width = stats.hp + "%";
+            document.getElementById('boost-bar').style.width = stats.boost + "%";
+            document.getElementById('ring-count').innerText = stats.rings + "/" + (SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS);
+            document.getElementById('lap-count').innerText = Math.ceil((stats.rings+0.1)/SKY_CONFIG.RINGS_TOTAL);
+
+            // Camera
+            const camOffset = new THREE.Vector3(0, 30, 80).applyQuaternion(player.quaternion);
+            camera.position.lerp(player.position.clone().add(camOffset), 0.2);
+            camera.lookAt(player.position);
+        }
+
+        // --- HELPERS ---
+
+        function updateRingVisibility() {
+            // Hide all rings
+            rings.forEach(r => {
+                r.visible = false;
+                r.material.emissiveIntensity = 0;
+            });
+            // Show only next target
+            const activeRing = rings[ringTargetIndex % SKY_CONFIG.RINGS_TOTAL];
+            if(activeRing) {
+                activeRing.visible = true;
+                activeRing.material.emissiveIntensity = 1; // Glow
+                // Add scale pulse animation effect here if desired
+            }
+        }
+
+        function fireBullet(originObj, isPlayer) {
+            SFXManager.playFire();
+            const bGeo = new THREE.SphereGeometry(2);
+            const bMat = new THREE.MeshBasicMaterial({color: isPlayer ? 0xffff00 : 0xff0000});
+            const b = new THREE.Mesh(bGeo, bMat);
+            
+            b.position.copy(originObj.position);
+            b.quaternion.copy(originObj.quaternion);
+            b.translateZ(-15); // Spawn at nose
+            
+            bullets.push({ mesh: b, life: 100, isPlayer: isPlayer });
+            scene.add(b);
+        }
+
+        function updateProjectiles() {
+            bullets.forEach((b, i) => {
+                b.mesh.translateZ(-SKY_CONFIG.BULLET_SPEED);
+                b.life--;
+                
+                // Simple collision check vs Bots
+                if(b.isPlayer) {
+                    bots.forEach(bot => {
+                        if(b.mesh.position.distanceTo(bot.position) < 20) {
+                            // Hit Bot
+                            SFXManager.playHit();
+                            bot.translateZ(20); // Knockback
+                            scene.remove(b.mesh);
+                            bullets.splice(i, 1);
+                        }
+                    });
+                }
+                
+                if(b.life <= 0) {
+                    scene.remove(b.mesh);
+                    bullets.splice(i, 1);
+                }
+            });
+        }
+
+        function checkMedkits() {
             medkits.forEach(k => {
-                if(k.userData.active && player.position.distanceTo(k.position) < 50) {
+                if(k.userData.active && player.position.distanceTo(k.position) < 60) {
                     stats.hp = Math.min(100, stats.hp + SKY_CONFIG.MEDKIT_HEAL);
                     k.visible = false;
                     k.userData.active = false;
                     SFXManager.playCollect();
                 }
             });
+        }
 
-            // 4. Bots AI (Simple: Look at next ring and move)
-            bots.forEach(bot => {
-                const ring = rings[bot.userData.nextRing % SKY_CONFIG.RINGS_TOTAL];
-                bot.lookAt(ring.position);
-                bot.translateZ(-bot.userData.speed);
-                if(bot.position.distanceTo(ring.position) < 80) {
-                    bot.userData.nextRing++;
-                    if(bot.userData.nextRing >= SKY_CONFIG.RINGS_TOTAL * SKY_CONFIG.LAPS) gameOver(false); // Bot won
-                }
-            });
+        function togglePause() {
+            isPaused = !isPaused;
+            document.getElementById('pause-menu').style.display = isPaused ? 'block' : 'none';
+        }
 
-            // 5. Bullets
-            bullets.forEach((b, i) => {
-                b.mesh.translateZ(-SKY_CONFIG.BULLET_SPEED);
-                b.life--;
-                if(b.life <= 0) { scene.remove(b.mesh); bullets.splice(i, 1); }
-            });
-
-            // UI
-            document.getElementById('ui').innerHTML = `RINGS: ${stats.rings}/${SKY_CONFIG.RINGS_TOTAL*SKY_CONFIG.LAPS} | HP: ${Math.floor(stats.hp)}% | BOOST: ${Math.floor(stats.boost)}`;
-            
-            // Camera Follow
-            const camOffset = new THREE.Vector3(0, 30, 80).applyQuaternion(player.quaternion);
-            camera.position.lerp(player.position.clone().add(camOffset), 0.1);
-            camera.lookAt(player.position);
+        function toggleSound() {
+            const newState = !GameManager.state.isSfxOn;
+            GameManager.setSfx(newState);
+            GameManager.setMusic(newState);
         }
 
         function gameOver(win) {
             gameActive = false;
-            alert(win ? "VICTORY!" : "DEFEAT!");
+            MusicManager.stop();
+            if(win) SFXManager.playCollect(); // Victory sound
+            else SFXManager.playHit(); // Fail sound
+            
+            alert(win ? "MISSION ACCOMPLISHED! VICTORY!" : "MISSION FAILED! RETURN TO BASE.");
             location.href = 'index.html';
         }
 
-        function loop() {
-            requestAnimationFrame(loop);
+        // Input Listeners
+        window.addEventListener('keydown', e => {
+            if(e.key === 'Escape') togglePause();
+            const k = e.key.toLowerCase();
+            keys[k] = true;
+            if(e.key === 'Shift') keys['shift'] = true;
+            if(e.code === 'Space') keys[' '] = true;
+        });
+        window.addEventListener('keyup', e => {
+            const k = e.key.toLowerCase();
+            keys[k] = false;
+            if(e.key === 'Shift') keys['shift'] = false;
+            if(e.code === 'Space') keys[' '] = false;
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
             update();
             renderer.render(scene, camera);
         }
-        loop();
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
     </script>
 </body>
 </html>
