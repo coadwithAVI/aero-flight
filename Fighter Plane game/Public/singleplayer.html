@@ -1,391 +1,614 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sky Pilot: Solo Mission</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Sky Pilot - Singleplayer</title>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  
+  <script src="game-config.js"></script>
+  <script src="game-manager.js"></script>
+  <script src="map.js"></script>
+  <script src="sfx-manager.js"></script>
+  <script src="music-manager.js"></script>
+
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; }
+    #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    #ui-layer {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      display: flex; flex-direction: column; justify-content: space-between;
+      padding: 20px; box-sizing: border-box;
+    }
 
-    <script src="game-config.js"></script>
-    <script src="game-manager.js"></script>
-    <script src="map.js"></script>
-    <script src="sfx-manager.js"></script>
-    <script src="music-manager.js"></script>
+    .hud-top { display: flex; justify-content: space-between; align-items: flex-start; }
+    .left-hud { display: flex; flex-direction: column; align-items: flex-start; gap: 15px; }
+    .right-hud { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; }
 
-    <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; user-select: none; }
-        #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        
-        /* HUD */
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-        .hud-panel { position: absolute; padding: 10px; pointer-events: auto; }
-        .top-left { top: 20px; left: 20px; }
-        .top-right { top: 20px; right: 20px; text-align: right; }
-        
-        .stat-bar { width: 200px; height: 10px; background: rgba(0,0,0,0.5); border: 1px solid #555; transform: skewX(-20deg); margin-top: 5px; overflow: hidden; }
-        .fill-bar { height: 100%; width: 100%; transition: width 0.1s linear; }
-        .health-fill { background: linear-gradient(90deg, #ff4444, #ff0000); box-shadow: 0 0 10px #ff0000; }
-        .boost-fill { background: linear-gradient(90deg, #00d2ff, #0088ff); box-shadow: 0 0 10px #00d2ff; }
-        .text-glow { color: #fff; text-shadow: 0 0 5px #00d2ff; font-weight: bold; font-size: 14px; letter-spacing: 1px; }
+    .leaderboard-box {
+      background: rgba(0,0,0,0.6); padding: 15px; border-radius: 10px;
+      color: white; min-width: 220px; backdrop-filter: blur(4px); border-left: 5px solid #ffd700;
+    }
+    .lb-title { font-weight: 900; font-size: 14px; color: #ffd700; border-bottom: 1px solid #555; padding-bottom: 5px; margin-bottom: 8px; letter-spacing: 1px; }
+    .lb-row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px; font-weight: bold; }
+    .lb-player { color: #00ff00; text-shadow: 0 0 5px #00ff00; }
+    .lb-rank-1 { color: #ffd700; }
 
-        /* LEADERBOARD */
-        .leaderboard { background: rgba(0,0,0,0.6); padding: 10px; border-radius: 5px; margin-top: 10px; font-size: 12px; color: #ccc; }
-        .lb-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
-        .lb-you { color: #ffd700; font-weight: bold; }
+    .bar-container { width: 220px; text-align: left; }
+    .bar-bg { width: 100%; height: 12px; background: rgba(0,0,0,0.6); border: 1px solid #444; border-radius: 6px; overflow: hidden; transform: skewX(-20deg); }
+    #health-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #cc0000, #00ff00); transition: width 0.1s linear; }
+    #boost-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #0066ff, #00d2ff); transition: width 0.1s linear; }
 
-        /* SCREENS */
-        .screen { 
-            position: absolute; width: 100%; height: 100%; 
-            background: rgba(10, 15, 20, 0.9); backdrop-filter: blur(5px);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 20; transition: opacity 0.3s; pointer-events: auto;
-        }
-        .hidden { opacity: 0; pointer-events: none; display: none !important; }
-        .menu-box { 
-            background: rgba(0, 0, 0, 0.8); border: 2px solid #00d2ff; padding: 40px; 
-            border-radius: 10px; text-align: center; box-shadow: 0 0 30px rgba(0, 210, 255, 0.2); 
-        }
-        button {
-            background: linear-gradient(180deg, #00d2ff, #0077ff); border: none;
-            padding: 15px 40px; margin: 10px; color: white; font-weight: bold;
-            font-size: 18px; cursor: pointer; transform: skewX(-10deg);
-            box-shadow: 0 5px 15px rgba(0, 119, 255, 0.4);
-        }
-        button:hover { transform: skewX(-10deg) scale(1.05); filter: brightness(1.2); }
+    #fps-counter { background: rgba(0,0,0,0.5); color: #00ff00; padding: 5px 10px; border-radius: 5px; font-family: monospace; font-size: 12px; }
+    .pause-btn { background: rgba(0,0,0,0.6); color: white; border: 2px solid white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; pointer-events: auto; }
 
-        /* MOBILE CONTROLS */
-        .mobile-controls { display: none; position: absolute; bottom: 20px; width: 100%; height: 120px; z-index: 15; pointer-events: none; }
-        @media (max-width: 1024px) { .mobile-controls { display: flex; justify-content: space-between; padding: 0 20px; } }
-        .touch-btn { width: 70px; height: 70px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; pointer-events: auto; backdrop-filter: blur(4px); }
-        .touch-btn:active { background: rgba(0, 210, 255, 0.5); }
-    </style>
+    #minimap-container { position: absolute; bottom: 20px; left: 20px; width: 140px; height: 140px; background: rgba(0,10,30,0.8); border: 2px solid #00d2ff; border-radius: 50%; overflow: hidden; }
+    #minimap-canvas { width: 100%; height: 100%; }
+
+    /* ORIGINAL MOBILE CONTROLS */
+    .mobile-controls { display: none; position: absolute; bottom: 20px; width: 100%; padding: 0 20px; box-sizing: border-box; justify-content: space-between; pointer-events: none; }
+    @media (max-width: 1024px) { .mobile-controls { display: flex; } }
+    .control-group { pointer-events: auto; display: flex; gap: 10px; }
+    .dpad { display: grid; grid-template-columns: 60px 60px 60px; grid-template-rows: 60px 60px; gap: 5px; }
+    .mob-btn { width: 60px; height: 60px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; color: white; font-weight: bold; display: flex; align-items: center; justify-content: center; user-select: none; }
+    .mob-btn:active { background: rgba(0, 210, 255, 0.4); }
+    .mob-btn-rect { width: 80px; height: 60px; border-radius: 15px; }
+    .btn-up { grid-column: 2; grid-row: 1; } .btn-left { grid-column: 1; grid-row: 2; } .btn-down { grid-column: 2; grid-row: 2; } .btn-right { grid-column: 3; grid-row: 2; }
+
+    .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; pointer-events: auto; }
+    .hidden { display: none !important; }
+    .menu-box { background: rgba(15,25,35,0.9); border: 2px solid #00d2ff; border-radius: 20px; padding: 40px; text-align: center; width: 450px; }
+    .action-btn { display: block; width: 100%; padding: 15px; margin: 15px 0; background: linear-gradient(135deg, #00d2ff, #0077ff); border: none; color: white; border-radius: 30px; font-weight: 900; cursor: pointer; text-transform: uppercase; }
+    .secondary-btn { background: rgba(255,255,255,0.1); border: 1px solid #555; }
+    .win-text { color: #00ff00; font-size: 50px; font-weight: 900; }
+    .lose-text { color: #ff4444; font-size: 50px; font-weight: 900; }
+  </style>
 </head>
 <body>
 
-    <div id="game-canvas"></div>
+  <div id="game-container"></div>
 
-    <div id="ui-layer" class="hidden">
-        <div class="hud-panel top-left">
-            <div class="text-glow">HULL INTEGRITY</div>
-            <div class="stat-bar"><div id="health-bar" class="fill-bar health-fill"></div></div>
-            <br>
-            <div class="text-glow">RINGS: <span id="score-text" style="color:#ffd700">0/12</span></div>
-            
-            <div class="leaderboard">
-                <div style="border-bottom:1px solid #555; margin-bottom:5px;">RANKING</div>
-                <div id="lb-content"></div>
-            </div>
+  <div id="ui-layer">
+    <div class="hud-top">
+      <div class="left-hud">
+        <div id="fps-counter">FPS: 0</div>
+        <div class="bar-container">
+          <div style="color:#00ff00; font-size:12px; margin-bottom:3px;">HEALTH</div>
+          <div class="bar-bg"><div id="health-fill"></div></div>
         </div>
-
-        <div class="hud-panel top-right">
-            <div style="text-align:right">
-                <div class="text-glow">THRUST</div>
-                <div class="stat-bar"><div id="boost-bar" class="fill-bar boost-fill"></div></div>
-            </div>
-            <button style="padding:5px 15px; font-size:12px; height:40px; margin-top:10px;" onclick="Game.end(false)">ABORT</button>
+        <div class="leaderboard-box">
+          <div class="lb-title">MISSION RANKING</div>
+          <div id="leaderboard-list"></div>
         </div>
-
-        <div class="mobile-controls">
-            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; width: 160px; pointer-events: auto;">
-                <div></div><div class="touch-btn" id="btn-up"></div><div></div>
-                <div class="touch-btn" id="btn-left"></div><div class="touch-btn" id="btn-down"></div><div class="touch-btn" id="btn-right"></div>
-            </div>
-            <div style="display:flex; gap:10px; align-items:flex-end; pointer-events: auto;">
-                <div class="touch-btn" id="btn-boost" style="border-color:#00d2ff"></div>
-            </div>
+      </div>
+      <div class="right-hud">
+        <div style="display:flex; gap:15px; align-items:flex-start;">
+          <div class="bar-container">
+            <div style="color:#00d2ff; font-size:12px; margin-bottom:3px; text-align:right;">BOOST</div>
+            <div class="bar-bg"><div id="boost-fill"></div></div>
+          </div>
+          <div class="pause-btn" onclick="togglePause()">||</div>
+        </div>
+      </div>
+    </div>
+    <div id="minimap-container"><canvas id="minimap-canvas" width="140" height="140"></canvas></div>
+    
+    <div class="mobile-controls">
+        <div class="control-group dpad">
+            <div class="mob-btn btn-up" ontouchstart="setKey('up', true)" ontouchend="setKey('up', false)" ontouchcancel="setKey('up', false)">▲</div>
+            <div class="mob-btn btn-left" ontouchstart="setKey('left', true)" ontouchend="setKey('left', false)" ontouchcancel="setKey('left', false)">◀</div>
+            <div class="mob-btn btn-down" ontouchstart="setKey('down', true)" ontouchend="setKey('down', false)" ontouchcancel="setKey('down', false)">▼</div>
+            <div class="mob-btn btn-right" ontouchstart="setKey('right', true)" ontouchend="setKey('right', false)" ontouchcancel="setKey('right', false)">▶</div>
+        </div>
+        <div class="control-group" style="flex-direction: column; justify-content: flex-end;">
+            <div class="mob-btn mob-btn-rect" style="border-color:#ff4444;" ontouchstart="setKey('fire', true)" ontouchend="setKey('fire', false)" ontouchcancel="setKey('fire', false)">FIRE</div>
+            <div class="mob-btn mob-btn-rect" style="border-color:#00d2ff;" ontouchstart="setKey('boost', true)" ontouchend="setKey('boost', false)" ontouchcancel="setKey('boost', false)">BOOST</div>
         </div>
     </div>
+  </div>
 
-    <div id="menu-screen" class="screen">
-        <div class="menu-box">
-            <h1 class="text-glow" style="font-size:50px;">SKY PILOT</h1>
-            <p style="color:#00d2ff; letter-spacing:2px; margin-bottom:30px;">SOLO CAMPAIGN</p>
-            <button onclick="Game.start()">ENGAGE</button>
-            <br>
-            <button style="background:none; border:1px solid #555; font-size:14px;" onclick="window.location.href='index.html'">BACK TO MENU</button>
-        </div>
+  <div id="start-screen" class="screen">
+    <div class="menu-box">
+      <h1 style="color:white; font-size:40px; margin-bottom:10px;">SKY PILOT</h1>
+      <p style="color:#00d2ff; margin-bottom:30px;">SOLO CAMPAIGN</p>
+      <button class="action-btn" onclick="startSinglePlayer()">START ENGINE</button>
+      <button class="action-btn secondary-btn" onclick="window.location.href='index.html'">BACK</button>
     </div>
+  </div>
 
-    <div id="end-screen" class="screen hidden">
-        <div class="menu-box">
-            <h1 id="end-title" style="font-size:50px;">VICTORY</h1>
-            <p id="end-reason" style="color:white;">Rank #1</p>
-            <button onclick="location.reload()">REPLAY</button>
-            <br>
-            <button style="background:none; border:1px solid #555;" onclick="window.location.href='index.html'">MAIN MENU</button>
-        </div>
+  <div id="pause-screen" class="screen hidden">
+    <div class="menu-box">
+      <h1 style="color:white;">PAUSED</h1>
+      <button class="action-btn" onclick="togglePause()">RESUME</button>
+      <button class="action-btn secondary-btn" onclick="location.reload()">RESTART</button>
     </div>
+  </div>
+
+  <div id="end-screen" class="screen hidden">
+    <div class="menu-box">
+      <h1 id="end-title" class="win-text">VICTORY</h1>
+      <p id="end-msg" style="color:white; font-size:18px;">Mission Accomplished.</p>
+      <button class="action-btn" onclick="location.reload()">PLAY AGAIN</button>
+      <button class="action-btn secondary-btn" onclick="window.location.href='index.html'">MAIN MENU</button>
+    </div>
+  </div>
 
 <script>
-/**
- * 🎮 SKY PILOT: SINGLEPLAYER (Smart AI Edition)
- * Features: Terrain Avoidance AI, Delta Time Physics, Performance Optimization
- */
+  // --- CONFIG (As per your request) ---
+  const Cfg = window.SKY_CONFIG || {};
+  // Overriding configured rings for Singleplayer specific request
+  const RINGS_PER_LAP = 4;
+  const TOTAL_RINGS_WIN = 8; 
 
-const Game = {
-    scene: null, camera: null, renderer: null,
-    plane: null, terrain: null, ocean: null,
-    clock: new THREE.Clock(),
-    isPlaying: false,
+  // --- GLOBALS ---
+  let scene, camera, renderer, planeRig, planeMesh, guideArrow;
+  let terrainMesh, oceanMesh;
+  let rings = [], ringWaypoints = [], enemies = [], bullets = [];
+  let isPlaying = false, isPaused = false;
+  let currentRingObj = null;
 
-    // Game Objects
-    rings: [],
-    enemies: [], // AI Bots
+  // Stats
+  let health = 100, boostLevel = 100;
+  let playerStats = { name: "PLAYER", rings: 0, progress: 0 };
+  let enemiesAliveCount = 4;
+  let playerLastRingIndex = -1; // To prevent double counting
+  let enemyStats = [
+      { name: "ACE", rings: 0, obj: null }, 
+      { name: "VIPER", rings: 0, obj: null }, 
+      { name: "GHOST", rings: 0, obj: null }, 
+      { name: "HAWK", rings: 0, obj: null }
+  ];
+
+  // Logic Vars
+  let lastFireTime = 0;
+  let lastCrashTime = 0;
+  let visualRoll = 0, visualPitch = 0;
+  let miniTick = 0;
+  
+  // Framerate independence attempt (basic)
+  let lastTime = performance.now();
+  let frameCount = 0;
+  const fpsElem = document.getElementById('fps-counter');
+  const minimapCtx = document.getElementById('minimap-canvas').getContext('2d');
+  
+  // Controls
+  const activeKeys = {};
+
+  // --- AUDIO FIX ---
+  // Music logic ko start button par move kiya hai
+  function initAudio() {
+      if(window.MusicManager) {
+          MusicManager.init();
+          MusicManager.playCombat(); // Playing Combat music for race
+      }
+      if(window.SFXManager) {
+          SFXManager.init();
+      }
+  }
+
+  // --- INPUT HANDLING (YOUR ORIGINAL LOGIC) ---
+  function getBindings() {
+      if (window.GameManager && window.GameManager.data && window.GameManager.data.bindings) return window.GameManager.data.bindings;
+      return { up:'w', down:'s', left:'a', right:'d', boost:' ', fire:'shift' };
+  }
+  
+  function setKey(action, state) { 
+      const binds = getBindings();
+      if(action === "boost") { activeKeys[binds.boost] = state; activeKeys["Space"] = state; return; }
+      if(action === "fire") { activeKeys[binds.fire] = state; activeKeys["shift"] = state; activeKeys["Shift"] = state; return; }
+      activeKeys[binds[action]] = state;
+  }
+  
+  window.addEventListener('keydown', (e) => {
+      if(e.key === "Escape") { togglePause(); return; }
+      const binds = getBindings(); const k = e.key.toLowerCase();
+      if(k === binds.up || k === 'arrowup') activeKeys[binds.up] = true;
+      if(k === binds.down || k === 'arrowdown') activeKeys[binds.down] = true;
+      if(k === binds.left || k === 'arrowleft') activeKeys[binds.left] = true;
+      if(k === binds.right || k === 'arrowright') activeKeys[binds.right] = true;
+      if(k === binds.boost || (binds.boost === ' ' && e.code === 'Space')) activeKeys[binds.boost] = true;
+      if(k === binds.fire || (binds.fire === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) activeKeys[binds.fire] = true;
+  });
+  
+  window.addEventListener('keyup', (e) => {
+      const binds = getBindings(); const k = e.key.toLowerCase();
+      if(k === binds.up || k === 'arrowup') activeKeys[binds.up] = false;
+      if(k === binds.down || k === 'arrowdown') activeKeys[binds.down] = false;
+      if(k === binds.left || k === 'arrowleft') activeKeys[binds.left] = false;
+      if(k === binds.right || k === 'arrowright') activeKeys[binds.right] = false;
+      if(k === binds.boost || (binds.boost === ' ' && e.code === 'Space')) activeKeys[binds.boost] = false;
+      if(k === binds.fire || (binds.fire === 'shift' && (e.code === 'ShiftLeft' || e.code === 'ShiftRight'))) activeKeys[binds.fire] = false;
+  });
+  
+  function isActionActive(id) { 
+      const binds = getBindings();
+      if(id === 'boost') return activeKeys[binds.boost] || activeKeys[" "] || activeKeys["Space"];
+      if(id === 'fire') return activeKeys[binds.fire] || activeKeys["shift"] || activeKeys["Shift"];
+      return activeKeys[binds[id]] || activeKeys['arrow'+id]; 
+  }
+
+  // --- TOUCH SCROLL LOCK ---
+  function preventTouch(e) { e.preventDefault(); }
+  function lockTouchScroll() { document.body.addEventListener("touchmove", preventTouch, { passive: false }); }
+  function unlockTouchScroll() { document.body.removeEventListener("touchmove", preventTouch); }
+
+  // --- GAME START ---
+  window.startSinglePlayer = function() {
+      initAudio(); // Activate Audio Context
+      initGame();
+  }
+
+  function initGame() {
+    lockTouchScroll();
+    document.getElementById('start-screen').classList.add('hidden');
+    const container = document.getElementById('game-container');
     
-    // Player State
-    pos: new THREE.Vector3(0, 600, 0),
-    speed: 0,
-    health: 100,
-    boost: 100,
-    ringsCollected: 0,
-    keys: { up:0, down:0, left:0, right:0, boost:0 },
+    // Cleanup logic
+    if(renderer) { renderer.dispose(); container.innerHTML = ''; }
+    
+    // Scene Setup
+    scene = new THREE.Scene(); 
+    scene.background = new THREE.Color(0x87CEEB); 
+    scene.fog = new THREE.Fog(0x87CEEB, 2000, 15000);
+    
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 15000);
+    renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+    container.appendChild(renderer.domElement);
 
-    init: function() {
-        // Renderer Setup
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-        document.getElementById('game-canvas').appendChild(this.renderer.domElement);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
+    const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(100, 200, 50); scene.add(dl);
 
-        // Scene
-        this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(SKY_CONFIG.TERRAIN_COLORS.SKY);
-        this.scene.fog = new THREE.FogExp2(SKY_CONFIG.TERRAIN_COLORS.SKY, SKY_CONFIG.FOG_DENSITY);
+    // Map Generation (Using MapManager)
+    // NOTE: Generating specific ring count (4 per lap)
+    terrainMesh = MapManager.generateTerrain(Cfg); scene.add(terrainMesh);
+    oceanMesh = MapManager.generateOcean(Cfg); scene.add(oceanMesh);
+    
+    // Pass RINGS_PER_LAP here
+    const ringData = MapManager.generateRings(RINGS_PER_LAP); 
+    rings = ringData.rings; 
+    ringWaypoints = ringData.waypoints;
+    rings.forEach(r => scene.add(r));
 
-        // Camera
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 1, 10000);
+    // Reset Stats
+    playerStats = { name: "PLAYER", rings: 0, progress: 0 };
+    enemyStats.forEach(e => e.rings = 0);
+    health = 100; boostLevel = 100;
+    
+    createPlaneSystem();
+    createGuideArrow();
+    createEnemies(); // 4 Enemies
+    updateRingVisuals();
+    updateLeaderboard();
 
-        // Lights
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
-        this.scene.add(hemiLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-        dirLight.position.set(500, 1000, 500);
-        this.scene.add(dirLight);
+    isPlaying = true; isPaused = false;
+    animate();
+  }
 
-        this.setupInputs();
-    },
+  // --- CREATION FUNCTIONS ---
+  function createPlaneMesh(color) {
+      const g = new THREE.Group(); 
+      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.4 });
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(2, 4, 30, 8), mat); body.rotateX(-Math.PI/2);
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(2, 10, 8), mat); nose.rotateX(-Math.PI/2); nose.position.z = -20;
+      const wings = new THREE.Mesh(new THREE.BoxGeometry(20, 0.5, 10), mat); wings.position.set(0, 0, 5);
+      g.add(body, nose, wings); 
+      return g;
+  }
 
-    start: function() {
-        document.getElementById('menu-screen').classList.add('hidden');
-        document.getElementById('ui-layer').classList.remove('hidden');
+  function createPlaneSystem() { 
+      planeRig = new THREE.Group(); 
+      planeRig.position.set(0, 400, 800); // Start Pos
+      scene.add(planeRig); 
+      planeMesh = createPlaneMesh(0x555555); 
+      planeRig.add(planeMesh); 
+      
+      const glow = new THREE.Mesh(new THREE.ConeGeometry(3, 10, 8), new THREE.MeshBasicMaterial({ color: 0x00d2ff, transparent: true, opacity: 0 }));
+      glow.rotateX(Math.PI/2); glow.position.z = 20; glow.name = "EngineGlow"; planeMesh.add(glow); 
+  }
 
-        // 1. Generate World
-        MapManager.setSeed(Math.random() * 10000); // Random world for solo
-        this.terrain = MapManager.generateTerrain(SKY_CONFIG);
-        this.scene.add(this.terrain);
-        this.scene.add(MapManager.generateOcean(SKY_CONFIG));
+  function createGuideArrow() { 
+      guideArrow = new THREE.Group(); 
+      guideArrow.add(new THREE.Mesh(new THREE.ConeGeometry(4, 10, 8), new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent:true, opacity:0.8 }))); 
+      guideArrow.children[0].rotateX(Math.PI/2); 
+      scene.add(guideArrow); 
+  }
 
-        // 2. Generate Rings
-        const rData = MapManager.generateRings(SKY_CONFIG.RINGS_PER_LAP, SKY_CONFIG);
-        this.rings = rData.rings;
-        this.rings.forEach(r => this.scene.add(r));
+  // --- ENEMY AI (ORIGINAL - NO CHANGES) ---
+  function createEnemies() {
+      enemies = [];
+      for(let i=0; i<4; i++) { 
+          const e = new THREE.Group(); 
+          e.add(createPlaneMesh(0xaa0000)); 
+          // Start positions staggered
+          e.position.set((i - 1.5) * 200, 400, 400); 
+          e.name = enemyStats[i].name;
+          // Simple AI Stats
+          e.userData = { 
+              alive: true, health: 300, 
+              speed: Cfg.NORMAL_SPEED || 5, 
+              progress: 0, 
+              lastRingIndex: -1 
+          }; 
+          scene.add(e); 
+          enemies.push(e); 
+          enemyStats[i].obj = e; 
+      }
+  }
 
-        // 3. Player
-        this.createPlayer();
+  function spawnBullet(isPlayer, origin, quat) {
+      if(window.SFXManager && isPlayer) SFXManager.playGun(true);
+      
+      const geo = new THREE.SphereGeometry(isPlayer ? 2 : 4, 8, 8);
+      const mat = new THREE.MeshBasicMaterial({ color: isPlayer ? 0xffaa00 : 0xff0000 });
+      const bullet = new THREE.Mesh(geo, mat);
+      
+      bullet.position.copy(origin);
+      // Speed multiplier logic
+      const speed = isPlayer ? 25 : 40; 
+      const v = new THREE.Vector3(0,0,-1).applyQuaternion(quat).multiplyScalar(speed);
+      
+      bullets.push({ mesh: bullet, velocity: v, life: 100, isPlayer: isPlayer });
+      scene.add(bullet);
+  }
 
-        // 4. Create Smart AI
-        this.createEnemies(3); // 3 Bots
+  // --- GAME LOOP ---
+  function animate() {
+    if(!isPlaying || isPaused) return;
+    
+    // FPS Calc
+    const now = performance.now();
+    frameCount++;
+    if(now - lastTime >= 1000) { fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastTime = now; }
 
-        // 5. Audio
-        if(window.MusicManager) {
-            MusicManager.init();
-            MusicManager.playLobby(); // Reusing ambient track
-        }
-        if(window.SFXManager) SFXManager.init();
-
-        this.isPlaying = true;
-        this.animate();
-    },
-
-    createPlayer: function() {
-        const geo = new THREE.ConeGeometry(2, 10, 8);
-        geo.rotateX(Math.PI / 2);
-        const mat = new THREE.MeshStandardMaterial({ color: 0x00d2ff, roughness: 0.2, metalness: 0.8 });
-        this.plane = new THREE.Mesh(geo, mat);
-        this.scene.add(this.plane);
-        this.pos.set(0, 600, 0);
-        this.plane.position.copy(this.pos);
-        this.speed = SKY_CONFIG.NORMAL_SPEED;
-    },
-
-    createEnemies: function(count) {
-        const names = ["Viper", "Ghost", "Ace"];
-        const colors = [0xff0000, 0xffaa00, 0x8800ff];
-
-        for(let i=0; i<count; i++) {
-            const geo = new THREE.ConeGeometry(2, 10, 8);
-            geo.rotateX(Math.PI / 2);
-            const mat = new THREE.MeshStandardMaterial({ color: colors[i] });
-            const mesh = new THREE.Mesh(geo, mat);
-            
-            // Spawn slightly behind player
-            mesh.position.set((i-1)*100, 600, 100); 
-
-            this.enemies.push({
-                name: names[i],
-                mesh: mesh,
-                speed: SKY_CONFIG.NORMAL_SPEED * (0.9 + Math.random() * 0.2), // Random speed variation
-                ringIndex: 0,
-                ringsCollected: 0
-            });
-            this.scene.add(mesh);
-        }
-    },
-
-    animate: function() {
-        if (!this.isPlaying) return;
-        requestAnimationFrame(() => this.animate());
-
-        const dt = Math.min(this.clock.getDelta(), 0.1);
-        const Cfg = SKY_CONFIG;
-
-        // --- PLAYER PHYSICS ---
-        let targetSpeed = Cfg.NORMAL_SPEED;
-        if (this.keys.boost && this.boost > 0) {
-            targetSpeed = Cfg.BOOST_SPEED;
-            this.boost = Math.max(0, this.boost - (Cfg.BOOST_DRAIN * dt));
-        } else {
-            this.boost = Math.min(100, this.boost + (Cfg.BOOST_REFILL * dt));
-        }
-        this.speed = THREE.MathUtils.lerp(this.speed, targetSpeed, dt * 2);
-
-        const moveDist = this.speed * dt;
-        const turn = Cfg.TURN_SPEED * dt;
-
-        if (this.keys.left) this.plane.rotateY(turn);
-        if (this.keys.right) this.plane.rotateY(-turn);
-        if (this.keys.up) this.plane.rotateX(turn);
-        if (this.keys.down) this.plane.rotateX(-turn);
-
-        this.plane.translateZ(-moveDist);
-        this.pos.copy(this.plane.position);
-
-        // Player Collision
-        const h = MapManager.getTerrainHeight(this.pos.x, this.pos.z);
-        if (this.pos.y < h + 20) {
-            this.plane.position.y = h + 20;
-            this.plane.rotateX(-0.1); // Bounce up
-            this.health -= Cfg.COLLISION_DAMAGE * dt;
-            if (this.health <= 0) this.end(false);
-        }
-
-        // --- SMART AI LOGIC ---
-        this.enemies.forEach(bot => {
-            // 1. Find Target Ring
-            const targetRing = this.rings[bot.ringIndex % Cfg.RINGS_PER_LAP];
-            if (!targetRing) return;
-
-            // 2. Look at Target
-            const targetPos = targetRing.position.clone();
-            const lookVector = new THREE.Vector3().subVectors(targetPos, bot.mesh.position).normalize();
-            
-            // 3. TERRAIN AVOIDANCE (The "Smart" Part)
-            // Look ahead 2 seconds
-            const lookAheadPos = bot.mesh.position.clone().add(lookVector.multiplyScalar(bot.speed * 2));
-            const terrainH = MapManager.getTerrainHeight(lookAheadPos.x, lookAheadPos.z);
-            
-            // If terrain is higher than bot, FORCE PITCH UP
-            const dummy = new THREE.Object3D();
-            dummy.position.copy(bot.mesh.position);
-            
-            if (lookAheadPos.y < terrainH + 150) {
-                // Panic Mode: Pitch up immediately, ignore ring for a second
-                targetPos.y = terrainH + 500; 
-            }
-            
-            dummy.lookAt(targetPos);
-            
-            // Smooth Rotation (Slerp)
-            bot.mesh.quaternion.slerp(dummy.quaternion, dt * 2.0);
-            bot.mesh.translateZ(-bot.speed * dt);
-
-            // AI Ring Collection
-            if (bot.mesh.position.distanceTo(targetRing.position) < 100) {
-                bot.ringIndex++;
-                bot.ringsCollected++;
-                if (bot.ringsCollected >= Cfg.TOTAL_RINGS_WIN) {
-                    this.end(false, `${bot.name} Won!`);
-                }
-            }
-        });
-
-        // --- PLAYER RING LOGIC ---
-        const myNextRing = this.rings[this.ringsCollected % Cfg.RINGS_PER_LAP];
-        if (myNextRing && this.pos.distanceTo(myNextRing.position) < 80) {
-            if(window.SFXManager) SFXManager.playRing(GameManager.state.isSfxOn);
-            myNextRing.visible = false; // Hide temporarily or keep visible based on game style
-            this.ringsCollected++;
-            if (this.ringsCollected >= Cfg.TOTAL_RINGS_WIN) {
-                this.end(true);
-            }
-        }
-
-        // --- CAMERA & UI ---
-        const camOffset = new THREE.Vector3(0, 30, 80).applyQuaternion(this.plane.quaternion);
-        this.camera.position.lerp(this.pos.clone().add(camOffset), 0.1);
-        this.camera.lookAt(this.pos);
-
-        this.updateHUD();
-        this.renderer.render(this.scene, this.camera);
-    },
-
-    updateHUD: function() {
-        document.getElementById('health-bar').style.width = this.health + '%';
-        document.getElementById('boost-bar').style.width = this.boost + '%';
-        document.getElementById('score-text').innerText = `${this.ringsCollected}/${SKY_CONFIG.TOTAL_RINGS_WIN}`;
-
-        // Update Leaderboard
-        const list = document.getElementById('lb-content');
-        let racers = [
-            { name: "YOU", score: this.ringsCollected, isMe: true },
-            ...this.enemies.map(e => ({ name: e.name, score: e.ringsCollected, isMe: false }))
-        ];
-        racers.sort((a,b) => b.score - a.score);
-        
-        list.innerHTML = racers.map((r, i) => `
-            <div class="lb-row ${r.isMe ? 'lb-you' : ''}">
-                <span>${i+1}. ${r.name}</span>
-                <span>${r.score}</span>
-            </div>
-        `).join('');
-    },
-
-    setupInputs: function() {
-        const bind = GameManager.state.bindings;
-        const handler = (e, val) => {
-            const k = e.key.toLowerCase();
-            if (k === bind.up) this.keys.up = val;
-            if (k === bind.down) this.keys.down = val;
-            if (k === bind.left) this.keys.left = val;
-            if (k === bind.right) this.keys.right = val;
-            if (k === bind.boost) this.keys.boost = val;
-        };
-        window.addEventListener('keydown', e => handler(e, 1));
-        window.addEventListener('keyup', e => handler(e, 0));
-
-        // Touch
-        const touch = (id, k) => {
-            const el = document.getElementById(id);
-            el.addEventListener('touchstart', e => { e.preventDefault(); this.keys[k]=1; });
-            el.addEventListener('touchend', e => { e.preventDefault(); this.keys[k]=0; });
-        };
-        touch('btn-up','up'); touch('btn-down','down');
-        touch('btn-left','left'); touch('btn-right','right'); touch('btn-boost','boost');
-    },
-
-    end: function(win, reason) {
-        this.isPlaying = false;
-        document.getElementById('end-screen').classList.remove('hidden');
-        document.getElementById('end-title').innerText = win ? "VICTORY" : "DEFEAT";
-        document.getElementById('end-title').style.color = win ? "#00ff00" : "#ff4444";
-        document.getElementById('end-reason').innerText = reason || (win ? "Mission Complete" : "Crashed");
-        
-        if(window.MusicManager) MusicManager.stop();
+    // 1. Player Movement (Original Logic)
+    let spd = isActionActive('boost') && boostLevel > 0 ? (Cfg.BOOST_SPEED || 10) : (Cfg.NORMAL_SPEED || 5);
+    
+    if(isActionActive('boost') && boostLevel > 0) { 
+        boostLevel -= 0.5; 
+        planeMesh.getObjectByName("EngineGlow").material.opacity = 0.8; 
+    } else { 
+        boostLevel = Math.min(100, boostLevel + 0.1); 
+        planeMesh.getObjectByName("EngineGlow").material.opacity = 0; 
     }
-};
+    document.getElementById('boost-fill').style.width = boostLevel + '%';
 
-window.onload = () => Game.init();
+    planeRig.translateZ(-spd);
+
+    if(isActionActive('left')) { planeRig.rotation.y += 0.03; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); }
+    else if(isActionActive('right')) { planeRig.rotation.y -= 0.03; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); }
+    else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
+    
+    if(isActionActive('up')) { planeRig.position.y += 5; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.4, 0.1); }
+    else if(isActionActive('down')) { planeRig.position.y -= 5; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.4, 0.1); }
+    else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
+
+    planeMesh.rotation.z = visualRoll; 
+    planeMesh.rotation.x = visualPitch;
+
+    // Player Shooting
+    if(isActionActive('fire') && Date.now() - lastFireTime > 150) {
+        spawnBullet(true, planeRig.position, planeRig.quaternion);
+        lastFireTime = Date.now();
+    }
+
+    // Camera
+    const ct = new THREE.Vector3(0, 100, 300).applyMatrix4(planeRig.matrixWorld); 
+    camera.position.lerp(ct, 0.1); 
+    camera.lookAt(planeRig.position);
+
+    // 2. Enemy AI (ORIGINAL LOGIC - NO RAYCASTING)
+    enemies.forEach(e => {
+        if(!e.userData.alive) return;
+        
+        // Find current target ring
+        const targetRingIndex = e.userData.progress % RINGS_PER_LAP;
+        const wp = ringWaypoints[targetRingIndex];
+        
+        if(wp) {
+            const target = new THREE.Vector3(wp.x, wp.y, wp.z);
+            // Simple LookAt and Move
+            const dummy = new THREE.Object3D(); 
+            dummy.position.copy(e.position); 
+            dummy.lookAt(target); 
+            // Fix orientation (Model was rotated X -90)
+            dummy.rotateY(Math.PI); 
+            
+            e.quaternion.slerp(dummy.quaternion, 0.03); 
+            e.translateZ(-e.userData.speed);
+
+            // Simple Floor Clamp (Original behavior)
+            const h = MapManager.getTerrainHeight(e.position.x, e.position.z);
+            if(e.position.y < h + 50) e.position.y = h + 50;
+
+            // Check Ring Collection for AI
+            if(e.position.distanceTo(target) < 200 && e.userData.lastRingIndex !== targetRingIndex) {
+                e.userData.lastRingIndex = targetRingIndex;
+                e.userData.progress++;
+                enemyRingCollected(e.name);
+            }
+        }
+    });
+
+    // 3. Bullets & Collisions
+    for(let i=bullets.length-1; i>=0; i--) {
+        const b = bullets[i];
+        b.mesh.position.add(b.velocity);
+        b.life--;
+        
+        if(b.life <= 0) { scene.remove(b.mesh); bullets.splice(i,1); continue; }
+        
+        // Simple hit check (Player hitting Enemy)
+        if(b.isPlayer) {
+            enemies.forEach(e => {
+                if(e.userData.alive && b.mesh.position.distanceTo(e.position) < 100) {
+                    // Hit logic
+                    scene.remove(b.mesh); bullets.splice(i,1);
+                    // No visual damage for now, just cleanup
+                }
+            });
+        }
+    }
+
+    // 4. Player Terrain Collision
+    const ph = MapManager.getTerrainHeight(planeRig.position.x, planeRig.position.z);
+    if(planeRig.position.y < ph + 20) {
+        planeRig.position.y = ph + 20;
+        health -= 0.5; // Damage on drag
+        if(window.SFXManager && Math.random() > 0.9) SFXManager.playExplosion();
+        if(health <= 0) endGame(false, "CRASHED");
+    }
+    document.getElementById('health-fill').style.width = health + '%';
+
+    // 5. Player Ring Collection
+    const currentTargetIndex = playerStats.progress % RINGS_PER_LAP;
+    const playerTargetObj = rings[currentTargetIndex];
+    
+    updateRingVisuals(currentTargetIndex);
+    
+    if(playerTargetObj) {
+        guideArrow.visible = true;
+        guideArrow.position.copy(planeRig.position).y += 60;
+        guideArrow.lookAt(playerTargetObj.position);
+        
+        if(planeRig.position.distanceTo(playerTargetObj.position) < 150) {
+             // Sequence Check
+             if (playerLastRingIndex !== currentTargetIndex) {
+                 playerLastRingIndex = currentTargetIndex;
+                 playerStats.progress++;
+                 playerStats.rings++;
+                 
+                 if(window.SFXManager) SFXManager.playRing(true);
+                 
+                 // Win Check
+                 if(playerStats.rings >= TOTAL_RINGS_WIN) {
+                     endGame(true, "CHAMPION!");
+                 }
+                 updateLeaderboard();
+             }
+        }
+    }
+
+    // Minimap
+    miniTick++; if(miniTick > 5) { drawMinimap(); miniTick=0; }
+    
+    requestAnimationFrame(animate);
+  }
+
+  // --- HELPERS ---
+  function enemyRingCollected(name) {
+      const e = enemyStats.find(x => x.name === name);
+      if(e) e.rings++;
+      
+      // Check Enemy Win
+      if(e.rings >= TOTAL_RINGS_WIN) {
+          endGame(false, `${name} WON THE RACE!`);
+      }
+      updateLeaderboard();
+  }
+
+  function updateRingVisuals(currIdx) {
+      rings.forEach((r, i) => {
+          if(i === currIdx) { 
+              r.material.emissive.setHex(0xffaa00); 
+              r.visible = true; 
+          } else { 
+              r.visible = true; // Keep all visible or hide based on preference
+              r.material.emissive.setHex(0x000000);
+          }
+      });
+  }
+
+  function updateLeaderboard() {
+      const list = document.getElementById('leaderboard-list'); 
+      if(!list) return; 
+      list.innerHTML = "";
+      
+      let racers = [playerStats, ...enemyStats];
+      // Map enemy object rings to stat rings
+      racers.forEach(r => {
+          if(r.name !== "PLAYER" && r.obj) {
+              // using the stat object we tracked in enemyRingCollected
+          }
+      });
+      
+      racers.sort((a, b) => b.rings - a.rings);
+      
+      racers.forEach((r, i) => {
+          const row = document.createElement("div"); row.className = "lb-row";
+          if(r.name === "PLAYER") row.classList.add("lb-player");
+          if(i === 0) row.classList.add("lb-rank-1");
+          row.innerHTML = `<span>${i+1}. ${r.name}</span><span>${r.rings}/${TOTAL_RINGS_WIN}</span>`;
+          list.appendChild(row);
+      });
+  }
+
+  function drawMinimap() {
+      if(!minimapCtx || !planeRig) return;
+      minimapCtx.clearRect(0,0,140,140);
+      const cx=70, cy=70, scale=60/5000;
+      
+      minimapCtx.save();
+      minimapCtx.translate(cx,cy);
+      minimapCtx.rotate(-planeRig.rotation.y+Math.PI);
+      
+      // Player Dot
+      minimapCtx.beginPath();
+      minimapCtx.moveTo(0,-6); minimapCtx.lineTo(-4,4); minimapCtx.lineTo(4,4);
+      minimapCtx.fillStyle="#00ff00"; minimapCtx.fill();
+      minimapCtx.restore();
+      
+      // Enemies
+      enemies.forEach(e => {
+          if(!e.userData.alive) return;
+          const dx=(e.position.x-planeRig.position.x)*scale;
+          const dz=(e.position.z-planeRig.position.z)*scale;
+          minimapCtx.beginPath(); 
+          minimapCtx.arc(cx+dx, cy+dz, 3, 0, Math.PI*2);
+          minimapCtx.fillStyle="#ff0000"; minimapCtx.fill();
+      });
+      
+      // Target Ring
+      const tidx = playerStats.progress % RINGS_PER_LAP;
+      if(rings[tidx]) {
+          const r = rings[tidx];
+          const dx=(r.position.x-planeRig.position.x)*scale;
+          const dz=(r.position.z-planeRig.position.z)*scale;
+          minimapCtx.beginPath(); 
+          minimapCtx.arc(cx+dx, cy+dz, 4, 0, Math.PI*2);
+          minimapCtx.fillStyle="#ffd700"; minimapCtx.fill();
+      }
+  }
+
+  function togglePause() { 
+      if(!isPlaying) return; 
+      isPaused = !isPaused; 
+      document.getElementById('pause-screen').classList.toggle('hidden', !isPaused); 
+      if(!isPaused) requestAnimationFrame(animate); 
+  }
+
+  function endGame(win, msg) {
+      isPlaying = false;
+      unlockTouchScroll();
+      if(window.MusicManager) MusicManager.stop();
+      if(window.SFXManager && win) SFXManager.playRing(); 
+      
+      const s = document.getElementById('end-screen');
+      s.classList.remove('hidden');
+      document.getElementById('end-title').innerText = win ? "VICTORY" : "DEFEAT";
+      document.getElementById('end-title').className = win ? "win-text" : "lose-text";
+      document.getElementById('end-msg').innerText = msg;
+  }
+  
+  window.addEventListener('resize', () => { 
+      camera.aspect = window.innerWidth/window.innerHeight; 
+      camera.updateProjectionMatrix(); 
+      renderer.setSize(window.innerWidth, window.innerHeight); 
+  });
 </script>
 </body>
 </html>
