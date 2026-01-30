@@ -137,13 +137,19 @@
   </div>
 
 <script>
-  // --- ✅ FIX: OVERRIDE DEFAULT CONFIG (Correct Way) ---
-  // Const declare karne ki jagah object ki properties update karo
-  if (window.SKY_CONFIG) {
-      window.SKY_CONFIG.RINGS_PER_LAP = 4;
-      window.SKY_CONFIG.TOTAL_RINGS_WIN = 8;
-  }
-  const Cfg = window.SKY_CONFIG || {};
+  // --- ✅ CRITICAL VARIABLES DEFINED HERE ---
+  // Ye variables ab global scope mein hain, isliye 'ReferenceError' nahi aayega.
+  const SP_RINGS_PER_LAP = 4;
+  const SP_TOTAL_RINGS_WIN = 8; 
+
+  // Load Config safely
+  const Cfg = window.SKY_CONFIG || {
+      // Fallbacks agar file load na ho
+      WORLD_SIZE: 50000,
+      NORMAL_SPEED: 5, BOOST_SPEED: 10, TURN_SPEED: 0.03, LIFT_SPEED: 5,
+      MAX_HEALTH: 100, MAX_BOOST: 100,
+      TERRAIN_COLORS: { SAND: 0xE6C288, GRASS: 0x567D46, ROCK: 0x5A5A5A, SNOW: 0xFFFFFF, WATER: 0x1E90FF, SKY: 0x87CEEB }
+  };
 
   // --- GLOBALS ---
   let scene, camera, renderer, planeRig, planeMesh, guideArrow;
@@ -155,7 +161,6 @@
   // Stats
   let health = 100, boostLevel = 100;
   let playerStats = { name: "PLAYER", rings: 0, progress: 0 };
-  let enemiesAliveCount = 4;
   let playerLastRingIndex = -1; 
   let enemyStats = [
       { name: "ACE", rings: 0, obj: null }, 
@@ -187,7 +192,6 @@
   // --- INPUT HANDLING ---
   function getBindings() {
       if (window.GameManager && window.GameManager.state && window.GameManager.state.bindings) return window.GameManager.state.bindings;
-      // Fallback
       return { up:'w', down:'s', left:'a', right:'d', boost:' ', fire:'shift' };
   }
   
@@ -230,7 +234,7 @@
   function lockTouchScroll() { document.body.addEventListener("touchmove", preventTouch, { passive: false }); }
   function unlockTouchScroll() { document.body.removeEventListener("touchmove", preventTouch); }
 
-  // --- GAME START FUNCTION (Previously missing) ---
+  // --- GAME START ---
   window.startSinglePlayer = function() {
       initAudio(); 
       initGame();
@@ -241,11 +245,9 @@
     document.getElementById('start-screen').classList.add('hidden');
     const container = document.getElementById('game-container');
     
-    // Cleanup old renderer if exists
     if(renderer) { renderer.dispose(); container.innerHTML = ''; }
     
-    // --- 🛡️ SAFETY FIX: Colors Fallback ---
-    // Agar Config load nahi hui, toh Crash mat hone do, Default Blue use karo
+    // Safety check for Colors
     const skyColor = (Cfg.TERRAIN_COLORS && Cfg.TERRAIN_COLORS.SKY) ? Cfg.TERRAIN_COLORS.SKY : 0x87CEEB;
     
     scene = new THREE.Scene(); 
@@ -261,19 +263,16 @@
     scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
     const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(100, 200, 50); scene.add(dl);
 
-    // --- 🛡️ SAFETY FIX: Map Generation ---
-    // Agar config empty hai toh MapManager ko khali object mat bhejo, default values bhejo
+    // Safety check for Map Config
     const safeConfig = {
         WORLD_SIZE: Cfg.WORLD_SIZE || 50000,
-        TERRAIN_COLORS: Cfg.TERRAIN_COLORS || {
-            SAND: 0xE6C288, GRASS: 0x567D46, ROCK: 0x5A5A5A, SNOW: 0xFFFFFF, WATER: 0x1E90FF
-        }
+        TERRAIN_COLORS: Cfg.TERRAIN_COLORS || { SAND: 0xE6C288, GRASS: 0x567D46, ROCK: 0x5A5A5A, SNOW: 0xFFFFFF, WATER: 0x1E90FF }
     };
 
     terrainMesh = MapManager.generateTerrain(safeConfig); scene.add(terrainMesh);
     oceanMesh = MapManager.generateOcean(safeConfig); scene.add(oceanMesh);
     
-    // Use Overridden Config value
+    // ✅ Fix: Uses the SP_RINGS_PER_LAP defined at the top
     const ringData = MapManager.generateRings(SP_RINGS_PER_LAP, safeConfig); 
     rings = ringData.rings; 
     ringWaypoints = ringData.waypoints;
@@ -281,8 +280,6 @@
 
     playerStats = { name: "PLAYER", rings: 0, progress: 0 };
     enemyStats.forEach(e => e.rings = 0);
-    
-    // Stats Safety
     health = Cfg.MAX_HEALTH || 100; 
     boostLevel = Cfg.MAX_BOOST || 100;
     
@@ -326,6 +323,7 @@
 
   function createEnemies() {
       enemies = [];
+      const speed = Cfg.NORMAL_SPEED || 5;
       for(let i=0; i<4; i++) { 
           const e = new THREE.Group(); 
           e.add(createPlaneMesh(0xaa0000)); 
@@ -333,7 +331,7 @@
           e.name = enemyStats[i].name;
           e.userData = { 
               alive: true, health: 300, 
-              speed: Cfg.NORMAL_SPEED || 5, 
+              speed: speed, 
               progress: 0, 
               lastRingIndex: -1 
           }; 
@@ -362,31 +360,36 @@
     frameCount++;
     if(now - lastTime >= 1000) { fpsElem.innerText = "FPS: " + frameCount; frameCount = 0; lastTime = now; }
 
-    let spd = isActionActive('boost') && boostLevel > 0 ? (Cfg.BOOST_SPEED || 10) : (Cfg.NORMAL_SPEED || 5);
+    const speedVal = Cfg.NORMAL_SPEED || 5;
+    const boostVal = Cfg.BOOST_SPEED || 10;
+    const turnVal = Cfg.TURN_SPEED || 0.03;
+    const liftVal = Cfg.LIFT_SPEED || 5;
+
+    let spd = isActionActive('boost') && boostLevel > 0 ? boostVal : speedVal;
     
     if(isActionActive('boost') && boostLevel > 0) { 
-        boostLevel -= Cfg.BOOST_DRAIN; 
+        boostLevel -= (Cfg.BOOST_DRAIN || 0.5); 
         planeMesh.getObjectByName("EngineGlow").material.opacity = 0.8; 
     } else { 
-        boostLevel = Math.min(Cfg.MAX_BOOST, boostLevel + Cfg.BOOST_REFILL); 
+        boostLevel = Math.min((Cfg.MAX_BOOST || 100), boostLevel + (Cfg.BOOST_REFILL || 0.1)); 
         planeMesh.getObjectByName("EngineGlow").material.opacity = 0; 
     }
     document.getElementById('boost-fill').style.width = boostLevel + '%';
 
     planeRig.translateZ(-spd);
 
-    if(isActionActive('left')) { planeRig.rotation.y += Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); }
-    else if(isActionActive('right')) { planeRig.rotation.y -= Cfg.TURN_SPEED; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); }
+    if(isActionActive('left')) { planeRig.rotation.y += turnVal; visualRoll = THREE.MathUtils.lerp(visualRoll, 0.8, 0.1); }
+    else if(isActionActive('right')) { planeRig.rotation.y -= turnVal; visualRoll = THREE.MathUtils.lerp(visualRoll, -0.8, 0.1); }
     else visualRoll = THREE.MathUtils.lerp(visualRoll, 0, 0.1);
     
-    if(isActionActive('up')) { planeRig.position.y += Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.4, 0.1); }
-    else if(isActionActive('down')) { planeRig.position.y -= Cfg.LIFT_SPEED; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.4, 0.1); }
+    if(isActionActive('up')) { planeRig.position.y += liftVal; visualPitch = THREE.MathUtils.lerp(visualPitch, -0.4, 0.1); }
+    else if(isActionActive('down')) { planeRig.position.y -= liftVal; visualPitch = THREE.MathUtils.lerp(visualPitch, 0.4, 0.1); }
     else visualPitch = THREE.MathUtils.lerp(visualPitch, 0, 0.1);
 
     planeMesh.rotation.z = visualRoll; 
     planeMesh.rotation.x = visualPitch;
 
-    if(isActionActive('fire') && Date.now() - lastFireTime > Cfg.FIRE_RATE) {
+    if(isActionActive('fire') && Date.now() - lastFireTime > (Cfg.FIRE_RATE || 150)) {
         spawnBullet(true, planeRig.position, planeRig.quaternion);
         lastFireTime = Date.now();
     }
@@ -395,10 +398,9 @@
     camera.position.lerp(ct, 0.1); 
     camera.lookAt(planeRig.position);
 
-    // SIMPLE AI LOGIC (No complex raycasting, just fly to target)
     enemies.forEach(e => {
         if(!e.userData.alive) return;
-        const targetRingIndex = e.userData.progress % Cfg.RINGS_PER_LAP;
+        const targetRingIndex = e.userData.progress % SP_RINGS_PER_LAP;
         const wp = ringWaypoints[targetRingIndex];
         
         if(wp) {
@@ -447,7 +449,7 @@
     }
     document.getElementById('health-fill').style.width = health + '%';
 
-    const currentTargetIndex = playerStats.progress % Cfg.RINGS_PER_LAP;
+    const currentTargetIndex = playerStats.progress % SP_RINGS_PER_LAP;
     const playerTargetObj = rings[currentTargetIndex];
     
     updateRingVisuals(currentTargetIndex);
@@ -465,7 +467,7 @@
                  
                  if(window.SFXManager) SFXManager.playRing(true);
                  
-                 if(playerStats.rings >= Cfg.TOTAL_RINGS_WIN) {
+                 if(playerStats.rings >= SP_TOTAL_RINGS_WIN) {
                      endGame(true, "CHAMPION!");
                  }
                  updateLeaderboard();
@@ -481,7 +483,7 @@
   function enemyRingCollected(name) {
       const e = enemyStats.find(x => x.name === name);
       if(e) e.rings++;
-      if(e.rings >= Cfg.TOTAL_RINGS_WIN) {
+      if(e.rings >= SP_TOTAL_RINGS_WIN) {
           endGame(false, `${name} WON THE RACE!`);
       }
       updateLeaderboard();
@@ -511,7 +513,7 @@
           const row = document.createElement("div"); row.className = "lb-row";
           if(r.name === "PLAYER") row.classList.add("lb-player");
           if(i === 0) row.classList.add("lb-rank-1");
-          row.innerHTML = `<span>${i+1}. ${r.name}</span><span>${r.rings}/${Cfg.TOTAL_RINGS_WIN}</span>`;
+          row.innerHTML = `<span>${i+1}. ${r.name}</span><span>${r.rings}/${SP_TOTAL_RINGS_WIN}</span>`;
           list.appendChild(row);
       });
   }
@@ -539,7 +541,7 @@
           minimapCtx.fillStyle="#ff0000"; minimapCtx.fill();
       });
       
-      const tidx = playerStats.progress % Cfg.RINGS_PER_LAP;
+      const tidx = playerStats.progress % SP_RINGS_PER_LAP;
       if(rings[tidx]) {
           const r = rings[tidx];
           const dx=(r.position.x-planeRig.position.x)*scale;
@@ -578,4 +580,3 @@
 </script>
 </body>
 </html>
-
