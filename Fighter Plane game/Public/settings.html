@@ -3,123 +3,137 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SKY PILOT - MAIN MENU</title>
+    <title>Sky Pilot - Settings</title>
     
+    <!-- IMPORTANT: Link Game Manager -->
     <script src="game-manager.js"></script>
-    <script src="music-manager.js"></script>
-    <script src="sfx-manager.js"></script>
 
     <style>
-        body {
-            margin: 0; background: #000; overflow: hidden;
-            font-family: 'Segoe UI', sans-serif;
-            display: flex; align-items: center; justify-content: center;
-            height: 100vh; color: white;
-            background: radial-gradient(circle at center, #1a2a3a 0%, #000 100%);
-        }
-
-        .container {
-            text-align: center; z-index: 10;
-            animation: float 6s ease-in-out infinite;
-        }
-
-        h1 {
-            font-size: 80px; margin: 0; letter-spacing: 10px;
-            background: -webkit-linear-gradient(#fff, #00d2ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: 0 0 30px rgba(0, 210, 255, 0.5);
-        }
-
-        p { color: #888; margin-bottom: 40px; letter-spacing: 2px; }
-
-        .btn-group { display: flex; flex-direction: column; gap: 20px; width: 300px; margin: 0 auto; }
-
-        button {
-            padding: 20px; font-size: 18px; font-weight: 900;
-            color: white; background: rgba(255,255,255,0.05);
-            border: 1px solid #00d2ff;
-            cursor: pointer; transition: 0.3s;
-            text-transform: uppercase;
-            clip-path: polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%);
-        }
-
-        button:hover {
-            background: #00d2ff; color: #000;
-            box-shadow: 0 0 20px #00d2ff;
-            transform: scale(1.05);
-        }
-
-        .settings-panel {
-            margin-top: 30px; padding: 20px;
-            border-top: 1px solid #333;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-20px); }
-        }
-
-        /* 3D Background Effect (Optional/Lightweight) */
-        #bg-canvas { position: absolute; top: 0; left: 0; z-index: 1; opacity: 0.3; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; color: white; user-select: none; }
+        .bg-gradient { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle at center, #1a2a3a 0%, #000 100%); z-index: -1; }
+        .menu-box { background: rgba(12, 20, 30, 0.9); border: 2px solid #00d2ff; border-radius: 20px; padding: 40px; text-align: center; box-shadow: 0 0 50px rgba(0, 210, 255, 0.25), inset 0 0 30px rgba(0, 210, 255, 0.1); width: 500px; max-width: 90%; max-height: 90vh; overflow-y: auto; animation: glowPulse 4s infinite alternate; }
+        @keyframes glowPulse { from { box-shadow: 0 0 30px rgba(0, 210, 255, 0.2); } to { box-shadow: 0 0 60px rgba(0, 210, 255, 0.4); } }
+        h2 { color: #00d2ff; font-weight: 900; margin-bottom: 20px; letter-spacing: 2px; font-size: 24px; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; text-align: left; }
+        .setting-row { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 12px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); transition: 0.2s; }
+        .setting-row:hover { background: rgba(255,255,255,0.1); border-color: rgba(0, 210, 255, 0.3); }
+        .setting-label { color: #aaa; font-size: 14px; font-weight: bold; letter-spacing: 1px; }
+        .key-bind-btn { background: #222; border: 1px solid #555; color: #fff; padding: 6px 15px; border-radius: 4px; cursor: pointer; font-family: monospace; font-weight: bold; min-width: 80px; text-align: center; transition: all 0.2s; }
+        .key-bind-btn:hover { background: #444; border-color: #00d2ff; color: #00d2ff; }
+        .toggle-active { background: rgba(0, 255, 0, 0.2); border-color: #00ff00; color: #00ff00; }
+        .toggle-inactive { background: rgba(255, 0, 0, 0.2); border-color: #ff0000; color: #ff0000; }
+        .listening { background: #d35400; border-color: #e67e22; animation: pulse 0.5s infinite; }
+        .secondary-btn { background: rgba(255,255,255,0.05); border: 1px solid #555; color: white; padding: 15px 30px; font-size: 18px; border-radius: 50px; cursor: pointer; text-transform: uppercase; font-weight: bold; letter-spacing: 2px; transition: 0.2s; width: 100%; margin-top: 10px; }
+        .secondary-btn:hover { background: rgba(255,255,255,0.15); border-color: #fff; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h1>SKY PILOT</h1>
-        <p>AERIAL COMBAT SIMULATOR</p>
+    <div class="bg-gradient"></div>
 
-        <div class="btn-group">
-            <button onclick="navigate('singleplayer.html')">Solo Campaign</button>
-            <button onclick="navigate('multiplayer.html')">Multiplayer</button>
-            <button onclick="toggleSettings()">Settings</button>
+    <div class="menu-box">
+        <h2>SYSTEM OPTIONS</h2>
+        <div class="settings-grid">
+            <div class="setting-row">
+                <span class="setting-label">SFX</span>
+                <!-- Button ab GameManager ka status dikhayega -->
+                <button id="btn-sfx" class="key-bind-btn toggle-active" onclick="toggleSfx()">ON</button>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">MUSIC</span>
+                <button id="btn-music" class="key-bind-btn toggle-active" onclick="toggleMusic()">ON</button>
+            </div>
         </div>
 
-        <div id="settings" class="settings-panel" style="display:none">
-            <button onclick="toggleAudio()" id="btn-audio" style="font-size:12px; padding:10px;">AUDIO: ON</button>
+        <h2>CONTROLS</h2>
+        <div class="settings-grid">
+            <!-- Buttons ab rebind function call karenge -->
+            <div class="setting-row"><span class="setting-label">PITCH UP</span><button id="bind-up" class="key-bind-btn" onclick="rebind('up')">W</button></div>
+            <div class="setting-row"><span class="setting-label">PITCH DOWN</span><button id="bind-down" class="key-bind-btn" onclick="rebind('down')">S</button></div>
+            <div class="setting-row"><span class="setting-label">TURN LEFT</span><button id="bind-left" class="key-bind-btn" onclick="rebind('left')">A</button></div>
+            <div class="setting-row"><span class="setting-label">TURN RIGHT</span><button id="bind-right" class="key-bind-btn" onclick="rebind('right')">D</button></div>
+            <div class="setting-row"><span class="setting-label">BOOST</span><button id="bind-boost" class="key-bind-btn" onclick="rebind('boost')">SPACE</button></div>
+            <div class="setting-row"><span class="setting-label">FIRE</span><button id="bind-fire" class="key-bind-btn" onclick="rebind('fire')">SHIFT</button></div>
         </div>
+
+        <button class="secondary-btn" onclick="window.location.href='index.html'">BACK TO MENU</button>
     </div>
 
     <script>
-        // Init Audio on first interaction
-        let audioInit = false;
-
-        function navigate(url) {
-            if (!audioInit) {
-                // Unlock Audio Context before navigating
-                if(window.SFXManager) SFXManager.init();
-                if(window.MusicManager) MusicManager.init();
-                audioInit = true;
+        // --- PAGE LOAD ---
+        function initUI() {
+            // GameManager se current data uthao aur UI update karo
+            if (typeof GameManager === 'undefined') {
+                console.error("GameManager not loaded! Make sure game-manager.js is linked.");
+                return;
             }
-            window.location.href = url;
+            
+            // Set initial button states
+            setButtonState('btn-sfx', GameManager.data.sfx);
+            setButtonState('btn-music', GameManager.data.music);
+            updateBindUI();
         }
 
-        function toggleSettings() {
-            const el = document.getElementById('settings');
-            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        // --- BUTTON HANDLERS ---
+        function toggleSfx() {
+            const newState = !GameManager.data.sfx;
+            GameManager.setSfx(newState); // Save to manager
+            setButtonState('btn-sfx', newState);
         }
 
-        function toggleAudio() {
-            const newState = GameManager.toggleMusic();
-            GameManager.toggleSfx();
-            document.getElementById('btn-audio').innerText = newState ? "AUDIO: ON" : "AUDIO: OFF";
-            if(newState && window.MusicManager) MusicManager.playLobby();
+        function toggleMusic() {
+            const newState = !GameManager.data.music;
+            GameManager.setMusic(newState); // Save to manager
+            setButtonState('btn-music', newState);
         }
 
-        // Start Ambient Music on Load (after click)
-        window.addEventListener('click', () => {
-            if (!audioInit) {
-                MusicManager.playLobby();
-                audioInit = true;
+        // --- HELPER UI ---
+        function setButtonState(btnId, isOn) {
+            const btn = document.getElementById(btnId);
+            if (isOn) {
+                btn.innerText = "ON";
+                btn.classList.remove('toggle-inactive');
+                btn.classList.add('toggle-active');
+            } else {
+                btn.innerText = "OFF";
+                btn.classList.remove('toggle-active');
+                btn.classList.add('toggle-inactive');
             }
-        }, { once: true });
-        
-        // Load Saved Settings State
-        window.onload = () => {
-            const isOn = GameManager.state.isMusicOn;
-            document.getElementById('btn-audio').innerText = isOn ? "AUDIO: ON" : "AUDIO: OFF";
-        };
+        }
+
+        function updateBindUI() {
+            const binds = GameManager.data.bindings;
+            for (const [action, key] of Object.entries(binds)) {
+                const btn = document.getElementById('bind-' + action);
+                if (btn) btn.innerText = key === ' ' ? 'SPACE' : key.toUpperCase();
+            }
+        }
+
+        // --- REBINDING LOGIC ---
+        function rebind(action) {
+            const btn = document.getElementById('bind-' + action);
+            btn.innerText = "...";
+            btn.classList.add('listening');
+
+            const handler = (e) => {
+                e.preventDefault();
+                let key = e.key.toLowerCase();
+                if(key === ' ') key = ' ';
+
+                // Save via GameManager
+                GameManager.saveBinding(action, key);
+                
+                btn.classList.remove('listening');
+                updateBindUI();
+                window.removeEventListener('keydown', handler);
+            };
+            
+            window.addEventListener('keydown', handler, { once: true });
+        }
+
+        // Wait for window load to ensure GameManager is ready
+        window.onload = initUI;
     </script>
+
 </body>
 </html>
