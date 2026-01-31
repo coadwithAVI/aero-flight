@@ -1,0 +1,92 @@
+<!-- ==========================================
+ PATH: Public/multiplayer.html
+ Multiplayer Mode Entry
+========================================== -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sky Pilot - Multiplayer</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+      width: 100%;
+      height: 100%;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ✅ Three.js will inject WebGL canvas automatically from GameManager -->
+  <!-- Lobby UI auto-created by gameplay/multiplayer-main.js -->
+
+  <!-- ==========================================================
+       1) Socket.IO Client (served by your server.js)
+  ========================================================== -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- ==========================================================
+       2) Three.js Library
+       If you're using CDN:
+  ========================================================== -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+  <!-- ==========================================================
+       3) CONFIG
+  ========================================================== -->
+  <script src="./core/game-config.js"></script>
+  <script src="./config/config.world.js"></script>
+  <script src="./config/config.physics.js"></script>
+
+  <!-- ==========================================================
+       4) ENGINE
+  ========================================================== -->
+  <script src="./engine/map.js"></script>
+  <script src="./engine/camera-system.js"></script>
+
+  <!-- ==========================================================
+       5) UI
+  ========================================================== -->
+  <script src="./ui/ui-manager.js"></script>
+  <script src="./ui/minimap-system.js"></script>
+
+  <!-- ==========================================================
+       6) AUDIO
+  ========================================================== -->
+  <script src="./audio/sfx-manager.js"></script>
+  <script src="./audio/music-manager.js"></script>
+
+  <!-- ==========================================================
+       7) GAMEPLAY
+  ========================================================== -->
+  <script src="./gameplay/input-manager.js"></script>
+  <script src="./gameplay/player-controller.js"></script>
+  <script src="./gameplay/bullet-system.js"></script>
+  <script src="./gameplay/weapon-system.js"></script>
+
+  <!-- ==========================================================
+       8) MULTIPLAYER
+  ========================================================== -->
+  <script src="./multiplayer/mp-state.js"></script>
+  <script src="./multiplayer/mp-client.js"></script>
+
+  <!-- ==========================================================
+       9) CORE
+  ========================================================== -->
+  <script src="./core/game-manager.js"></script>
+
+  <!-- ==========================================================
+       10) ENTRY POINT
+  ========================================================== -->
+  <script src="./gameplay/multiplayer-main.js"></script>
+
+</body>
+</html>

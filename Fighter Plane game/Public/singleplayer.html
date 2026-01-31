@@ -1,0 +1,90 @@
+<!-- ==========================================
+ PATH: Public/singleplayer.html
+ Singleplayer Mode Entry
+========================================== -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sky Pilot - Singleplayer</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+      width: 100%;
+      height: 100%;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ✅ GameManager will inject WebGL canvas automatically -->
+
+  <!-- ==========================================================
+       1) THREE.JS (required first)
+  ========================================================== -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+  <!-- ==========================================================
+       2) CONFIG (global constants)
+  ========================================================== -->
+  <script src="./core/game-config.js"></script>
+  <script src="./config/config.world.js"></script>
+  <script src="./config/config.physics.js"></script>
+  <!-- later -->
+  <!-- <script src="./config/config.rules.js"></script> -->
+  <!-- <script src="./config/config.combat.js"></script> -->
+
+  <!-- ==========================================================
+       3) ENGINE
+  ========================================================== -->
+  <script src="./engine/map.js"></script>
+  <script src="./engine/camera-system.js"></script>
+  <script src="./engine/collision-system.js"></script>
+
+  <!-- ==========================================================
+       4) UI
+  ========================================================== -->
+  <script src="./ui/ui-manager.js"></script>
+  <script src="./ui/minimap-system.js"></script>
+
+  <!-- ==========================================================
+       5) AUDIO
+  ========================================================== -->
+  <script src="./audio/sfx-manager.js"></script>
+  <script src="./audio/music-manager.js"></script>
+
+  <!-- ==========================================================
+       6) GAMEPLAY
+  ========================================================== -->
+  <script src="./gameplay/input-manager.js"></script>
+  <script src="./gameplay/player-controller.js"></script>
+  <script src="./gameplay/bullet-system.js"></script>
+  <script src="./gameplay/weapon-system.js"></script>
+
+  <script src="./gameplay/enemy-ai.js"></script>
+  <script src="./gameplay/enemy-manager.js"></script>
+
+  <!-- later -->
+  <!-- <script src="./gameplay/race-system.js"></script> -->
+  <!-- <script src="./gameplay/pickup-system.js"></script> -->
+
+  <!-- ==========================================================
+       7) CORE
+  ========================================================== -->
+  <script src="./core/game-manager.js"></script>
+
+  <!-- ==========================================================
+       8) ENTRY POINT
+  ========================================================== -->
+  <script src="./gameplay/singleplayer-main.js"></script>
+
+</body>
+</html>
