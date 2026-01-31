@@ -2,54 +2,44 @@
 // PATH: gameplay/player-controller.js
 // ==========================================
 
-/**
- * PlayerController (FINAL)
- * ✅ Fix: Bank-to-Turn => A/D roll se actual turning (direction change) hoga
- * ✅ dt based movement
- * ✅ speed control boost/brake
- * ✅ world bounds + altitude clamp
- * ✅ optional gravity
- *
- * Requirements:
- * - PHYSICS_CONFIG, WORLD_CONFIG global
- * - InputManager instance (supports getAxes())
- */
-
 class PlayerController {
     constructor(scene, inputManager) {
         this.scene = scene;
         this.input = inputManager;
 
-        // Mesh
         this.mesh = null;
-
-        // Stats
         this.health = 100;
 
-        // Speed state
+        // speed state
         this.speed = PHYSICS_CONFIG.minSpeed;
         this.targetSpeed = PHYSICS_CONFIG.minSpeed;
 
-        // Spawn
+        // spawn
         this.spawnPoint = new THREE.Vector3(0, 250, 0);
 
-        // Internal reusable
-        this._tmpVec = new THREE.Vector3();
-        this._tmpQuat = new THREE.Quaternion();
+        // ✅ Desired angles (arcade smooth controls)
+        this.desiredPitch = 0; // X
+        this.desiredRoll = 0;  // Z
 
-        // Model
+        // ✅ tuning
+        this.maxPitch = 0.6;
+        this.maxRoll = 0.9;
+
+        this.pitchResponse = 0.12;
+        this.rollResponse = 0.12;
+
+        // ✅ turning from bank
+        this.bankTurnStrength = 0.04;
+
         this.initModel();
     }
 
-    // ==========================================================
-    // MODEL
-    // ==========================================================
     initModel() {
         this.mesh = new THREE.Group();
 
-        // Body (fuselage)
+        // Body
         const bodyGeo = new THREE.ConeGeometry(1.6, 7.5, 16);
-        bodyGeo.rotateX(Math.PI / 2);
+        bodyGeo.rotateX(Math.PI / 2); // ✅ model forward alignment
         const bodyMat = new THREE.MeshPhongMaterial({ color: 0x3498db, flatShading: true });
         const body = new THREE.Mesh(bodyGeo, bodyMat);
         body.castShadow = true;
@@ -83,7 +73,6 @@ class PlayerController {
         cockpit.position.set(0, 0.55, 0.2);
         this.mesh.add(cockpit);
 
-        // Spawn
         this.respawnInstant();
         this.scene.add(this.mesh);
     }
@@ -95,22 +84,21 @@ class PlayerController {
         this.speed = PHYSICS_CONFIG.minSpeed;
         this.targetSpeed = PHYSICS_CONFIG.minSpeed;
 
+        this.desiredPitch = 0;
+        this.desiredRoll = 0;
+
         this.mesh.position.copy(this.spawnPoint);
         this.mesh.rotation.set(0, 0, 0);
         this.mesh.quaternion.set(0, 0, 0, 1);
     }
 
-    // ==========================================================
-    // UPDATE
-    // ==========================================================
     update(deltaTime) {
         if (!this.mesh) return;
 
-        // clamp dt for stability
         const dt = Math.min(deltaTime, 0.05);
 
         // ======================================================
-        // 1) Speed Control (dt-based)
+        // 1) Speed
         // ======================================================
         const boosting = this.input.getAction("boost");
         const braking = this.input.getAction("brake");
@@ -124,56 +112,43 @@ class PlayerController {
         const speedDiff = this.targetSpeed - this.speed;
         const accel = speedDiff > 0 ? PHYSICS_CONFIG.acceleration : PHYSICS_CONFIG.deceleration;
         const scaledAccel = 1 - Math.pow(1 - accel, dt * 60);
-
         this.speed += speedDiff * scaledAccel;
 
-        // Drag
+        // dt drag
         if (!boosting && PHYSICS_CONFIG.drag != null) {
-            // Convert per-frame drag to dt-based
-            // (drag=0.98 tuned at 60fps)
             const dragDt = Math.pow(PHYSICS_CONFIG.drag, dt * 60);
             this.speed *= dragDt;
         }
 
-        // Stall drift
-        if (this.speed > 0 && this.speed < PHYSICS_CONFIG.minSpeed) {
-            this.mesh.position.y -= 10 * dt;
-        }
+        // ======================================================
+        // 2) Inputs -> desired pitch/roll
+        // ======================================================
+        const pitchInput =
+            (this.input.getAction("pitchUp") ? 1 : 0) -
+            (this.input.getAction("pitchDown") ? 1 : 0);
+
+        const rollInput =
+            (this.input.getAction("rollRight") ? 1 : 0) -
+            (this.input.getAction("rollLeft") ? 1 : 0);
+
+        // desired angles
+        this.desiredPitch = (-pitchInput) * this.maxPitch;
+        this.desiredRoll = (rollInput) * this.maxRoll;
 
         // ======================================================
-        // 2) Inputs (Axes)
+        // 3) Smooth stabilization (pitch + roll)
         // ======================================================
-        let pitchInput = 0, rollInput = 0, yawInput = 0;
+        const pitchT = 1 - Math.pow(0.001, dt * this.pitchResponse * 60);
+        const rollT  = 1 - Math.pow(0.001, dt * this.rollResponse * 60);
 
-        if (this.input && typeof this.input.getAxes === "function") {
-            const axes = this.input.getAxes();
-            pitchInput = axes.pitch;
-            rollInput = axes.roll;
-            yawInput = axes.yaw;
-        } else {
-            pitchInput = (this.input.getAction("pitchUp") ? 1 : 0) - (this.input.getAction("pitchDown") ? 1 : 0);
-            rollInput  = (this.input.getAction("rollLeft") ? 1 : 0) - (this.input.getAction("rollRight") ? 1 : 0);
-            yawInput   = (this.input.getAction("yawLeft") ? 1 : 0) - (this.input.getAction("yawRight") ? 1 : 0);
-        }
+        this.mesh.rotation.x = lerp(this.mesh.rotation.x, this.desiredPitch, pitchT);
+        this.mesh.rotation.z = lerp(this.mesh.rotation.z, this.desiredRoll, rollT);
 
         // ======================================================
-        // 3) Manual rotation
+        // 4) Bank-to-turn (yaw)
         // ======================================================
-        const pitchChange = pitchInput * PHYSICS_CONFIG.pitchSpeed * dt * 60;
-        const rollChange  = rollInput  * PHYSICS_CONFIG.rollSpeed  * dt * 60;
-        const yawChange   = yawInput   * PHYSICS_CONFIG.yawSpeed   * dt * 60;
-
-        this.mesh.rotateX(pitchChange);
-        this.mesh.rotateZ(rollChange);
-        this.mesh.rotateY(yawChange);
-
-        // ======================================================
-        // ✅ 4) BANK TO TURN (MAIN FIX)
-        // ======================================================
-        // rollAngle: right wing down => positive/negative depends on rotation direction
         const rollAngle = this.mesh.rotation.z;
 
-        // speed ratio (0..1)
         const speedRatio = clamp(
             (this.speed - PHYSICS_CONFIG.minSpeed) /
             Math.max(0.0001, (PHYSICS_CONFIG.maxSpeed - PHYSICS_CONFIG.minSpeed)),
@@ -181,20 +156,16 @@ class PlayerController {
             1
         );
 
-        // turning strength depends on speed
-        const bankStrength = 0.01 + speedRatio * 0.045;   // tune this for more/less turning
-        const autoYaw = -rollAngle * bankStrength * dt * 60;
-
-        this.mesh.rotateY(autoYaw);
+        const yawStrength = (0.01 + speedRatio * this.bankTurnStrength);
+        this.mesh.rotateY(-rollAngle * yawStrength * dt * 60);
 
         // ======================================================
         // 5) Forward movement
         // ======================================================
-        const moveAmount = this.speed * dt * 60;
-        this.mesh.translateZ(moveAmount);
+        this.mesh.translateZ(this.speed * dt * 60);
 
         // ======================================================
-        // 6) World bounds + altitude clamp
+        // 6) Bounds
         // ======================================================
         const floor = (WORLD_CONFIG.waterLevel ?? 0) + 5;
         const ceiling = WORLD_CONFIG.ceilingHeight ?? 1000;
@@ -204,21 +175,20 @@ class PlayerController {
 
         const ws = WORLD_CONFIG.worldSize ?? 10000;
         const half = ws * 0.5;
-
         this.mesh.position.x = clamp(this.mesh.position.x, -half, half);
         this.mesh.position.z = clamp(this.mesh.position.z, -half, half);
 
-        // ======================================================
-        // 7) Gravity (optional)
-        // ======================================================
+        // gravity optional
         if (PHYSICS_CONFIG.gravity && PHYSICS_CONFIG.gravity > 0) {
             this.mesh.position.y -= PHYSICS_CONFIG.gravity * dt * 60;
         }
     }
 
-    // ==========================================================
-    // HELPERS
-    // ==========================================================
+    takeDamage(amount) {
+        this.health -= amount;
+        if (this.health < 0) this.health = 0;
+    }
+
     getPosition() {
         return this.mesh ? this.mesh.position : new THREE.Vector3();
     }
@@ -226,19 +196,14 @@ class PlayerController {
     getQuaternion() {
         return this.mesh ? this.mesh.quaternion : new THREE.Quaternion();
     }
-
-    takeDamage(amount) {
-        this.health -= amount;
-        if (this.health < 0) this.health = 0;
-    }
 }
 
-// ==========================================================
 // Utils
-// ==========================================================
 function clamp(n, min, max) {
     return Math.max(min, Math.min(max, n));
 }
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
 
-// Global export
 window.PlayerController = PlayerController;
