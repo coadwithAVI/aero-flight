@@ -26,6 +26,7 @@ window.addEventListener("load", () => {
     // ----------------------------------------------------------
     const game = new GameManager();
     game.init();
+    new MobileControls(game.inputManager);
 
     // ----------------------------------------------------------
     // 2) World
