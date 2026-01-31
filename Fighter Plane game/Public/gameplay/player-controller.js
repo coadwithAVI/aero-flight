@@ -3,20 +3,16 @@
 // ==========================================
 
 /**
- * PlayerController (FINAL FIXED)
- * Handles:
- * - spawning player plane mesh
- * - flight movement & rotation
- * - speed/boost/brake
- * - boundaries / crash safety
- *
- * Fixes:
- * ✅ movement quaternion = pitch+yaw only
- * ✅ roll is only visual (banking) -> no more "ek axis me gol gol"
+ * PlayerController (FINAL)
+ * ✅ Fix: Bank-to-Turn => A/D roll se actual turning (direction change) hoga
+ * ✅ dt based movement
+ * ✅ speed control boost/brake
+ * ✅ world bounds + altitude clamp
+ * ✅ optional gravity
  *
  * Requirements:
- * - PHYSICS_CONFIG, WORLD_CONFIG available globally
- * - InputManager instance passed in constructor
+ * - PHYSICS_CONFIG, WORLD_CONFIG global
+ * - InputManager instance (supports getAxes())
  */
 
 class PlayerController {
@@ -24,49 +20,32 @@ class PlayerController {
         this.scene = scene;
         this.input = inputManager;
 
-        // Root mesh (movement/physics)
+        // Mesh
         this.mesh = null;
 
-        // Visual model group (roll only)
-        this.model = null;
-
-        // Player stats
+        // Stats
         this.health = 100;
 
-        // Flight state
+        // Speed state
         this.speed = PHYSICS_CONFIG.minSpeed;
         this.targetSpeed = PHYSICS_CONFIG.minSpeed;
 
-        // Spawn values
+        // Spawn
         this.spawnPoint = new THREE.Vector3(0, 250, 0);
 
-        // Helpers
-        this._tempVec = new THREE.Vector3();
+        // Internal reusable
+        this._tmpVec = new THREE.Vector3();
+        this._tmpQuat = new THREE.Quaternion();
 
-        // Visual roll tuning
-        this.visualRoll = 0;
-        this.visualRollMax = 1.2;     // ~ 70 degrees
-        this.visualRollReturn = 0.08; // roll auto-centering strength
-
-        // Create model
+        // Model
         this.initModel();
     }
 
     // ==========================================================
-    // Model / Spawn
+    // MODEL
     // ==========================================================
-
     initModel() {
-        // Root group (physics)
         this.mesh = new THREE.Group();
-
-        // Visual group
-        this.model = new THREE.Group();
-        this.mesh.add(this.model);
-
-        // --------------------------
-        // Placeholder plane model
-        // --------------------------
 
         // Body (fuselage)
         const bodyGeo = new THREE.ConeGeometry(1.6, 7.5, 16);
@@ -75,7 +54,7 @@ class PlayerController {
         const body = new THREE.Mesh(bodyGeo, bodyMat);
         body.castShadow = true;
         body.receiveShadow = true;
-        this.model.add(body);
+        this.mesh.add(body);
 
         // Wings
         const wingGeo = new THREE.BoxGeometry(9, 0.25, 2.2);
@@ -83,30 +62,29 @@ class PlayerController {
         const wings = new THREE.Mesh(wingGeo, wingMat);
         wings.position.set(0, 0, 0.6);
         wings.castShadow = true;
-        this.model.add(wings);
+        this.mesh.add(wings);
 
         // Tail
         const tailGeo = new THREE.BoxGeometry(3.2, 0.2, 1.4);
         const tail = new THREE.Mesh(tailGeo, wingMat);
         tail.position.set(0, 0.15, -2.8);
-        this.model.add(tail);
+        this.mesh.add(tail);
 
         // Fin
         const finGeo = new THREE.BoxGeometry(0.2, 2, 1);
         const fin = new THREE.Mesh(finGeo, wingMat);
         fin.position.set(0, 1.0, -2.7);
-        this.model.add(fin);
+        this.mesh.add(fin);
 
         // Cockpit
         const cockpitGeo = new THREE.BoxGeometry(1.2, 0.7, 2);
         const cockpitMat = new THREE.MeshPhongMaterial({ color: 0x2c3e50, shininess: 90 });
         const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
         cockpit.position.set(0, 0.55, 0.2);
-        this.model.add(cockpit);
+        this.mesh.add(cockpit);
 
         // Spawn
         this.respawnInstant();
-
         this.scene.add(this.mesh);
     }
 
@@ -114,33 +92,25 @@ class PlayerController {
         if (!this.mesh) return;
 
         this.health = 100;
-
         this.speed = PHYSICS_CONFIG.minSpeed;
         this.targetSpeed = PHYSICS_CONFIG.minSpeed;
 
         this.mesh.position.copy(this.spawnPoint);
         this.mesh.rotation.set(0, 0, 0);
         this.mesh.quaternion.set(0, 0, 0, 1);
-
-        // reset visual roll
-        if (this.model) {
-            this.model.rotation.set(0, 0, 0);
-        }
-        this.visualRoll = 0;
     }
 
     // ==========================================================
-    // Update Loop
+    // UPDATE
     // ==========================================================
-
     update(deltaTime) {
         if (!this.mesh) return;
 
-        // Normalize dt (for stability)
+        // clamp dt for stability
         const dt = Math.min(deltaTime, 0.05);
 
         // ======================================================
-        // 1) Speed Control
+        // 1) Speed Control (dt-based)
         // ======================================================
         const boosting = this.input.getAction("boost");
         const braking = this.input.getAction("brake");
@@ -151,26 +121,27 @@ class PlayerController {
 
         this.targetSpeed = clamp(this.targetSpeed, 0, PHYSICS_CONFIG.boostSpeed);
 
-        // Smooth speed change (fps independent)
         const speedDiff = this.targetSpeed - this.speed;
         const accel = speedDiff > 0 ? PHYSICS_CONFIG.acceleration : PHYSICS_CONFIG.deceleration;
-
-        // scale tuned-per-frame to dt
         const scaledAccel = 1 - Math.pow(1 - accel, dt * 60);
+
         this.speed += speedDiff * scaledAccel;
 
-        // Stall drift down
+        // Drag
+        if (!boosting && PHYSICS_CONFIG.drag != null) {
+            // Convert per-frame drag to dt-based
+            // (drag=0.98 tuned at 60fps)
+            const dragDt = Math.pow(PHYSICS_CONFIG.drag, dt * 60);
+            this.speed *= dragDt;
+        }
+
+        // Stall drift
         if (this.speed > 0 && this.speed < PHYSICS_CONFIG.minSpeed) {
             this.mesh.position.y -= 10 * dt;
         }
 
-        // Drag
-        if (!boosting && PHYSICS_CONFIG.drag != null) {
-            this.speed *= PHYSICS_CONFIG.drag;
-        }
-
         // ======================================================
-        // 2) Input -> Pitch / Yaw / Roll
+        // 2) Inputs (Axes)
         // ======================================================
         let pitchInput = 0, rollInput = 0, yawInput = 0;
 
@@ -185,49 +156,45 @@ class PlayerController {
             yawInput   = (this.input.getAction("yawLeft") ? 1 : 0) - (this.input.getAction("yawRight") ? 1 : 0);
         }
 
-        // scale to dt
+        // ======================================================
+        // 3) Manual rotation
+        // ======================================================
         const pitchChange = pitchInput * PHYSICS_CONFIG.pitchSpeed * dt * 60;
+        const rollChange  = rollInput  * PHYSICS_CONFIG.rollSpeed  * dt * 60;
         const yawChange   = yawInput   * PHYSICS_CONFIG.yawSpeed   * dt * 60;
 
-        // IMPORTANT FIX:
-        // ✅ Movement orientation uses ONLY pitch + yaw
         this.mesh.rotateX(pitchChange);
+        this.mesh.rotateZ(rollChange);
         this.mesh.rotateY(yawChange);
 
         // ======================================================
-        // 3) Visual Roll / Banking (NO movement influence)
+        // ✅ 4) BANK TO TURN (MAIN FIX)
         // ======================================================
-        const rollChange = rollInput * PHYSICS_CONFIG.rollSpeed * dt * 60;
+        // rollAngle: right wing down => positive/negative depends on rotation direction
+        const rollAngle = this.mesh.rotation.z;
 
-        // roll accumulation
-        this.visualRoll += rollChange;
+        // speed ratio (0..1)
+        const speedRatio = clamp(
+            (this.speed - PHYSICS_CONFIG.minSpeed) /
+            Math.max(0.0001, (PHYSICS_CONFIG.maxSpeed - PHYSICS_CONFIG.minSpeed)),
+            0,
+            1
+        );
 
-        // banking effect with yaw
-        if (yawInput !== 0) {
-            this.visualRoll += yawInput * -PHYSICS_CONFIG.turnBankingDelta * dt * 60;
-        }
+        // turning strength depends on speed
+        const bankStrength = 0.01 + speedRatio * 0.045;   // tune this for more/less turning
+        const autoYaw = -rollAngle * bankStrength * dt * 60;
 
-        // clamp
-        this.visualRoll = clamp(this.visualRoll, -this.visualRollMax, this.visualRollMax);
-
-        // auto-return towards center if player isn't rolling
-        if (Math.abs(rollInput) < 0.001) {
-            this.visualRoll *= (1 - this.visualRollReturn);
-        }
-
-        // apply to model (visual only)
-        if (this.model) {
-            this.model.rotation.z = this.visualRoll;
-        }
+        this.mesh.rotateY(autoYaw);
 
         // ======================================================
-        // 4) Forward Movement
+        // 5) Forward movement
         // ======================================================
         const moveAmount = this.speed * dt * 60;
         this.mesh.translateZ(moveAmount);
 
         // ======================================================
-        // 5) World Bounds / Altitude Clamp
+        // 6) World bounds + altitude clamp
         // ======================================================
         const floor = (WORLD_CONFIG.waterLevel ?? 0) + 5;
         const ceiling = WORLD_CONFIG.ceilingHeight ?? 1000;
@@ -242,7 +209,7 @@ class PlayerController {
         this.mesh.position.z = clamp(this.mesh.position.z, -half, half);
 
         // ======================================================
-        // 6) Gravity (optional)
+        // 7) Gravity (optional)
         // ======================================================
         if (PHYSICS_CONFIG.gravity && PHYSICS_CONFIG.gravity > 0) {
             this.mesh.position.y -= PHYSICS_CONFIG.gravity * dt * 60;
@@ -250,9 +217,8 @@ class PlayerController {
     }
 
     // ==========================================================
-    // Helpers
+    // HELPERS
     // ==========================================================
-
     getPosition() {
         return this.mesh ? this.mesh.position : new THREE.Vector3();
     }
@@ -268,7 +234,7 @@ class PlayerController {
 }
 
 // ==========================================================
-// helper clamp
+// Utils
 // ==========================================================
 function clamp(n, min, max) {
     return Math.max(min, Math.min(max, n));
