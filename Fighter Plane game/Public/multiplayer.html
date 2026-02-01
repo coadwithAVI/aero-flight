@@ -1,0 +1,561 @@
+<!-- ==========================================
+ PATH: Public/multiplayer.html
+ Sky Pilot - Multiplayer (FINAL LOBBY + UI)
+========================================== -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Sky Pilot - Multiplayer</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      width: 100%;
+      height: 100%;
+      font-family: Arial, Helvetica, sans-serif;
+      color: white;
+    }
+    canvas { display: block; }
+
+    /* ---------- UI ---------- */
+    #uiRoot {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    .panel {
+      pointer-events: auto;
+      background: rgba(0,0,0,0.65);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 0 25px rgba(0, 255, 255, 0.08);
+      backdrop-filter: blur(6px);
+    }
+
+    .centerScreen {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(760px, 92vw);
+      max-height: 85vh;
+      overflow: auto;
+    }
+
+    .hidden { display: none !important; }
+
+    h1 {
+      margin: 0 0 12px 0;
+      font-size: 26px;
+      letter-spacing: 1px;
+      color: #c8f7ff;
+    }
+
+    .sub {
+      opacity: 0.75;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    input {
+      padding: 12px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      color: white;
+      outline: none;
+      font-size: 14px;
+    }
+
+    input::placeholder { opacity: 0.5; }
+
+    .btnRow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-weight: bold;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: transform 0.12s ease, opacity 0.12s ease;
+    }
+    button:hover { transform: translateY(-1px); opacity: 0.95; }
+
+    .primary {
+      background: linear-gradient(90deg, #1abc9c, #00d4ff);
+      color: #000;
+    }
+    .secondary {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.14);
+    }
+    .danger {
+      background: rgba(231,76,60,0.18);
+      border: 1px solid rgba(231,76,60,0.35);
+      color: #fff;
+    }
+
+    .status {
+      margin-top: 12px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      opacity: 0.8;
+      min-height: 16px;
+    }
+
+    /* Lobby list */
+    .lobbyGrid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .codeBox {
+      font-family: Consolas, monospace;
+      font-size: 26px;
+      letter-spacing: 4px;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(0,0,0,0.6);
+      border: 1px solid rgba(0,255,255,0.25);
+      color: #00eaff;
+      text-align: center;
+      user-select: all;
+    }
+
+    .plist {
+      margin-top: 10px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+
+    .pitem {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.05);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      font-size: 13px;
+    }
+
+    .pitem:nth-child(odd) { background: rgba(255,255,255,0.03); }
+
+    .tagHost {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(0,255,255,0.14);
+      border: 1px solid rgba(0,255,255,0.25);
+      color: #9ffcff;
+    }
+
+    /* Top HUD during gameplay */
+    #topHUD {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      pointer-events: none;
+    }
+    .pill {
+      pointer-events: none;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.12);
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    /* End screen stats */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      text-align: left;
+    }
+    th { opacity: 0.8; font-size: 12px; }
+
+    @media(max-width: 700px) {
+      .row { grid-template-columns: 1fr; }
+      .lobbyGrid { grid-template-columns: 1fr; }
+      .codeBox { font-size: 22px; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Multiplayer scripts -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+  <!-- CONFIG -->
+  <script src="./core/game-config.js"></script>
+  <script src="./config/config.world.js"></script>
+  <script src="./config/config.physics.js"></script>
+
+  <!-- ENGINE -->
+  <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
+  <script src="./engine/map.js"></script>
+  <script src="./engine/camera-system.js"></script>
+  <script src="./engine/models.js"></script>
+
+  <!-- UI / AUDIO -->
+  <script src="./ui/ui-manager.js"></script>
+  <script src="./ui/minimap-system.js"></script>
+  <script src="./audio/sfx-manager.js"></script>
+  <script src="./audio/music-manager.js"></script>
+
+  <!-- GAMEPLAY -->
+  <script src="./gameplay/input-manager.js"></script>
+  <script src="./gameplay/player-controller.js"></script>
+  <script src="./gameplay/bullet-system.js"></script>
+  <script src="./gameplay/weapon-system.js"></script>
+
+  <!-- MP -->
+  <script src="./multiplayer/mp-state.js"></script>
+  <script src="./multiplayer/mp-client.js"></script>
+
+  <!-- CORE -->
+  <script src="./core/game-manager.js"></script>
+
+  <!-- ENTRY -->
+  <script src="./gameplay/multiplayer-main.js"></script>
+
+  <!-- UI ROOT -->
+  <div id="uiRoot">
+    <!-- Top HUD -->
+    <div id="topHUD" class="hidden">
+      <div class="pill" id="hudRoom">ROOM: ----</div>
+      <div class="pill" id="hudName">YOU: ----</div>
+      <div class="pill" id="hudInfo">STATUS: LOBBY</div>
+    </div>
+
+    <!-- MAIN MENU / JOIN -->
+    <div id="screenJoin" class="panel centerScreen">
+      <h1>🌐 Multiplayer Uplink</h1>
+      <div class="sub">
+        Create a lobby or join with a 4-letter code. Host can start the game.
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Player Name</label>
+          <input id="inpName" placeholder="Enter IGN (example: Avi)" maxlength="14" />
+        </div>
+
+        <div class="field">
+          <label>Lobby Code</label>
+          <input id="inpCode" placeholder="AB12" maxlength="4" />
+        </div>
+      </div>
+
+      <div class="btnRow">
+        <button id="btnCreate" class="primary">CREATE LOBBY</button>
+        <button id="btnJoin" class="secondary">JOIN LOBBY</button>
+        <button id="btnBack" class="danger">⬅ BACK TO MENU</button>
+      </div>
+
+      <div class="status" id="joinStatus"></div>
+    </div>
+
+    <!-- LOBBY SCREEN -->
+    <div id="screenLobby" class="panel centerScreen hidden">
+      <h1>🛫 Lobby</h1>
+      <div class="sub">Share code with friends. Host must start.</div>
+
+      <div class="lobbyGrid">
+        <div>
+          <div style="font-size:12px; opacity:0.7; margin-bottom:6px;">LOBBY CODE</div>
+          <div id="lobbyCode" class="codeBox">----</div>
+
+          <div style="margin-top:14px" class="btnRow">
+            <button id="btnStart" class="primary">START GAME</button>
+            <button id="btnLeave" class="danger">LEAVE</button>
+          </div>
+
+          <div class="status" id="lobbyStatus"></div>
+        </div>
+
+        <div>
+          <div style="font-size:12px; opacity:0.7; margin-bottom:6px;">PLAYERS</div>
+          <div id="playerList" class="plist"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- END SCREEN -->
+    <div id="screenEnd" class="panel centerScreen hidden">
+      <h1 id="endTitle">🏁 Match Finished</h1>
+      <div class="sub" id="endSub">Stats:</div>
+
+      <table id="statsTable">
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>Kills</th>
+            <th>Deaths</th>
+            <th>Rings</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody id="statsBody"></tbody>
+      </table>
+
+      <div style="margin-top:14px" class="btnRow">
+        <button id="btnReplay" class="primary">▶ REPLAY</button>
+        <button id="btnEndBack" class="danger">⬅ MAIN MENU</button>
+      </div>
+
+      <div class="status" id="endStatus"></div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================================
+    // Multiplayer UI Controller (FINAL)
+    // ==========================================================
+
+    const el = (id) => document.getElementById(id);
+
+    const screenJoin = el("screenJoin");
+    const screenLobby = el("screenLobby");
+    const screenEnd = el("screenEnd");
+    const topHUD = el("topHUD");
+
+    const inpName = el("inpName");
+    const inpCode = el("inpCode");
+
+    const joinStatus = el("joinStatus");
+    const lobbyStatus = el("lobbyStatus");
+
+    const lobbyCode = el("lobbyCode");
+    const playerList = el("playerList");
+
+    const btnCreate = el("btnCreate");
+    const btnJoin = el("btnJoin");
+    const btnBack = el("btnBack");
+
+    const btnStart = el("btnStart");
+    const btnLeave = el("btnLeave");
+
+    const endTitle = el("endTitle");
+    const endSub = el("endSub");
+    const statsBody = el("statsBody");
+
+    const btnReplay = el("btnReplay");
+    const btnEndBack = el("btnEndBack");
+    const endStatus = el("endStatus");
+
+    const hudRoom = el("hudRoom");
+    const hudName = el("hudName");
+    const hudInfo = el("hudInfo");
+
+    // Global mp references (created in multiplayer-main.js)
+    // window.mpClient
+    // window.mpUIBridge  (we will create below)
+
+    function showOnly(screen) {
+      [screenJoin, screenLobby, screenEnd].forEach(s => s.classList.add("hidden"));
+      screen.classList.remove("hidden");
+    }
+
+    function setStatus(text, isError = false) {
+      joinStatus.innerText = text || "";
+      joinStatus.style.color = isError ? "#ff7777" : "rgba(255,255,255,0.85)";
+    }
+
+    function setLobbyStatus(text, isError = false) {
+      lobbyStatus.innerText = text || "";
+      lobbyStatus.style.color = isError ? "#ff7777" : "rgba(255,255,255,0.85)";
+    }
+
+    function sanitizeCode(v) {
+      return (v || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
+    }
+
+    inpCode.addEventListener("input", () => {
+      inpCode.value = sanitizeCode(inpCode.value);
+    });
+
+    btnBack.onclick = () => {
+      window.location.href = "./index.html";
+    };
+
+    btnEndBack.onclick = () => {
+      window.location.href = "./index.html";
+    };
+
+    btnCreate.onclick = () => {
+      const name = (inpName.value || "Pilot").trim();
+      if (!window.mpClient) return setStatus("MPClient not ready.", true);
+
+      setStatus("Creating lobby...");
+      window.mpClient.createRoom(name);
+    };
+
+    btnJoin.onclick = () => {
+      const name = (inpName.value || "Pilot").trim();
+      const code = sanitizeCode(inpCode.value);
+
+      if (!code || code.length !== 4) return setStatus("Enter valid 4-letter code.", true);
+      if (!window.mpClient) return setStatus("MPClient not ready.", true);
+
+      setStatus("Joining lobby...");
+      window.mpClient.joinRoom(code, name);
+    };
+
+    btnLeave.onclick = () => {
+      window.location.reload(); // simplest stable
+    };
+
+    btnStart.onclick = () => {
+      if (!window.mpClient?.roomId) return;
+      window.mpClient.startGame();
+      setLobbyStatus("Starting game...");
+    };
+
+    btnReplay.onclick = () => {
+      if (!window.mpClient?.roomId) return;
+      endStatus.innerText = "Requesting replay...";
+      endStatus.style.opacity = 0.85;
+
+      // server will create new room and notify group
+      window.mpClient.socket.emit("mp_replay", { roomId: window.mpClient.roomId });
+    };
+
+    // ==========================================================
+    // UI Bridge: Multiplayer-main.js will call these hooks
+    // ==========================================================
+    window.mpUIBridge = {
+      onConnected() {
+        setStatus("✅ Connected. Create or join a lobby.");
+      },
+
+      onDisconnected(reason) {
+        setStatus("❌ Disconnected: " + reason, true);
+        showOnly(screenJoin);
+        topHUD.classList.add("hidden");
+      },
+
+      onLobbyUpdate(msg) {
+        // msg: { type, roomId, players, hostId, seed, isHost }
+        showOnly(screenLobby);
+
+        topHUD.classList.remove("hidden");
+        hudRoom.innerText = `ROOM: ${msg.roomId || "----"}`;
+        hudName.innerText = `YOU: ${(inpName.value || "Pilot").trim()}`;
+        hudInfo.innerText = "STATUS: LOBBY";
+
+        lobbyCode.innerText = msg.roomId || "----";
+
+        const myId = window.mpClient?.clientId;
+        const isHost = msg.hostId && myId && msg.hostId === myId;
+
+        btnStart.style.display = isHost ? "inline-block" : "none";
+
+        // Players list render
+        playerList.innerHTML = "";
+        (msg.players || []).forEach(p => {
+          const row = document.createElement("div");
+          row.className = "pitem";
+          row.innerHTML = `
+            <div>${p.name || "Pilot"}</div>
+            <div>${(p.id === msg.hostId) ? "<span class='tagHost'>HOST</span>" : ""}</div>
+          `;
+          playerList.appendChild(row);
+        });
+
+        setLobbyStatus(isHost ? "✅ You are Host. Press START when ready." : "Waiting for host to start...");
+      },
+
+      onGameStart(info) {
+        // info: { seed, tickRate }
+        screenJoin.classList.add("hidden");
+        screenLobby.classList.add("hidden");
+        screenEnd.classList.add("hidden");
+
+        topHUD.classList.remove("hidden");
+        hudInfo.innerText = "STATUS: PLAYING";
+        endStatus.innerText = "";
+      },
+
+      onGameOver(msg) {
+        // msg: { winner, stats:[] }
+        showOnly(screenEnd);
+
+        topHUD.classList.add("hidden");
+
+        endTitle.innerText = `🏆 Winner: ${msg.winner || "Unknown"}`;
+        endSub.innerText = "Match stats (Kills / Deaths / Rings / Score):";
+
+        // fill stats
+        const rows = Array.isArray(msg.stats) ? msg.stats.slice() : [];
+        rows.sort((a, b) => (b.score - a.score));
+
+        statsBody.innerHTML = rows.map(r => `
+          <tr>
+            <td>${r.name || "Pilot"}</td>
+            <td>${r.kills ?? 0}</td>
+            <td>${r.deaths ?? 0}</td>
+            <td>${r.rings ?? 0}</td>
+            <td>${r.score ?? 0}</td>
+          </tr>
+        `).join("");
+
+        endStatus.innerText = "Press REPLAY to create/join new lobby with same group.";
+      },
+
+      onError(text) {
+        setStatus("❌ " + text, true);
+      }
+    };
+
+    // Start in join screen
+    showOnly(screenJoin);
+    setStatus("Connecting...");
+  </script>
+</body>
+</html>
