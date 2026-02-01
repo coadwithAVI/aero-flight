@@ -1,743 +1,590 @@
 // ==========================================
-// PATH: server.js
+// PATH: gameplay/multiplayer-main.js
 // ==========================================
 
-const express = require("express");
-const app = express();
-const http = require("http");
-const server = http.createServer(app);
-const { Server } = require("socket.io");
-const path = require("path");
-const fs = require("fs");
-
-// ==========================================================
-// CONFIG
-// ==========================================================
-const PORT = process.env.PORT || 10000;
-
-const SERVER_TICK_RATE = 20;             // ✅ Minecraft style 20 TPS
-const TICK_INTERVAL_MS = 1000 / SERVER_TICK_RATE;
-
-const MAX_PLAYERS_PER_ROOM = 8;
-
-// Multiplayer rules
-const MP_RULES = {
-  RINGS_PER_LAP: 4,
-  TOTAL_LAPS_TO_WIN: 2, // ✅ 2 laps win
-  BULLET_DAMAGE: 5,
-  RESPAWN_DELAY_MS: 3000,
-
-  SCORE_RING: 100,
-  SCORE_KILL: 10,
-
-  BULLET_LIFETIME_MS: 2000
-};
-
-// ==========================================================
-// PUBLIC FOLDER AUTO DETECT
-// ==========================================================
-let staticFolderName = "public";
-
-if (fs.existsSync(path.join(__dirname, "Public"))) {
-  staticFolderName = "Public";
-  console.log("📂 Folder Found: 'Public' (Capital Case)");
-} else if (fs.existsSync(path.join(__dirname, "public"))) {
-  staticFolderName = "public";
-  console.log("📂 Folder Found: 'public' (Lower Case)");
-} else {
-  console.error("❌ CRITICAL ERROR: No 'public/Public' folder found!");
-}
-
-const publicPath = path.join(__dirname, staticFolderName);
-
-// Static serve
-app.use(express.static(publicPath));
-
-// Root route
-app.get("/", (req, res) => {
-  const indexPath = path.join(publicPath, "index.html");
-  if (fs.existsSync(indexPath)) res.sendFile(indexPath);
-  else res.status(404).send("Error: index.html not found!");
-});
-
-// ==========================================================
-// SOCKET.IO SETUP
-// ==========================================================
-const io = new Server(server, {
-  cors: { origin: "*" },
-  transports: ["websocket", "polling"]
-});
-
-// ==========================================================
-// HELPERS
-// ==========================================================
-function nowMs() {
-  return Date.now();
-}
-
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
-
-// Lobby code: 4 letters/digits
-function makeRoomId() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let out = "";
-  for (let i = 0; i < 4; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
-}
-
-// ==========================================================
-// ROOM STATE
-// ==========================================================
 /**
- * rooms = {
- *   CODE: {
- *     id,
- *     hostId,
- *     status: "lobby"|"playing"|"finished",
- *     seed,
- *     tick,
- *     createdAt,
- *     players: [],
- *     bullets: [],
- *     replayHostRoomId: null,   // replay logic
- *     replayGroupId: null       // group for replay join
- *   }
- * }
+ * Multiplayer Main (FINAL - STABLE)
+ *
+ * Goals achieved:
+ * ✅ NO require/import (browser safe)
+ * ✅ Works with Render deployment
+ * ✅ Lobby: Create / Join + Host Start
+ * ✅ Semi-authoritative movement:
+ *    - client sends transforms
+ *    - server ticks 20/s
+ *    - MPState smooths remote players
+ * ✅ Hybrid bullets:
+ *    - local bullets smooth
+ *    - server broadcast event for remote bullets
+ * ✅ Race:
+ *    - 1 lap = 4 rings
+ *    - win = 2 laps (8 rings)
+ * ✅ Respawn:
+ *    - 3 sec delay
+ *    - hp full
+ *    - rings NOT reset
+ *    - score stays
  */
-const rooms = {};
 
-/**
- * Replay groups:
- * groupId -> { hostRoomId, playersWanted:Set(socketId) }
- */
-const replayGroups = {};
-
-// ==========================================================
-// PLAYER OBJECT
-// ==========================================================
-function createDefaultPlayer(socketId, name, isHost = false) {
-  return {
-    id: socketId,
-    name: (name || "Pilot").substring(0, 14),
-
-    isHost: !!isHost,
-
-    // game state
-    hp: 100,
-    alive: true,
-    respawnAt: 0,
-
-    rings: 0,
-    kills: 0,
-    deaths: 0,
-    score: 0,
-
-    // transform
-    p: { x: 0, y: 250, z: 0 },
-    q: { x: 0, y: 0, z: 0, w: 1 },
-
-    lastTransformAt: nowMs(),
-    connected: true
-  };
-}
-
-// ==========================================================
-// SNAPSHOTS
-// ==========================================================
-function roomSnapshot(room) {
-  return {
-    t: "STATE",
-    roomId: room.id,
-    status: room.status,
-    tick: room.tick,
-    time: nowMs(),
-    seed: room.seed,
-    rules: MP_RULES,
-    players: room.players.map((p) => ({
-      id: p.id,
-      name: p.name,
-      hp: p.hp,
-      alive: p.alive,
-      rings: p.rings,
-      kills: p.kills,
-      deaths: p.deaths,
-      score: p.score,
-      p: p.p,
-      q: p.q
-    })),
-    bullets: room.bullets.map((b) => ({
-      id: b.id,
-      ownerId: b.ownerId,
-      createdAt: b.createdAt,
-      p: b.p,
-      q: b.q
-    }))
-  };
-}
-
-function emitLobbyUpdate(roomId) {
-  const room = rooms[roomId];
-  if (!room) return;
-
-  io.to(roomId).emit("mp_lobby_update", {
-    roomId,
-    hostId: room.hostId,
-    status: room.status,
-    players: room.players.map((p) => ({
-      id: p.id,
-      name: p.name,
-      isHost: p.isHost,
-      hp: p.hp,
-      rings: p.rings,
-      kills: p.kills,
-      deaths: p.deaths,
-      score: p.score
-    }))
-  });
-}
-
-function computeWinner(room) {
-  let best = null;
-
-  for (const p of room.players) {
-    if (!best) best = p;
-    else {
-      // primary rings, secondary score
-      if (p.rings > best.rings) best = p;
-      else if (p.rings === best.rings && p.score > best.score) best = p;
-    }
-  }
-
-  return best ? best.name : "Pilot";
-}
-
-function computeStats(room) {
-  return room.players.map((p) => ({
-    id: p.id,
-    name: p.name,
-    rings: p.rings,
-    kills: p.kills,
-    deaths: p.deaths,
-    score: p.score
-  }));
-}
-
-// ==========================================================
-// ROOM CREATE/DELETE
-// ==========================================================
-function makeRoom() {
-  // ensure unique
-  let id = makeRoomId();
-  while (rooms[id]) id = makeRoomId();
-
-  return {
-    id,
-    hostId: null,
-    status: "lobby",
-    seed: Math.floor(Math.random() * 100000),
-
-    tick: 0,
-    createdAt: nowMs(),
-
-    players: [],
-    bullets: [],
-
-    replayGroupId: null
-  };
-}
-
-function deleteRoom(roomId) {
-  if (!rooms[roomId]) return;
-  delete rooms[roomId];
-  console.log(`[ROOM] Deleted room ${roomId}`);
-}
-
-// ==========================================================
-// GAME OVER
-// ==========================================================
-function endGame(room, winnerName = null) {
-  if (!room) return;
-  room.status = "finished";
-
-  const winner = winnerName || computeWinner(room);
-  const stats = computeStats(room);
-
-  io.to(room.id).emit("mp_game_over", {
-    winner,
-    stats
-  });
-
-  console.log(`[ROOM] ${room.id} finished. Winner: ${winner}`);
-}
-
-// ==========================================================
-// TICK LOOP
-// ==========================================================
-setInterval(() => {
-  const t = nowMs();
-
-  for (const roomId in rooms) {
-    const room = rooms[roomId];
-    if (!room) continue;
-
-    if (room.status !== "playing") continue;
-
-    room.tick++;
-
-    // bullets cleanup
-    room.bullets = room.bullets.filter((b) => (t - b.createdAt) < MP_RULES.BULLET_LIFETIME_MS);
-
-    // respawn check
-    for (const p of room.players) {
-      if (!p.alive && p.respawnAt > 0 && t >= p.respawnAt) {
-        p.hp = 100;
-        p.alive = true;
-        p.respawnAt = 0;
-
-        io.to(room.id).emit("mp_event", {
-          t: "EVENT",
-          type: "RESPAWN",
-          id: p.id
-        });
-
-        io.to(p.id).emit("mp_damage", { victimId: p.id, hp: p.hp });
-
-        console.log(`[RESPAWN] ${p.name} in room ${room.id}`);
-      }
-    }
-
-    // broadcast snapshot
-    io.to(roomId).emit("mp_state", roomSnapshot(room));
-  }
-}, TICK_INTERVAL_MS);
-
-// ==========================================================
-// SOCKET EVENTS
-// ==========================================================
-io.on("connection", (socket) => {
-  console.log(`[CONNECT] ${socket.id}`);
-  socket.emit("mp_welcome", { id: socket.id });
-
-  // ----------------------------------
-  // CREATE ROOM
-  // ----------------------------------
-  socket.on("mp_create_room", ({ name }) => {
-    const room = makeRoom();
-    room.hostId = socket.id;
-
-    const player = createDefaultPlayer(socket.id, name, true);
-    room.players.push(player);
-
-    rooms[room.id] = room;
-    socket.join(room.id);
-
-    socket.emit("mp_room_created", {
-      roomId: room.id,
-      players: room.players,
-      isHost: true,
-      hostId: room.hostId,
-      seed: room.seed,
-      rules: MP_RULES
-    });
-
-    emitLobbyUpdate(room.id);
-
-    console.log(`[ROOM] Created ${room.id} by ${socket.id}`);
-  });
-
-  // ----------------------------------
-  // JOIN ROOM
-  // ----------------------------------
-  socket.on("mp_join_room", ({ roomId, name }) => {
-    const rId = String(roomId || "").toUpperCase();
-    const room = rooms[rId];
-
-    if (!room) {
-      socket.emit("mp_error", { msg: "Room not found." });
-      return;
-    }
-    if (room.status !== "lobby") {
-      socket.emit("mp_error", { msg: "Game already started." });
-      return;
-    }
-    if (room.players.length >= MAX_PLAYERS_PER_ROOM) {
-      socket.emit("mp_error", { msg: "Room full." });
-      return;
-    }
-
-    const player = createDefaultPlayer(socket.id, name, false);
-    room.players.push(player);
-
-    socket.join(rId);
-
-    socket.emit("mp_room_joined", {
-      roomId: rId,
-      players: room.players,
-      hostId: room.hostId,
-      seed: room.seed,
-      rules: MP_RULES
-    });
-
-    emitLobbyUpdate(rId);
-
-    console.log(`[ROOM] ${socket.id} joined ${rId}`);
-  });
-
-  // ----------------------------------
-  // LEAVE ROOM (manual)
-  // ----------------------------------
-  socket.on("mp_leave_room", ({ roomId }) => {
-    const rId = String(roomId || "").toUpperCase();
-    const room = rooms[rId];
-    if (!room) return;
-
-    // remove player
-    const idx = room.players.findIndex((p) => p.id === socket.id);
-    if (idx === -1) return;
-
-    const wasHost = room.hostId === socket.id;
-
-    room.players.splice(idx, 1);
-    socket.leave(rId);
-
-    io.to(rId).emit("mp_event", { t: "EVENT", type: "PLAYER_LEFT", id: socket.id });
-    emitLobbyUpdate(rId);
-
-    // host migration
-    if (wasHost && room.players.length > 0) {
-      room.hostId = room.players[0].id;
-      room.players.forEach((p) => (p.isHost = false));
-      room.players[0].isHost = true;
-
-      emitLobbyUpdate(rId);
-    }
-
-    // empty room delete
-    if (room.players.length === 0) deleteRoom(rId);
-
-    console.log(`[ROOM] ${socket.id} left ${rId}`);
-  });
-
-  // ----------------------------------
-  // START GAME (host only)
-  // ----------------------------------
-  socket.on("mp_start_game", ({ roomId }) => {
-    const rId = String(roomId || "").toUpperCase();
-    const room = rooms[rId];
-    if (!room) return;
-
-    if (room.hostId !== socket.id) return;
-    if (room.status !== "lobby") return;
-
-    room.status = "playing";
-    room.tick = 0;
-
-    // reset HP/alive only (rings+score stays if re-start in same lobby? Here new game start => keep scoreboard? You want persistent? We'll keep rings reset only at game start)
-    room.players.forEach((p) => {
-      p.hp = 100;
-      p.alive = true;
-      p.respawnAt = 0;
-      p.rings = 0;
-      p.kills = 0;
-      p.deaths = 0;
-      p.score = 0;
-    });
-
-    io.to(rId).emit("mp_game_start", {
-      seed: room.seed,
-      tickRate: SERVER_TICK_RATE,
-      rules: MP_RULES
-    });
-
-    emitLobbyUpdate(rId);
-
-    console.log(`[ROOM] ${rId} started by host ${socket.id}`);
-  });
-
-  // ----------------------------------
-  // TRANSFORM (semi-authoritative)
-  // ----------------------------------
-  socket.on("mp_transform", (data) => {
-    if (!data || !data.roomId) return;
-
-    const rId = String(data.roomId).toUpperCase();
-    const room = rooms[rId];
-    if (!room || room.status !== "playing") return;
-
-    const p = room.players.find((pp) => pp.id === socket.id);
-    if (!p) return;
-    if (!p.alive) return;
-
-    const pos = data.p;
-    const quat = data.q;
-
-    if (pos && typeof pos.x === "number") {
-      // clamp safe bounds
-      p.p = {
-        x: clamp(pos.x, -100000, 100000),
-        y: clamp(pos.y, 0, 5000),
-        z: clamp(pos.z, -100000, 100000)
-      };
-      p.lastTransformAt = nowMs();
-    }
-
-    if (quat && typeof quat.w === "number") {
-      p.q = quat;
-    }
-  });
-
-  // ----------------------------------
-  // FIRE (authoritative bullet list)
-  // ----------------------------------
-  socket.on("mp_fire", (data) => {
-    if (!data || !data.roomId) return;
-
-    const rId = String(data.roomId).toUpperCase();
-    const room = rooms[rId];
-    if (!room || room.status !== "playing") return;
-
-    const shooter = room.players.find((p) => p.id === socket.id);
-    if (!shooter || !shooter.alive) return;
-
-    const bulletId = Math.random().toString(36).substring(2, 10);
-
-    const p = data.p || shooter.p;
-    const q = data.q || shooter.q;
-
-    room.bullets.push({
-      id: bulletId,
-      ownerId: socket.id,
-      createdAt: nowMs(),
-      p: {
-        x: clamp(p.x, -100000, 100000),
-        y: clamp(p.y, 0, 5000),
-        z: clamp(p.z, -100000, 100000)
+window.addEventListener("load", () => {
+  console.log("🌐 Multiplayer Mode Booting...");
+
+  // ----------------------------------------------------------
+  // 0) Helpers
+  // ----------------------------------------------------------
+  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+
+  // ----------------------------------------------------------
+  // 1) Game Core Init
+  // ----------------------------------------------------------
+  const game = new GameManager();
+  game.init();
+  window.game = game;
+
+  // Ensure UI exists
+  if (!game.uiManager) game.uiManager = new UIManager();
+
+  // Audio optional
+  if (!game.procAudio && typeof ProceduralAudio !== "undefined") {
+    game.procAudio = new ProceduralAudio();
+    window.addEventListener(
+      "click",
+      async () => {
+        if (game.procAudio) await game.procAudio.unlock();
       },
-      q
+      { once: true }
+    );
+  }
+
+  // ----------------------------------------------------------
+  // 2) Multiplayer state + client
+  // ----------------------------------------------------------
+  const mpState = new MPState(game.scene, {
+    modelFactory: typeof ModelFactory !== "undefined" ? new ModelFactory() : null,
+    debug: false
+  });
+
+  const mpClient = new MPClient({
+    mpState,
+    game,
+    debug: true,
+
+    onConnected: () => {
+      console.log("✅ Connected to server.");
+      showLobbyUI();
+    },
+
+    onDisconnected: (reason) => {
+      console.warn("❌ Disconnected:", reason);
+      showError("Disconnected.");
+      showLobbyUI();
+    },
+
+    onLobbyUpdate: (msg) => {
+      // msg: {type, roomId, players, hostId, seed, isHost}
+      renderLobby(msg);
+    },
+
+    onGameStart: (msg) => {
+      console.log("🎮 Game Start:", msg);
+      game.isPaused = false;
+      hideLobbyUI();
+      ensureSpawnLocalPlayer();
+      ensureRingSystem(msg.seed);
+      showHUDOnly();
+    },
+
+    onGameOver: (msg) => {
+      console.log("🏁 Game Over:", msg);
+      showEndScreen(msg);
+    },
+
+    onError: (txt) => {
+      showError(txt);
+    }
+  });
+
+  mpClient.connect();
+
+  // ----------------------------------------------------------
+  // 3) Multiplayer UI (Create/Join/Start/Leave)
+  // ----------------------------------------------------------
+  let lobbyUI = null;
+  let lobbyRoomId = null;
+  let lobbyPlayers = [];
+  let amHost = false;
+
+  function showLobbyUI() {
+    if (lobbyUI) return;
+
+    lobbyUI = document.createElement("div");
+    lobbyUI.id = "mpLobbyUI";
+    Object.assign(lobbyUI.style, {
+      position: "absolute",
+      top: "0",
+      left: "0",
+      width: "100%",
+      height: "100%",
+      background: "rgba(0,0,0,0.75)",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 9999,
+      fontFamily: "Rajdhani, Arial, sans-serif",
+      color: "white"
     });
 
-    // broadcast fire event for SFX
-    io.to(rId).emit("mp_event", { t: "EVENT", type: "FIRE", ownerId: socket.id });
-  });
+    lobbyUI.innerHTML = `
+      <div style="
+        width:min(520px,92vw);
+        background:rgba(0,0,0,0.55);
+        border:1px solid rgba(255,255,255,0.15);
+        border-radius:16px;
+        padding:18px;
+        box-shadow:0 0 30px rgba(0,255,255,0.10);
+      ">
+        <div style="font-size:34px;font-weight:800;letter-spacing:2px;margin-bottom:8px;">
+          MULTIPLAYER
+        </div>
+        <div style="opacity:.8;margin-bottom:14px;font-size:13px;">
+          Create lobby or join via code. Host can start match.
+        </div>
 
-  // ----------------------------------
-  // HIT REPORT (client -> server)
-  // Server decides damage & kill
-  // ----------------------------------
-  socket.on("mp_hit", (data) => {
-    if (!data || !data.roomId) return;
+        <div style="display:grid;grid-template-columns:1fr;gap:10px;">
+          <input id="mpName" placeholder="Name (IGN)" maxlength="12"
+            style="padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.15);
+            background:rgba(255,255,255,0.07);color:white;font-size:16px;outline:none"/>
 
-    const rId = String(data.roomId).toUpperCase();
-    const room = rooms[rId];
-    if (!room || room.status !== "playing") return;
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <button id="mpCreateBtn" style="${btnStylePrimary()}">CREATE</button>
 
-    const attackerId = data.attackerId;
-    const victimId = data.victimId;
+            <div style="display:flex;gap:10px;">
+              <input id="mpCode" placeholder="CODE" maxlength="4"
+                style="flex:1;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.15);
+                background:rgba(255,255,255,0.07);color:white;font-size:16px;outline:none;text-transform:uppercase"/>
+              <button id="mpJoinBtn" style="${btnStyle()}">JOIN</button>
+            </div>
+          </div>
 
-    if (!attackerId || !victimId) return;
-    if (attackerId !== socket.id) return; // anti spoof
-    if (attackerId === victimId) return;
+          <div id="mpError" style="min-height:20px;color:#ff6666;font-size:13px;"></div>
 
-    const attacker = room.players.find((p) => p.id === attackerId);
-    const victim = room.players.find((p) => p.id === victimId);
-    if (!attacker || !victim) return;
+          <div style="margin-top:8px;padding:10px;border-radius:12px;background:rgba(255,255,255,0.06);
+            border:1px solid rgba(255,255,255,0.12);">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+              <div>
+                <div style="font-weight:800;letter-spacing:2px;">LOBBY</div>
+                <div id="mpRoomLine" style="opacity:.85;font-size:13px;">Not in room</div>
+              </div>
 
-    if (!attacker.alive) return;
-    if (!victim.alive) return;
+              <div style="display:flex;gap:10px;">
+                <button id="mpStartBtn" style="${btnStylePrimary()}">START</button>
+                <button id="mpLeaveBtn" style="${btnStyleDanger()}">LEAVE</button>
+              </div>
+            </div>
 
-    const damage = MP_RULES.BULLET_DAMAGE;
+            <div id="mpPlayers" style="margin-top:10px;font-family:Consolas, monospace;font-size:13px;opacity:.95"></div>
+          </div>
 
-    victim.hp -= damage;
+          <div style="display:flex;gap:10px;margin-top:12px;">
+            <button id="mpBackBtn" style="${btnStyle()}">BACK</button>
+          </div>
+        </div>
+      </div>
+    `;
 
-    // send updated hp to victim immediately
-    io.to(victim.id).emit("mp_damage", { victimId: victim.id, hp: victim.hp });
+    document.body.appendChild(lobbyUI);
 
-    // kill?
-    if (victim.hp <= 0) {
-      victim.hp = 0;
-      victim.alive = false;
-      victim.deaths++;
-      victim.respawnAt = nowMs() + MP_RULES.RESPAWN_DELAY_MS;
+    const $ = (id) => lobbyUI.querySelector(id);
 
-      attacker.kills++;
-      attacker.score += MP_RULES.SCORE_KILL;
+    const nameInput = $("#mpName");
+    const codeInput = $("#mpCode");
+    const errorBox = $("#mpError");
 
-      io.to(rId).emit("mp_event", {
-        t: "EVENT",
-        type: "KILL",
-        attackerId: attacker.id,
-        victimId: victim.id
-      });
-
-      // broadcast updated stats quickly
-      io.to(rId).emit("mp_score_update", {
-        id: attacker.id,
-        rings: attacker.rings,
-        kills: attacker.kills,
-        deaths: attacker.deaths,
-        score: attacker.score
-      });
-      io.to(rId).emit("mp_score_update", {
-        id: victim.id,
-        rings: victim.rings,
-        kills: victim.kills,
-        deaths: victim.deaths,
-        score: victim.score
-      });
-
-      console.log(`[KILL] ${attacker.name} killed ${victim.name} in room ${rId}`);
-    }
-  });
-
-  // ----------------------------------
-  // RING CLAIM (sequential)
-  // ----------------------------------
-  socket.on("mp_claim_ring", ({ roomId, ringIndex }) => {
-    const rId = String(roomId || "").toUpperCase();
-    const room = rooms[rId];
-    if (!room || room.status !== "playing") return;
-
-    const player = room.players.find((p) => p.id === socket.id);
-    if (!player || !player.alive) return;
-
-    // sequential: expected ring = player.rings
-    const expectedIndex = player.rings;
-    if (ringIndex !== expectedIndex) return;
-
-    player.rings++;
-    player.score += MP_RULES.SCORE_RING;
-
-    io.to(rId).emit("mp_score_update", {
-      id: player.id,
-      rings: player.rings,
-      kills: player.kills,
-      deaths: player.deaths,
-      score: player.score
+    // defaults
+    nameInput.value = localStorage.getItem("MP_NAME") || "Pilot";
+    nameInput.addEventListener("input", () => {
+      localStorage.setItem("MP_NAME", nameInput.value);
     });
 
-    // win?
-    const totalRingsToWin = MP_RULES.RINGS_PER_LAP * MP_RULES.TOTAL_LAPS_TO_WIN;
-    if (player.rings >= totalRingsToWin) {
-      endGame(room, player.name);
-    }
-  });
+    const createBtn = $("#mpCreateBtn");
+    const joinBtn = $("#mpJoinBtn");
+    const startBtn = $("#mpStartBtn");
+    const leaveBtn = $("#mpLeaveBtn");
+    const backBtn = $("#mpBackBtn");
 
-  // ----------------------------------
-  // REPLAY REQUEST
-  // First player creates new room -> others auto join
-  // ----------------------------------
-  socket.on("mp_replay", ({ roomId }) => {
-    const rId = String(roomId || "").toUpperCase();
-    const oldRoom = rooms[rId];
-    if (!oldRoom) return;
+    createBtn.onclick = () => {
+      clearError();
+      const name = (nameInput.value || "Pilot").trim();
+      mpClient.createRoom(name);
+    };
 
-    // create group id if not exists
-    if (!oldRoom.replayGroupId) {
-      oldRoom.replayGroupId = Math.random().toString(36).substring(2, 9);
-      replayGroups[oldRoom.replayGroupId] = {
-        hostRoomId: null,
-        playersWanted: new Set()
-      };
-    }
+    joinBtn.onclick = () => {
+      clearError();
+      const name = (nameInput.value || "Wingman").trim();
+      const code = String(codeInput.value || "").trim().toUpperCase();
+      if (!code || code.length !== 4) return showError("Enter valid 4-letter code.");
+      mpClient.joinRoom(code, name);
+    };
 
-    const group = replayGroups[oldRoom.replayGroupId];
-    if (!group) return;
+    startBtn.onclick = () => {
+      clearError();
+      if (!amHost) return showError("Only host can start.");
+      if (!lobbyRoomId) return showError("Not in room.");
+      mpClient.startGame();
+    };
 
-    group.playersWanted.add(socket.id);
+    leaveBtn.onclick = () => {
+      clearError();
+      // easiest: reload multiplayer page (hard reset)
+      window.location.reload();
+    };
 
-    // if host room already exists -> force join
-    if (group.hostRoomId) {
-      socket.emit("mp_replay_join", { roomId: group.hostRoomId });
+    backBtn.onclick = () => {
+      window.location.href = "./index.html";
+    };
+
+    renderLobby(null);
+  }
+
+  function hideLobbyUI() {
+    if (!lobbyUI) return;
+    lobbyUI.remove();
+    lobbyUI = null;
+  }
+
+  function renderLobby(msg) {
+    if (!lobbyUI) return;
+
+    if (msg?.roomId) lobbyRoomId = msg.roomId;
+    if (msg?.players) lobbyPlayers = msg.players;
+    if (typeof msg?.isHost === "boolean") amHost = msg.isHost;
+
+    const roomLine = lobbyUI.querySelector("#mpRoomLine");
+    const playersBox = lobbyUI.querySelector("#mpPlayers");
+    const startBtn = lobbyUI.querySelector("#mpStartBtn");
+
+    if (!lobbyRoomId) {
+      roomLine.innerText = "Not in room";
+      playersBox.innerHTML = "";
+      startBtn.disabled = true;
+      startBtn.style.opacity = 0.5;
       return;
     }
 
-    // first replay caller becomes host creator
-    // create new room instantly
-    const newRoom = makeRoom();
-    newRoom.hostId = socket.id;
+    roomLine.innerHTML = `Room Code: <b style="color:#00f0ff">${lobbyRoomId}</b> ${
+      amHost ? "<span style='opacity:.7'>[HOST]</span>" : ""
+    }`;
 
-    const oldPlayer = oldRoom.players.find((p) => p.id === socket.id);
-    const playerName = oldPlayer?.name || "Pilot";
+    startBtn.disabled = !amHost;
+    startBtn.style.opacity = amHost ? 1 : 0.5;
 
-    const newPlayer = createDefaultPlayer(socket.id, playerName, true);
-    newRoom.players.push(newPlayer);
+    playersBox.innerHTML = (lobbyPlayers || [])
+      .map((p) => {
+        const hostTag = p.isHost ? " <span style='color:#00ff99'>(HOST)</span>" : "";
+        return `<div>• ${escapeHtml(p.name || "Pilot")}${hostTag}</div>`;
+      })
+      .join("");
+  }
 
-    rooms[newRoom.id] = newRoom;
-    socket.join(newRoom.id);
+  function showError(msg) {
+    if (!lobbyUI) return;
+    const err = lobbyUI.querySelector("#mpError");
+    if (err) err.innerText = msg;
+  }
 
-    group.hostRoomId = newRoom.id;
+  function clearError() {
+    if (!lobbyUI) return;
+    const err = lobbyUI.querySelector("#mpError");
+    if (err) err.innerText = "";
+  }
 
-    socket.emit("mp_room_created", {
-      roomId: newRoom.id,
-      players: newRoom.players,
-      isHost: true,
-      hostId: newRoom.hostId,
-      seed: newRoom.seed,
-      rules: MP_RULES
+  function btnStyle() {
+    return `
+      padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.15);
+      background:rgba(255,255,255,0.08);color:white;font-weight:900;letter-spacing:1px;
+      cursor:pointer;transition:.15s;`;
+  }
+  function btnStylePrimary() {
+    return `
+      padding:12px 14px;border-radius:12px;border:1px solid rgba(0,255,255,0.25);
+      background:rgba(0,255,255,0.15);color:#00f0ff;font-weight:900;letter-spacing:1px;
+      cursor:pointer;transition:.15s;`;
+  }
+  function btnStyleDanger() {
+    return `
+      padding:12px 14px;border-radius:12px;border:1px solid rgba(255,0,80,0.25);
+      background:rgba(255,0,80,0.12);color:#ff2f60;font-weight:900;letter-spacing:1px;
+      cursor:pointer;transition:.15s;`;
+  }
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
+  }
+
+  // ----------------------------------------------------------
+  // 4) Systems for MP gameplay
+  // ----------------------------------------------------------
+  const bulletSystem = new BulletSystem(game.scene);
+
+  const weaponSystem = new WeaponSystem(
+    game.playerController, // will be set after spawn
+    bulletSystem,
+    game.inputManager,
+    game.sfx,
+    {
+      fireRate: 14,          // mp faster feel
+      spread: 0.01,          // accurate
+      camera: game.camera,
+      screenAimAssist: true,
+      screenAimRadius: 0.75,     // ✅ wider angle (user request)
+      screenAimStrength: 0.90,   // ✅ strong assist
+      getTargets: () => mpState.getRemotePlayers().map((p) => p.mesh)
+    }
+  );
+
+  // Map + terrain injection
+  if (game.playerController && game.map?.terrainMesh) {
+    game.playerController.setTerrainMesh(game.map.terrainMesh);
+  }
+
+  // ----------------------------------------------------------
+  // 5) Rings (sequential + seeded)
+  // ----------------------------------------------------------
+  let ringSystem = null;
+  let ringSeed = null;
+
+  function ensureRingSystem(seed) {
+    if (ringSystem) return;
+
+    ringSeed = seed ?? ringSeed ?? 12345;
+
+    ringSystem = new RingSystem(game.scene, game.map?.terrainMesh, {
+      ringCount: 8,              // 2 laps * 4 rings
+      terrainClearance: 30,
+      seed: ringSeed
     });
 
-    emitLobbyUpdate(newRoom.id);
+    // IMPORTANT: Rings sequential (do not all appear)
+    // depends on your ring-system.js logic. if not present, we'll just rely on currentIndex.
 
-    // tell other replay players to join this room
-    for (const pid of group.playersWanted.values()) {
-      if (pid === socket.id) continue;
-      io.to(pid).emit("mp_replay_join", { roomId: newRoom.id });
+    ringSystem.onRingClaim = (ringIndex) => {
+      if (!mpClient.roomId) return;
+      mpClient.claimRing(ringIndex);
+    };
+  }
+
+  // ----------------------------------------------------------
+  // 6) Respawn system
+  // ----------------------------------------------------------
+  let respawnPending = false;
+  let respawnAt = 0;
+
+  function triggerRespawn() {
+    if (!game.playerController) return;
+
+    respawnPending = true;
+    respawnAt = performance.now() + 3000;
+
+    game.playerController.health = 0;
+    game.playerController.mesh.visible = false;
+
+    // stop boost noise
+    if (game.procAudio) game.procAudio.stopBoost();
+  }
+
+  function processRespawn() {
+    if (!respawnPending) return;
+    if (performance.now() < respawnAt) return;
+
+    respawnPending = false;
+
+    if (!game.playerController) return;
+
+    // Respawn at safe start
+    game.playerController.respawnInstant();
+
+    // Full hp
+    game.playerController.health = 100;
+
+    // Visible
+    if (game.playerController.mesh) game.playerController.mesh.visible = true;
+  }
+
+  // ----------------------------------------------------------
+  // 7) MP events handling (remote bullets smooth)
+  // ----------------------------------------------------------
+  // mp-state already receives mp_event via MPClient and calls mpState.applyServerEvent
+  // We'll also spawn local smooth bullets for remote FIRE events
+  mpClient.onEvent = (evt) => {
+    if (!evt || evt.type !== "FIRE") return;
+
+    // do not spawn for self (local already fires)
+    if (evt.ownerId === mpClient.clientId) return;
+
+    // remote shooter entity
+    const ent = mpState.players.get(evt.ownerId);
+    if (!ent?.mesh) return;
+
+    // spawn remote bullet locally (visual only)
+    const p = ent.mesh.position.clone();
+    const q = ent.mesh.quaternion.clone();
+    bulletSystem.fire(p, q);
+  };
+
+  // ----------------------------------------------------------
+  // 8) HUD control
+  // ----------------------------------------------------------
+  function showHUDOnly() {
+    // keep HUD, remove pause overlay if open
+    if (game.uiManager) game.uiManager.hidePause();
+  }
+
+  // ----------------------------------------------------------
+  // 9) Ensure player exists for MP mode
+  // ----------------------------------------------------------
+  function ensureSpawnLocalPlayer() {
+    // If already exists -> ok
+    if (game.playerController && game.playerController.mesh) {
+      weaponSystem.player = game.playerController;
+      return;
     }
 
-    console.log(`[REPLAY] New lobby ${newRoom.id} created by ${socket.id}`);
-  });
+    // If GameManager didn't spawn controller for some reason
+    if (typeof PlayerController !== "undefined") {
+      game.playerController = new PlayerController(game.scene, game.inputManager, game.camera);
+      weaponSystem.player = game.playerController;
 
-  // ----------------------------------
-  // DISCONNECT
-  // ----------------------------------
-  socket.on("disconnect", () => {
-    console.log(`[DISCONNECT] ${socket.id}`);
+      if (game.map?.terrainMesh) game.playerController.setTerrainMesh(game.map.terrainMesh);
 
-    // remove from any room
-    for (const rId in rooms) {
-      const room = rooms[rId];
-      if (!room) continue;
-
-      const idx = room.players.findIndex((p) => p.id === socket.id);
-      if (idx === -1) continue;
-
-      const wasHost = room.hostId === socket.id;
-
-      room.players.splice(idx, 1);
-
-      io.to(rId).emit("playerDisconnected", socket.id);
-      io.to(rId).emit("mp_event", { t: "EVENT", type: "PLAYER_LEFT", id: socket.id });
-
-      // delete empty rooms
-      if (room.players.length === 0) {
-        deleteRoom(rId);
-        break;
-      }
-
-      // host migration
-      if (wasHost) {
-        room.hostId = room.players[0].id;
-        room.players.forEach((p) => (p.isHost = false));
-        room.players[0].isHost = true;
-
-        emitLobbyUpdate(rId);
-      } else {
-        emitLobbyUpdate(rId);
-      }
-
-      break;
+      if (!game.cameraSystem) game.cameraSystem = new CameraSystem(game.camera);
+      game.cameraSystem.setTarget(game.playerController);
     }
-  });
-});
+  }
 
-// ==========================================================
-// START SERVER
-// ==========================================================
-server.listen(PORT, () => {
-  console.log(`✅ Server Running on Port: ${PORT}`);
-  console.log(`📂 Public Folder: '${staticFolderName}'`);
+  // ----------------------------------------------------------
+  // 10) Patch game loop for Multiplayer
+  // ----------------------------------------------------------
+  game.animate = function () {
+    if (!game.isRunning) return;
+    requestAnimationFrame(game.animate.bind(game));
+
+    if (game.isPaused) {
+      game.renderer.render(game.scene, game.camera);
+      return;
+    }
+
+    const dt = clamp(game.clock.getDelta(), 0.0, 0.05);
+
+    // input
+    if (game.inputManager?.update) game.inputManager.update(dt);
+
+    // local player
+    if (game.playerController) game.playerController.update(dt);
+
+    // Respawn processing
+    processRespawn();
+
+    // rings update
+    if (ringSystem && game.playerController?.mesh) {
+      ringSystem.update(dt, game.playerController.mesh);
+    }
+
+    // bullets
+    weaponSystem.update(dt);
+    bulletSystem.update(dt);
+
+    // send local transform (smooth)
+    if (game.playerController?.mesh) {
+      mpClient.sendTransform(game.playerController.mesh);
+
+      // Fire -> server authoritative event
+      if (game.inputManager?.getAction("fire")) {
+        mpClient.sendFire(game.playerController.mesh);
+      }
+    }
+
+    // smooth remote
+    mpState.update(dt);
+
+    // camera
+    if (game.cameraSystem) game.cameraSystem.update(dt);
+
+    // minimap
+    if (game.minimap && game.playerController?.mesh) {
+      game.minimap.update(
+        game.playerController.mesh,
+        mpState.getRemotePlayers().map((p) => p.mesh),
+        ringSystem ? ringSystem.rings : [],
+        ringSystem ? ringSystem.currentIndex : -1
+      );
+    }
+
+    // UI
+    if (game.uiManager) {
+      const hp = game.playerController ? (game.playerController.health ?? 100) : 100;
+      const boost = game.playerController
+        ? game.playerController.boostEnergy
+        : (typeof PHYSICS_CONFIG !== "undefined" ? PHYSICS_CONFIG.boostMax : 100);
+
+      game.uiManager.updateHealth(hp, 100);
+      game.uiManager.updateBoost(boost, (typeof PHYSICS_CONFIG !== "undefined" ? (PHYSICS_CONFIG.boostMax ?? 100) : 100));
+      // score not local here (server authoritative end screen)
+    }
+
+    // death check -> respawn delay
+    if (game.playerController && game.playerController.health <= 0 && !respawnPending) {
+      triggerRespawn();
+    }
+
+    // render
+    game.renderer.render(game.scene, game.camera);
+  };
+
+  // ----------------------------------------------------------
+  // 11) End Screen (simple)
+  // ----------------------------------------------------------
+  function showEndScreen(msg) {
+    game.isPaused = true;
+
+    const box = document.createElement("div");
+    Object.assign(box.style, {
+      position: "absolute",
+      inset: "0",
+      background: "rgba(0,0,0,0.8)",
+      display: "grid",
+      placeItems: "center",
+      zIndex: 10000,
+      fontFamily: "Rajdhani, Arial",
+      color: "white"
+    });
+
+    const winner = msg?.winner ? String(msg.winner) : "Unknown";
+
+    box.innerHTML = `
+      <div style="width:min(520px,92vw);background:rgba(0,0,0,0.55);
+        border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;">
+        <div style="font-size:34px;font-weight:900;letter-spacing:2px;margin-bottom:8px;">MATCH OVER</div>
+        <div style="opacity:.9;margin-bottom:18px;">Winner: <b style="color:#00f0ff">${escapeHtml(winner)}</b></div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button id="mpReplayBtn" style="${btnStylePrimary()}">REPLAY</button>
+          <button id="mpMenuBtn" style="${btnStyle()}">MAIN MENU</button>
+        </div>
+        <div style="opacity:.6;font-size:12px;margin-top:14px;font-family:Consolas, monospace;">
+          (Replay will reconnect as new lobby)
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(box);
+
+    box.querySelector("#mpReplayBtn").onclick = () => {
+      // simplest stable replay (fresh state)
+      window.location.reload();
+    };
+
+    box.querySelector("#mpMenuBtn").onclick = () => {
+      window.location.href = "./index.html";
+    };
+  }
 });
