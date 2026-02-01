@@ -1,451 +1,607 @@
 // ==========================================
-// PATH: server.js
+// PATH: gameplay/multiplayer-main.js
 // ==========================================
 
-const express = require('express');
-const app = express();
-const http = require('http');
-const server = http.createServer(app);
-const { Server } = require("socket.io");
-const path = require('path');
-const fs = require('fs');
+/**
+ * Multiplayer Main (FINAL - STABLE)
+ *
+ * Features:
+ * ✅ Lobby flow (Create/Join/Start) via mpUIBridge
+ * ✅ Semi-authoritative: client sends transform (20/s)
+ * ✅ MPState smooth interpolation (remote players)
+ * ✅ Hybrid bullets: local bullets smooth + server event broadcast
+ * ✅ Client hit detection -> mp_hit to server
+ * ✅ Rings sequential spawn from seed (server seed)
+ * ✅ Win condition: 2 laps (1 lap = 4 rings)
+ * ✅ Respawn: 3 sec delay, HP full, rings stay, score stays
+ * ✅ No enemies in MP
+ * ✅ MP bullet damage fixed: 5
+ */
 
-// --- 🛠️ CONFIGURATION ---
-const PORT = process.env.PORT || 10000;
+(() => {
+  const DEBUG = true;
 
-// --- 🔍 SMART FOLDER DETECTION ---
-let staticFolderName = 'public';
+  // -------------------------
+  // MP Gameplay Config
+  // -------------------------
+  const MP_CONFIG = {
+    SEND_TRANSFORM_RATE: 20,
+    BULLET_DAMAGE: 5,
+    RESPAWN_DELAY_SEC: 3,
 
-if (fs.existsSync(path.join(__dirname, 'Public'))) {
-    staticFolderName = 'Public';
-    console.log("📂 Folder Found: 'Public' (Capital Case)");
-} else if (fs.existsSync(path.join(__dirname, 'public'))) {
-    staticFolderName = 'public';
-    console.log("📂 Folder Found: 'public' (Lower Case)");
-} else {
-    console.error("❌ CRITICAL ERROR: Na 'public' folder mila, na 'Public'!");
-}
+    RINGS_PER_LAP: 4,
+    TOTAL_LAPS_TO_WIN: 2,
 
-const publicPath = path.join(__dirname, staticFolderName);
+    // ring spacing
+    RING_CLEARANCE_Y: 60,
+    RING_SPAWN_RADIUS: 5000,
+    RING_MIN_DIST: 1400
+  };
 
-// --- ⚙️ LOAD CONFIG SAFELY ---
-let Cfg = {};
-try {
-    // NOTE: In browser, game-config.js is not a Node module.
-    // So require may fail. We fallback safely.
-    Cfg = require(`./${staticFolderName}/game-config.js`);
-    console.log("✅ Game Config Loaded Successfully");
-} catch (e) {
-    console.warn("⚠️ Config load failed (Using Defaults). Reason:", e.message);
-    Cfg = { RINGS_PER_LAP: 4, TOTAL_RINGS_WIN: 8 };
-}
+  // -------------------------
+  // Globals
+  // -------------------------
+  let game = null;
+  let mpClient = null;
+  let mpState = null;
 
-// --- 🚀 SOCKET.IO SETUP ---
-const io = new Server(server, {
-    cors: { origin: "*" },
-    transports: ['websocket', 'polling']
-});
+  let bulletSystem = null;
+  let weaponSystem = null;
 
-// Serve Static Files
-app.use(express.static(publicPath));
+  // ring data
+  let rings = []; // { mesh, claimedBy: null|id }
+  let activeRingIndex = 0;
+  let ringSeed = 1;
 
-// Root route
-app.get('/', (req, res) => {
-    const indexPath = path.join(publicPath, 'index.html');
-    if (fs.existsSync(indexPath)) res.sendFile(indexPath);
-    else res.status(404).send("Error: index.html not found! Check folder structure.");
-});
+  // local stats
+  const localStats = {
+    kills: 0,
+    deaths: 0,
+    rings: 0,
+    score: 0
+  };
 
+  // remote stats cache
+  const remoteStats = new Map(); // id -> {name,kills,deaths,rings,score}
 
-// ==========================================================
-// ✅ MULTIPLAYER SERVER (Authoritative Rooms + Tick Broadcast)
-// ==========================================================
+  // respawn
+  let respawnTimer = 0;
+  let isDead = false;
 
-const SERVER_TICK_RATE = 20;              // 20 updates/sec
-const TICK_INTERVAL_MS = 1000 / SERVER_TICK_RATE;
+  // utility
+  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 
-const MAX_PLAYERS_PER_ROOM = 8;
-
-// World state per room
-let rooms = {};  // roomId -> room object
-
-
-function makeRoomId() {
-    return Math.random().toString(36).substring(2, 6).toUpperCase();
-}
-
-function clamp(n, min, max) {
-    return Math.max(min, Math.min(max, n));
-}
-
-function nowMs() {
-    return Date.now();
-}
-
-function createDefaultPlayer(socketId, name, isHost) {
-    return {
-        id: socketId,
-        name: (name || "Pilot").substring(0, 12),
-        isHost: !!isHost,
-
-        // gameplay
-        hp: 100,
-        score: 0,
-        rings: 0,
-
-        // authoritative position
-        p: { x: 0, y: 250, z: 0 },
-        q: { x: 0, y: 0, z: 0, w: 1 },
-
-        // last input
-        input: {
-            pitch: 0,
-            roll: 0,
-            yaw: 0,
-            boost: false,
-            brake: false,
-            fire: false
-        },
-
-        // timing
-        lastInputAt: nowMs(),
-        connected: true
+  // -------------------------
+  // Seeded RNG (deterministic rings)
+  // -------------------------
+  function mulberry32(seed) {
+    let t = seed >>> 0;
+    return function () {
+      t += 0x6D2B79F5;
+      let r = Math.imul(t ^ (t >>> 15), 1 | t);
+      r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
     };
-}
+  }
 
-function getRoomConfig() {
-    const RINGS_PER_LAP = (Cfg.SKY_CONFIG ? Cfg.SKY_CONFIG.RINGS_PER_LAP : Cfg.RINGS_PER_LAP) || 4;
-    const TOTAL_RINGS_WIN = (Cfg.SKY_CONFIG ? Cfg.SKY_CONFIG.TOTAL_RINGS_WIN : Cfg.TOTAL_RINGS_WIN) || 8;
-    return { RINGS_PER_LAP, TOTAL_RINGS_WIN };
-}
-
-function makeRoom() {
-    const roomId = makeRoomId();
-    return {
-        id: roomId,
-        hostId: null,
-        status: "lobby", // lobby | playing | finished
-        seed: Math.floor(Math.random() * 100000),
-
-        // server tick
-        tick: 0,
-        lastTickAt: nowMs(),
-
-        // gameplay objects
-        players: [],
-
-        // optional server bullets
-        bullets: []
-    };
-}
-
-function roomSnapshot(room) {
-    return {
-        t: "STATE",
-        roomId: room.id,
-        status: room.status,
-        tick: room.tick,
-        time: nowMs(),
-        players: room.players.map(p => ({
-            id: p.id,
-            name: p.name,
-            hp: p.hp,
-            score: p.score,
-            rings: p.rings,
-            p: p.p,
-            q: p.q
-        })),
-        bullets: room.bullets
-    };
-}
-
-function emitLobbyUpdate(roomId) {
-    const room = rooms[roomId];
-    if (!room) return;
-    io.to(roomId).emit("mp_lobby_update", {
-        roomId,
-        hostId: room.hostId,
-        players: room.players.map(p => ({
-            id: p.id,
-            name: p.name,
-            isHost: p.isHost,
-            rings: p.rings,
-            hp: p.hp,
-            score: p.score
-        }))
-    });
-}
-
-
-// ==========================================================
-// ✅ TICK LOOP (authoritative server simulation)
-// ==========================================================
-
-setInterval(() => {
-    for (const roomId in rooms) {
-        const room = rooms[roomId];
-        if (!room) continue;
-
-        if (room.status !== "playing") continue;
-
-        room.tick++;
-
-        // Basic authoritative update:
-        // Server currently only TRUSTS client positions via events,
-        // but you can replace this with true physics later.
-
-        // Cleanup bullets (optional)
-        const t = nowMs();
-        room.bullets = room.bullets.filter(b => (t - b.createdAt) < 2000);
-
-        // Broadcast world snapshot
-        io.to(roomId).emit("mp_state", roomSnapshot(room));
+  // -------------------------
+  // Ring generation (sequential)
+  // -------------------------
+  function clearRings(scene) {
+    for (const r of rings) {
+      if (r?.mesh) scene.remove(r.mesh);
     }
-}, TICK_INTERVAL_MS);
+    rings = [];
+    activeRingIndex = 0;
+  }
 
+  function createRingMesh() {
+    const g = new THREE.TorusGeometry(60, 6, 10, 28);
+    const m = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.85 });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.rotation.x = Math.PI / 2;
+    return mesh;
+  }
 
-// ==========================================================
-// ✅ SOCKET.IO EVENTS
-// ==========================================================
+  function makeRings(scene, terrainMesh, seed) {
+    clearRings(scene);
 
-io.on('connection', (socket) => {
-    console.log(`[CONNECT] User: ${socket.id}`);
+    const rand = mulberry32(seed || 1);
 
-    socket.emit("mp_welcome", { id: socket.id });
+    const ringCount = MP_CONFIG.RINGS_PER_LAP * MP_CONFIG.TOTAL_LAPS_TO_WIN; // total sequential rings
+    const points = [];
 
-    // ----------------------------
-    // Create Room
-    // ----------------------------
-    socket.on('mp_create_room', ({ name }) => {
-        const room = makeRoom();
-        room.hostId = socket.id;
+    const safeY = (x, z) => {
+      // if terrain exists and has height function use it; else fixed
+      if (window.game?.map?.getHeightAt) {
+        const y = window.game.map.getHeightAt(x, z);
+        return y + MP_CONFIG.RING_CLEARANCE_Y;
+      }
+      return 250 + MP_CONFIG.RING_CLEARANCE_Y;
+    };
 
-        const player = createDefaultPlayer(socket.id, name, true);
-        room.players.push(player);
+    for (let i = 0; i < ringCount; i++) {
+      // pick new point far enough
+      let x = 0, z = 0;
+      for (let tries = 0; tries < 70; tries++) {
+        const ang = rand() * Math.PI * 2;
+        const rad = 1200 + rand() * MP_CONFIG.RING_SPAWN_RADIUS;
 
-        rooms[room.id] = room;
+        x = Math.cos(ang) * rad;
+        z = Math.sin(ang) * rad;
 
-        socket.join(room.id);
-
-        socket.emit('mp_room_created', {
-            roomId: room.id,
-            players: room.players,
-            isHost: true,
-            hostId: room.hostId,
-            seed: room.seed
-        });
-
-        console.log(`[ROOM] Created ${room.id} by ${socket.id}`);
-    });
-
-    // ----------------------------
-    // Join Room
-    // ----------------------------
-    socket.on('mp_join_room', ({ roomId, name }) => {
-        const rId = String(roomId || "").toUpperCase();
-        const room = rooms[rId];
-
-        if (!room) {
-            socket.emit('mp_error', { msg: "Room not found." });
-            return;
+        let ok = true;
+        for (const p of points) {
+          const dx = x - p.x;
+          const dz = z - p.z;
+          if (dx * dx + dz * dz < MP_CONFIG.RING_MIN_DIST * MP_CONFIG.RING_MIN_DIST) {
+            ok = false;
+            break;
+          }
         }
-        if (room.status !== "lobby") {
-            socket.emit('mp_error', { msg: "Game already started." });
-            return;
+        if (ok) break;
+      }
+
+      const y = safeY(x, z);
+
+      const ring = {
+        mesh: createRingMesh(),
+        claimedBy: null,
+        index: i
+      };
+      ring.mesh.position.set(x, y, z);
+
+      // rotate slightly random
+      ring.mesh.rotation.z = (rand() - 0.5) * 0.6;
+      ring.mesh.rotation.y = (rand() - 0.5) * 0.6;
+
+      scene.add(ring.mesh);
+
+      rings.push(ring);
+      points.push({ x, z });
+    }
+
+    // set active visuals
+    setActiveRing(0);
+
+    if (DEBUG) console.log("[MP] Rings generated:", rings.length, "seed:", seed);
+  }
+
+  function setActiveRing(i) {
+    activeRingIndex = clamp(i, 0, rings.length - 1);
+
+    for (let k = 0; k < rings.length; k++) {
+      const r = rings[k];
+      if (!r?.mesh) continue;
+      const mat = r.mesh.material;
+      if (!mat) continue;
+
+      const active = (k === activeRingIndex);
+      mat.color.setHex(active ? 0x00ff00 : 0x00ffff);
+      mat.opacity = active ? 0.95 : 0.45;
+    }
+  }
+
+  function tryClaimRingLocal(playerMesh) {
+    if (!playerMesh) return false;
+    if (!rings.length) return false;
+
+    const ring = rings[activeRingIndex];
+    if (!ring || ring.claimedBy) return false;
+
+    const dist = playerMesh.position.distanceTo(ring.mesh.position);
+    if (dist < 120) {
+      return true;
+    }
+    return false;
+  }
+
+  // -------------------------
+  // Hit detection (client report)
+  // -------------------------
+  function checkBulletHitsLocal() {
+    if (!bulletSystem) return;
+
+    // BulletSystem should keep internal bullets list (we will assume bulletSystem.bullets exists)
+    const bullets = bulletSystem.bullets || [];
+    if (!bullets.length) return;
+
+    // check hit remote players only (NOT self)
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      if (!b?.mesh || !b.ownerId) continue;
+
+      // only local bullets from me should report hits
+      const localId = mpClient?.clientId;
+      if (!localId) continue;
+      if (b.ownerId !== localId) continue;
+
+      // check remote players meshes
+      const remotes = mpState?.getRemotePlayers ? mpState.getRemotePlayers() : [];
+      for (const rp of remotes) {
+        if (!rp?.mesh || !rp.id) continue;
+        if (rp.id === localId) continue;
+
+        const d = b.mesh.position.distanceTo(rp.mesh.position);
+        if (d < 18) {
+          // report hit
+          mpClient.socket.emit("mp_hit", {
+            roomId: mpClient.roomId,
+            attackerId: localId,
+            victimId: rp.id,
+            damage: MP_CONFIG.BULLET_DAMAGE
+          });
+
+          // remove bullet locally
+          if (bulletSystem.removeBullet) bulletSystem.removeBullet(b);
+          else {
+            // fallback remove
+            game.scene.remove(b.mesh);
+            bullets.splice(i, 1);
+          }
+          break;
         }
-        if (room.players.length >= MAX_PLAYERS_PER_ROOM) {
-            socket.emit('mp_error', { msg: "Room full." });
-            return;
+      }
+    }
+  }
+
+  // -------------------------
+  // Respawn system
+  // -------------------------
+  function triggerDeath() {
+    if (isDead) return;
+    isDead = true;
+    respawnTimer = MP_CONFIG.RESPAWN_DELAY_SEC;
+
+    localStats.deaths++;
+
+    if (game?.procAudio) game.procAudio.defeat?.();
+    if (DEBUG) console.log("[MP] You died. Respawn in", respawnTimer, "sec");
+  }
+
+  function doRespawn() {
+    if (!game?.playerController) return;
+
+    // respawn at default spawn
+    if (typeof game.playerController.respawnInstant === "function") {
+      game.playerController.respawnInstant();
+    } else if (game.playerController.mesh) {
+      game.playerController.mesh.position.set(0, 250, 0);
+      game.playerController.mesh.quaternion.set(0, 0, 0, 1);
+    }
+
+    // hp full
+    game.playerController.health = 100;
+
+    isDead = false;
+    respawnTimer = 0;
+
+    if (game?.procAudio) game.procAudio.medkit?.();
+
+    if (DEBUG) console.log("[MP] Respawned (HP full). Rings/Score unchanged.");
+  }
+
+  // -------------------------
+  // End stats screen helper
+  // -------------------------
+  function renderEndStats(statsArr, winnerName) {
+    if (window.mpUIBridge?.onGameOver) {
+      window.mpUIBridge.onGameOver({
+        winner: winnerName,
+        stats: statsArr
+      });
+    }
+  }
+
+  // -------------------------
+  // Boot Game
+  // -------------------------
+  function initGame() {
+    // create game
+    game = new GameManager();
+    game.init();
+    game.procAudio = window.ProceduralAudio ? new ProceduralAudio() : null;
+
+    window.game = game; // keep compatibility
+
+    // Make camera system exist
+    if (!game.cameraSystem) game.cameraSystem = new CameraSystem(game.camera);
+    game.cameraSystem.setTarget(game.playerController);
+
+    // bullets + weapons
+    bulletSystem = new BulletSystem(game.scene);
+
+    weaponSystem = new WeaponSystem(
+      game.playerController,
+      bulletSystem,
+      game.inputManager,
+      game.sfx,
+      {
+        fireRate: 12,
+        spread: 0.012,
+
+        camera: game.camera,
+        screenAimAssist: true,
+        screenAimRadius: 0.78,      // MP aim better
+        screenAimStrength: 0.92,    // MP aim strong
+
+        // MP has no enemies list, so targets = remote players meshes
+        getTargets: () => {
+          const arr = mpState?.getRemotePlayers?.() || [];
+          return arr.map(e => e.mesh).filter(Boolean);
         }
+      }
+    );
 
-        const player = createDefaultPlayer(socket.id, name, false);
-        room.players.push(player);
-
-        socket.join(rId);
-
-        socket.emit('mp_room_joined', {
-            roomId: rId,
-            players: room.players,
-            hostId: room.hostId,
-            seed: room.seed
-        });
-
-        emitLobbyUpdate(rId);
-
-        console.log(`[ROOM] ${socket.id} joined ${rId}`);
+    // MPState
+    mpState = new MPState(game.scene, {
+      modelFactory: new ModelFactory(),
+      positionLerp: 0.20,
+      rotationSlerp: 0.24,
+      debug: false
     });
 
-    // ----------------------------
-    // Start Game (host only)
-    // ----------------------------
-    socket.on('mp_start_game', ({ roomId }) => {
-        const rId = String(roomId || "").toUpperCase();
-        const room = rooms[rId];
-        if (!room) return;
+    // create MPClient
+    mpClient = new MPClient({
+      debug: false,
+      mpState,
+      game,
+      transformSendRate: MP_CONFIG.SEND_TRANSFORM_RATE,
+      fireSendRate: 10,
 
-        if (room.hostId !== socket.id) return;
-
-        room.status = 'playing';
-        room.players.forEach(p => {
-            p.rings = 0;
-            p.hp = 100;
-            p.score = 0;
-        });
-
-        io.to(rId).emit('mp_game_start', {
-            seed: room.seed,
-            tickRate: SERVER_TICK_RATE
-        });
-
-        console.log(`[ROOM] ${rId} started by host ${socket.id}`);
+      onConnected: () => window.mpUIBridge?.onConnected?.(),
+      onDisconnected: (reason) => window.mpUIBridge?.onDisconnected?.(reason),
+      onLobbyUpdate: (msg) => window.mpUIBridge?.onLobbyUpdate?.(msg),
+      onGameStart: (info) => window.mpUIBridge?.onGameStart?.(info),
+      onGameOver: (msg) => {
+        // server final msg -> includes winner + stats array
+        const statsArr = Array.isArray(msg.stats) ? msg.stats : [];
+        renderEndStats(statsArr, msg.winner);
+      },
+      onError: (t) => window.mpUIBridge?.onError?.(t)
     });
 
-    // ----------------------------
-    // Player Transform Sync (from client)
-    // The client should send:
-    // { roomId, p:{x,y,z}, q:{x,y,z,w} }
-    // ----------------------------
-    socket.on('mp_transform', (data) => {
-        if (!data || !data.roomId) return;
+    window.mpClient = mpClient;
 
-        const rId = String(data.roomId).toUpperCase();
-        const room = rooms[rId];
-        if (!room || room.status !== "playing") return;
+    // connect
+    mpClient.connect();
 
-        const player = room.players.find(p => p.id === socket.id);
-        if (!player) return;
+    // patch animate loop
+    patchGameLoop();
+  }
 
-        const p = data.p;
-        const q = data.q;
+  // -------------------------
+  // Patch game.animate
+  // -------------------------
+  function patchGameLoop() {
+    // Start running loop
+    game.isRunning = true;
 
-        // minimal validation (anti teleport)
-        if (p && typeof p.x === "number") {
-            // clamp altitude & world bounds
-            player.p = {
-                x: clamp(p.x, -100000, 100000),
-                y: clamp(p.y, 0, 5000),
-                z: clamp(p.z, -100000, 100000)
-            };
+    game.animate = function () {
+      if (!game.isRunning) return;
+      requestAnimationFrame(game.animate.bind(game));
+
+      const dt = Math.min(game.clock.getDelta(), 0.05);
+
+      // input update
+      if (game.inputManager?.update) game.inputManager.update(dt);
+
+      // player update only if alive
+      if (game.playerController && !isDead) {
+        game.playerController.update(dt);
+      }
+
+      // respawn countdown
+      if (isDead) {
+        respawnTimer -= dt;
+        if (respawnTimer <= 0) {
+          doRespawn();
         }
+      }
 
-        if (q && typeof q.w === "number") {
-            player.q = q;
+      // MP: update remote entities interpolation
+      if (mpState) mpState.update(dt);
+
+      // weapon update: allow shooting even if alive only
+      if (weaponSystem && !isDead) weaponSystem.update(dt);
+
+      // bullets update
+      if (bulletSystem) bulletSystem.update(dt);
+
+      // ✅ bullet hit report (client)
+      checkBulletHitsLocal();
+
+      // MP: transform sync
+      if (mpClient && mpClient.isConnected() && mpClient.roomId && game.playerController?.mesh) {
+        mpClient.sendTransform(game.playerController.mesh);
+      }
+
+      // MP: claim ring sequential
+      if (!isDead && mpClient?.roomId && game.playerController?.mesh) {
+        if (tryClaimRingLocal(game.playerController.mesh)) {
+          const localId = mpClient.clientId;
+
+          // claim local UI
+          rings[activeRingIndex].claimedBy = localId;
+          rings[activeRingIndex].mesh.visible = false;
+
+          localStats.rings++;
+          localStats.score += 100;
+
+          // send server claim
+          mpClient.claimRing(activeRingIndex);
+
+          // next ring
+          setActiveRing(activeRingIndex + 1);
+
+          if (game.procAudio) game.procAudio.ring?.();
         }
+      }
+
+      // UI HUD (if UIManager exists)
+      if (game.uiManager) {
+        const hp = game.playerController?.health ?? 100;
+        const boost = game.playerController?.boostEnergy ?? (PHYSICS_CONFIG.boostMax ?? 100);
+
+        game.uiManager.updateHealth(hp, 100);
+        game.uiManager.updateBoost(boost, (PHYSICS_CONFIG.boostMax ?? 100));
+        game.uiManager.updateScore(localStats.score);
+      }
+
+      // minimap: show remote players + rings
+      if (game.minimap && game.playerController?.mesh) {
+        const remote = mpState?.getRemotePlayers?.() || [];
+        game.minimap.update(
+          game.playerController.mesh,
+          remote.map(p => ({ mesh: p.mesh })),
+          rings,
+          activeRingIndex
+        );
+      }
+
+      // render
+      game.renderer.render(game.scene, game.camera);
+    };
+
+    game.animate();
+  }
+
+  // ==========================================================
+  // SOCKET EVENTS EXTENSIONS (extra mp events)
+  // ==========================================================
+  function bindExtraServerEvents() {
+    if (!mpClient?.socket) return;
+
+    // server bullet event -> create smooth bullet locally
+    mpClient.socket.on("mp_event", (evt) => {
+      if (!evt) return;
+
+      if (evt.type === "FIRE") {
+        // other players firing SFX (optional)
+        if (game?.procAudio) game.procAudio.shoot?.();
+      }
     });
 
-    // ----------------------------
-    // Input Sync (Optional)
-    // { roomId, input:{pitch,roll,yaw,boost,brake,fire} }
-    // ----------------------------
-    socket.on('mp_input', (data) => {
-        if (!data || !data.roomId) return;
+    // authoritative bullet spawn snapshot -> optionally spawn bullets visual
+    mpClient.socket.on("mp_state", (snapshot) => {
+      // remote bullets: create visual locally for smooth
+      // NOTE: keep it simple -> spawn bullets for others only
+      if (!snapshot?.bullets || !bulletSystem) return;
 
-        const rId = String(data.roomId).toUpperCase();
-        const room = rooms[rId];
-        if (!room || room.status !== "playing") return;
+      const localId = mpClient.clientId;
+      for (const b of snapshot.bullets) {
+        if (!b?.p || !b?.q) continue;
+        if (b.ownerId === localId) continue;
 
-        const player = room.players.find(p => p.id === socket.id);
-        if (!player) return;
-
-        player.input = data.input || player.input;
-        player.lastInputAt = nowMs();
+        // spawn remote bullet visual
+        bulletSystem.fire(
+          new THREE.Vector3(b.p.x, b.p.y, b.p.z),
+          new THREE.Quaternion(b.q.x, b.q.y, b.q.z, b.q.w),
+          b.ownerId // pass ownerId if supported
+        );
+      }
     });
 
-    // ----------------------------
-    // Fire (server spawns bullet in authoritative list)
-    // { roomId, p:{x,y,z}, q:{x,y,z,w} }
-    // ----------------------------
-    socket.on('mp_fire', (data) => {
-        if (!data || !data.roomId) return;
+    // server says you got hit
+    mpClient.socket.on("mp_damage", (msg) => {
+      // msg: { victimId, hp }
+      const localId = mpClient.clientId;
+      if (!localId) return;
+      if (msg?.victimId !== localId) return;
 
-        const rId = String(data.roomId).toUpperCase();
-        const room = rooms[rId];
-        if (!room || room.status !== "playing") return;
-
-        // store bullet in room state
-        const bulletId = Math.random().toString(36).substring(2, 10);
-        room.bullets.push({
-            id: bulletId,
-            ownerId: socket.id,
-            createdAt: nowMs(),
-            p: data.p || { x: 0, y: 0, z: 0 },
-            q: data.q || { x: 0, y: 0, z: 0, w: 1 }
-        });
-
-        // small event for SFX
-        io.to(rId).emit("mp_event", { t: "EVENT", type: "FIRE", ownerId: socket.id });
-    });
-
-    // ----------------------------
-    // Rings claim (race logic)
-    // ----------------------------
-    socket.on('mp_claim_ring', ({ roomId, ringIndex }) => {
-        const rId = String(roomId || "").toUpperCase();
-        const room = rooms[rId];
-        if (!room || room.status !== "playing") return;
-
-        const { RINGS_PER_LAP, TOTAL_RINGS_WIN } = getRoomConfig();
-
-        const player = room.players.find(p => p.id === socket.id);
-        if (!player) return;
-
-        const expectedIndex = player.rings % RINGS_PER_LAP;
-        if (ringIndex !== expectedIndex) return;
-
-        player.rings++;
-
-        io.to(rId).emit('mp_score_update', { id: socket.id, rings: player.rings });
-
-        if (player.rings >= TOTAL_RINGS_WIN) {
-            room.status = "finished";
-            io.to(rId).emit('mp_game_over', { winner: player.name });
+      // apply hp
+      if (game?.playerController) {
+        game.playerController.health = msg.hp ?? game.playerController.health;
+        if (game.playerController.health <= 0) {
+          triggerDeath();
         }
+      }
     });
 
-    // ----------------------------
-    // Disconnect handler
-    // ----------------------------
-    socket.on('disconnect', () => {
-        console.log(`[DISCONNECT] ${socket.id}`);
+    // score update -> update local ring index sync (optional)
+    mpClient.socket.on("mp_score_update", (msg) => {
+      // msg: { id, rings }
+      // if my rings changed, we sync activeRingIndex from it
+      if (!msg?.id) return;
+      const localId = mpClient.clientId;
 
-        for (const rId in rooms) {
-            const room = rooms[rId];
-            const idx = room.players.findIndex(p => p.id === socket.id);
+      if (msg.id === localId) {
+        // sync active index
+        const ringsPassed = msg.rings ?? 0;
+        activeRingIndex = clamp(ringsPassed, 0, rings.length - 1);
+        setActiveRing(activeRingIndex);
+      }
 
-            if (idx !== -1) {
-                const wasHost = room.hostId === socket.id;
-
-                room.players.splice(idx, 1);
-
-                // empty room delete
-                if (room.players.length === 0) {
-                    delete rooms[rId];
-                    console.log(`[ROOM] Deleted empty room ${rId}`);
-                    break;
-                }
-
-                // host migration
-                if (wasHost) {
-                    room.hostId = room.players[0].id;
-                    room.players.forEach(p => p.isHost = false);
-                    room.players[0].isHost = true;
-                }
-
-                emitLobbyUpdate(rId);
-                io.to(rId).emit('playerDisconnected', socket.id);
-
-                break;
-            }
-        }
+      // store stats
+      const s = remoteStats.get(msg.id) || {};
+      s.rings = msg.rings ?? s.rings ?? 0;
+      remoteStats.set(msg.id, s);
     });
-});
 
+    // server game over -> stats render
+    mpClient.socket.on("mp_game_over", (msg) => {
+      // msg: { winner, stats:[] }
+      const statsArr = Array.isArray(msg.stats) ? msg.stats : [];
+      renderEndStats(statsArr, msg.winner || "Pilot");
+    });
 
-// ==========================================================
-// ✅ START
-// ==========================================================
+    // replay redirect: server will send mp_replay_join { roomId }
+    mpClient.socket.on("mp_replay_join", (msg) => {
+      // easiest: reload page and join new code
+      if (!msg?.roomId) return;
 
-server.listen(PORT, () => {
-    console.log(`✅ Server Running on Port: ${PORT}`);
-    console.log(`📂 Auto-detected Public Folder: '${staticFolderName}'`);
-});
+      sessionStorage.setItem("MP_AUTO_JOIN_CODE", msg.roomId);
+      window.location.reload();
+    });
+  }
+
+  // ==========================================================
+  // AUTO JOIN (if replay)
+  // ==========================================================
+  function setupAutoJoin() {
+    const code = sessionStorage.getItem("MP_AUTO_JOIN_CODE");
+    if (!code) return;
+
+    sessionStorage.removeItem("MP_AUTO_JOIN_CODE");
+
+    // fill UI inputs (if exist)
+    const nameInput = document.getElementById("inpName");
+    const codeInput = document.getElementById("inpCode");
+    if (codeInput) codeInput.value = code;
+
+    // auto click join after connect
+    const tryJoin = () => {
+      if (!window.mpClient?.isConnected()) return false;
+      const name = (nameInput?.value || "Pilot").trim();
+      window.mpClient.joinRoom(code, name);
+      return true;
+    };
+
+    const t = setInterval(() => {
+      if (tryJoin()) clearInterval(t);
+    }, 200);
+  }
+
+  // ==========================================================
+  // Start
+  // ==========================================================
+  window.addEventListener("load", () => {
+    if (DEBUG) console.log("🌐 Multiplayer Mode Booting...");
+
+    initGame();
+
+    // bind extra events after socket connect created
+    const waitSocket = setInterval(() => {
+      if (mpClient?.socket) {
+        clearInterval(waitSocket);
+        bindExtraServerEvents();
+        setupAutoJoin();
+      }
+    }, 100);
+
+    // unlock audio on click
+    window.addEventListener("click", async () => {
+      if (game?.procAudio) await game.procAudio.unlock?.();
+    }, { once: true });
+  });
+})();
