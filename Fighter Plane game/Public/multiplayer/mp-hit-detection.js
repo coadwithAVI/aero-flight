@@ -4,126 +4,95 @@
 
 /**
  * MPHitDetection
- * Client-side bullet hit detection (Hybrid / Semi-authoritative)
- *
- * ✅ Bullets move smoothly on client
- * ✅ Client detects hit instantly (no lag feel)
- * ✅ Client reports hit to server: mp_hit
- * ✅ Server is final authority for damage/kills/respawn
- *
- * Requirements:
- * - mpClient (instance of MPClient)
- * - bulletSystem (BulletSystem instance)
- * - mpState (MPState instance)
- * - localPlayerMesh (THREE.Object3D)
+ * Handles client-side checking of bullets hitting remote players.
  */
-
 class MPHitDetection {
   constructor(mpClient, bulletSystem, mpState, options = {}) {
     this.mp = mpClient;
     this.bullets = bulletSystem;
     this.state = mpState;
-
-    this.enabled = true;
-
-    // tuning
-    this.hitRadius = options.hitRadius ?? 4.0; // forgiving aim
-    this.cooldownMs = options.cooldownMs ?? 80; // prevent spam same target
-
-    // internal anti-spam map
-    this._lastHitAt = new Map(); // key: bulletId|targetId -> time
-
-    // temp vectors
-    this._tmp = new THREE.Vector3();
+    
+    // Config
+    this.hitRadius = options.hitRadius ?? 6.0; 
+    this.damage = options.damage ?? 10;
+    
+    // Anti-spam map (prevent one bullet hitting multiple times instantly)
+    this._lastHitAt = new Map();
   }
 
-  setEnabled(v) {
-    this.enabled = !!v;
-  }
-
-  /**
-   * Call every frame in multiplayer game loop
-   */
   update(dt) {
-    if (!this.enabled) return;
-    if (!this.mp || !this.mp.isConnected()) return;
-    if (!this.bullets) return;
-    if (!this.state) return;
+    if (!this.mp.isConnected()) return;
+    
+    // Ensure we know who "we" are
+    const localId = this.mp.socket ? this.mp.socket.id : null;
+    if (!localId) return;
 
-    const localId = this.state.localId || this.mp.clientId;
+    // Get arrays
+    const bullets = this.bullets.bullets; // Access internal array of BulletSystem
+    const remotes = this.state.getRemotePlayers();
 
-    // We need bullets list from BulletSystem
-    // BulletSystem should expose `bullets` array
-    const list = this.bullets.bullets;
-    if (!Array.isArray(list) || list.length === 0) return;
+    if (!bullets || !remotes) return;
 
-    // Remote player entities
-    const remotes = this.state.getRemotePlayers ? this.state.getRemotePlayers() : [];
-    if (!remotes.length) return;
+    // Loop backwards so we can remove bullets safely
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      
+      // 1. Ownership Check: Only check collisions for MY bullets
+      // (Assuming local bullets have ownerId="local" or match socket ID)
+      const isMine = (b.ownerId === "local") || (b.ownerId === localId);
+      if (!isMine) continue; 
 
-    const now = performance.now();
+      // 2. Ignore bullets that are technically "remote" visuals
+      if (b.remote) continue;
 
-    // For each bullet check against each remote player
-    for (let i = list.length - 1; i >= 0; i--) {
-      const b = list[i];
-      if (!b) continue;
+      const bPos = b.mesh.position;
 
-      // skip bullets without mesh/pos
-      const bpos = b.mesh?.position || b.position;
-      if (!bpos) continue;
-
-      // ✅ optional owner check: only your bullets can report hits
-      // if BulletSystem stores ownerId:
-      if (b.ownerId && localId && b.ownerId !== localId) continue;
-
-      // if BulletSystem stores `id`
-      const bulletId = b.id ?? b._id ?? `idx${i}`;
-
+      // Check against all enemies
       for (const rp of remotes) {
-        if (!rp?.mesh || !rp.id) continue;
+        if (rp.id === localId) continue; // Don't hit self
+        if (!rp.mesh) continue;
 
-        // do not hit dead players (if state has alive flag)
-        if (rp.alive === false) continue;
+        // 3. Collision Check (Distance)
+        const dist = bPos.distanceTo(rp.mesh.position);
+        
+        if (dist < this.hitRadius) {
+           
+           // Anti-spam check (debounce hits)
+           const key = `${b.id}-${rp.id}`;
+           const now = Date.now();
+           if(this._lastHitAt.has(key) && (now - this._lastHitAt.get(key) < 500)) {
+               continue;
+           }
+           this._lastHitAt.set(key, now);
 
-        // ignore if target is local player (safety)
-        if (localId && rp.id === localId) continue;
+           console.log(`💥 HIT! Bullet hit ${rp.name || rp.id}`);
 
-        const tpos = rp.mesh.position;
+           // 4. Report to Server
+           // Server decides if they die, but we claim the hit
+           this.mp.socket.emit("mp_hit", {
+             roomId: this.mp.roomId,
+             targetId: rp.id,
+             damage: this.damage,
+             bulletId: b.id
+           });
 
-        const dist = bpos.distanceTo(tpos);
-        if (dist > this.hitRadius) continue;
-
-        // anti-spam same bullet->same target
-        const key = `${bulletId}|${rp.id}`;
-        const last = this._lastHitAt.get(key) || 0;
-        if (now - last < this.cooldownMs) continue;
-
-        this._lastHitAt.set(key, now);
-
-        // ✅ report hit to server
-        this.mp.socket.emit("mp_hit", {
-          roomId: this.mp.roomId,
-          targetId: rp.id
-        });
-
-        // ✅ instant feedback: remove bullet locally
-        // BulletSystem should support destroy bullet
-        if (this.bullets.destroyBullet) {
-          this.bullets.destroyBullet(b);
-        } else {
-          // fallback remove from scene + list
-          if (b.mesh) {
-            b.mesh.visible = false;
-            if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
-          }
-          list.splice(i, 1);
+           // 5. Visual Feedback: Destroy bullet instantly
+           // Calls BulletSystem remove method
+           if(typeof this.bullets.removeBullet === 'function') {
+               this.bullets.removeBullet(i);
+           } else {
+               // Fallback manual removal
+               if(b.mesh && b.mesh.parent) b.mesh.parent.remove(b.mesh);
+               bullets.splice(i, 1);
+           }
+           
+           // Bullet hit one target, stop checking other targets for this bullet
+           break; 
         }
-
-        // one bullet hits one target only
-        break;
       }
     }
   }
 }
 
+// Global Export
 window.MPHitDetection = MPHitDetection;
