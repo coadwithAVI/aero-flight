@@ -3,12 +3,12 @@
 // ==========================================
 
 /**
- * Multiplayer Main (FINAL - MINIMAP + ID FIX)
+ * Multiplayer Main (FINAL - RINGS VISIBILITY FIX)
  *
  * Fixes Included:
- * ✅ Identity Fix: Sets localId so client doesn't render itself as enemy (Fixes Client Black Screen).
- * ✅ Minimap Fix: Manually updates minimap with remote players and dynamic rings.
- * ✅ "Stuck" Fix: Once client stops crashing, it will send correct coordinates.
+ * ✅ Rings Fix: Robust Terrain search to ensure rings have a surface to spawn on.
+ * ✅ Minimap Crash Fix: Passes correct mesh object to minimap.
+ * ✅ Identity Fix: Prevents "Ghost Enemy" bug.
  */
 
 window.addEventListener("load", () => {
@@ -59,8 +59,7 @@ window.addEventListener("load", () => {
     onConnected: () => {
       console.log("✅ Connected to server. ID:", mpClient.socket.id);
       
-      // ✅ CRITICAL FIX 1: Set Local ID (Fixes Client Black Screen & Stuck Enemy)
-      // MPState needs to know who "I" am so it doesn't render me as a ghost enemy.
+      // Identity Set
       if (mpClient.socket && mpClient.socket.id) {
         mpState.setLocalId(mpClient.socket.id);
       }
@@ -79,12 +78,8 @@ window.addEventListener("load", () => {
     },
 
     onLobbyUpdate: (msg) => {
-      // Ignore lobby updates if already playing
-      if (msg.status === "playing") {
-        return; 
-      }
+      if (msg.status === "playing") return;
 
-      // Ensure ID is set if missed earlier
       if (msg.you && msg.you.id) {
         mpState.setLocalId(msg.you.id);
       }
@@ -160,11 +155,10 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 4) Rings & Minimap Setup
+  // 4) Rings & Minimap Setup (FIXED)
   // ----------------------------------------------------------
   let ringSystem = null;
 
-  // ✅ Initialize Minimap System explicitly
   if (typeof MinimapSystem !== "undefined" && !game.minimap) {
     game.minimap = new MinimapSystem(game);
   }
@@ -188,11 +182,35 @@ window.addEventListener("load", () => {
       return;
     }
 
-    ringSystem = new RingSystem(game.scene, game.map?.terrainMesh, {
+    // ✅ ROBUST TERRAIN SEARCH:
+    // Sometimes game.map.terrainMesh is not ready instantly.
+    // We try to find ANY mesh that looks like terrain.
+    let terrain = game.map?.terrainMesh;
+
+    if (!terrain) {
+        console.warn("⚠️ Terrain not found in game.map, searching scene...");
+        game.scene.traverse(obj => {
+            // Check for names commonly used or large plane geometries
+            if (obj.isMesh && (obj.name === "Terrain" || obj.name === "Ground" || (obj.geometry?.type === "PlaneGeometry" && obj.scale.x > 100))) {
+                terrain = obj;
+            }
+        });
+    }
+
+    if (!terrain) {
+        console.error("❌ CRITICAL: No Terrain found for RingSystem! Rings may spawn at Y=0 or fail.");
+    } else {
+        console.log("✅ Terrain found for Rings:", terrain.name || "Unnamed Mesh");
+    }
+
+    // Initialize with whatever terrain we found (or null)
+    ringSystem = new RingSystem(game.scene, terrain, {
       ringCount: 8,
       terrainClearance: 30,
       seed: seed ?? 12345
     });
+
+    console.log(`💍 RingSystem Initialized. Count: ${ringSystem.rings?.length || 0}`);
 
     if (typeof ringSystem.currentIndex === "number") ringSystem.currentIndex = 0;
 
@@ -238,7 +256,6 @@ window.addEventListener("load", () => {
   function freshStartMatch(msg) {
     ensureSpawnLocalPlayer();
 
-    // Re-set Local ID just in case
     if (mpClient.socket?.id) mpState.setLocalId(mpClient.socket.id);
 
     if (game.playerController) {
@@ -263,7 +280,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 8) Game Loop (Minimap Argument Fixed)
+  // 8) Game Loop
   // ----------------------------------------------------------
   game.animate = function () {
     if (!game.isRunning) return;
@@ -308,16 +325,17 @@ window.addEventListener("load", () => {
       }
     }
 
-    // MP State (Interpolation)
     mpState.update(dt);
 
-    // ✅ CRITICAL FIX: Minimap now receives the MESH, not just position
+    // Minimap Update (Argument Safe)
     if (game.minimap && game.playerController?.mesh) {
         const enemies = mpState.getRemotePlayers().map(p => p.mesh);
-        const rings = ringSystem ? ringSystem.rings.map(r => r.mesh) : [];
         
-        // ❌ OLD ERROR: game.minimap.update(game.playerController.mesh.position, ...
-        // ✅ CORRECT: Pass the whole mesh object
+        // Ensure ringSystem.rings is an array
+        const rings = (ringSystem && Array.isArray(ringSystem.rings)) 
+            ? ringSystem.rings.map(r => r.mesh).filter(m => m && m.visible) 
+            : [];
+        
         game.minimap.update(game.playerController.mesh, enemies, rings);
     }
 
@@ -325,5 +343,5 @@ window.addEventListener("load", () => {
     game.renderer.render(game.scene, game.camera);
   };
 
-  console.log("✅ Multiplayer-main loaded (ID Fixed + Minimap Active)");
+  console.log("✅ Multiplayer-main loaded (Rings & Minimap Fix)");
 });
