@@ -373,8 +373,8 @@ window.addEventListener("load", () => {
       }
   }
 
-  // ----------------------------------------------------------
-  // 6) GAME LOOP (The Fix)
+ // ----------------------------------------------------------
+  // 6) GAME LOOP (Updated)
   // ----------------------------------------------------------
   game.animate = function () {
     if (!game.isRunning) return;
@@ -393,8 +393,57 @@ window.addEventListener("load", () => {
     game.inputManager?.update?.(dt);
     game.playerController?.update?.(dt);
     
-    // 2. Extra Collision Check (Fix for "Health nahi ja rahi mountain pe")
+    // 2. Terrain Collision Check
     checkTerrainCollision();
+
+    // ✅ NEW: GLOBAL DEATH MONITOR (Ye sab jagah kaam karega)
+    if (game.playerController && game.playerController.health <= 0) {
+        // Agar pehle se respawn process mein nahi hai, toh start karo
+        if (!game.playerController.isRespawning) {
+            
+            game.playerController.health = 0;
+            game.playerController.isRespawning = true;
+            
+            console.log("💀 CRITICAL FAILURE. Initiating Respawn Protocol...");
+
+            // 1. Player Invisible
+            if (game.playerController.mesh) game.playerController.mesh.visible = false;
+
+            // 2. 3 Second Timer
+            setTimeout(() => {
+                if (!game.playerController) return;
+
+                // Reset Status
+                game.playerController.health = 100;
+                game.playerController.isRespawning = false;
+
+                // Reset Position (Spawn Point)
+                if (game.playerController.respawnInstant) {
+                    game.playerController.respawnInstant();
+                } else {
+                    // Fallback Spawn
+                    game.playerController.mesh.position.set(0, 400, 0);
+                    game.playerController.mesh.rotation.set(0, 0, 0);
+                    // Reset Physics Velocity
+                    if (game.playerController.rb) {
+                        game.playerController.rb.velocity.set(0, 0, 0);
+                        game.playerController.rb.angularVelocity.set(0, 0, 0);
+                    }
+                }
+
+                // Player Visible Again
+                if (game.playerController.mesh) game.playerController.mesh.visible = true;
+
+                console.log("✅ SYSTEM REBOOTED. Pilot Active.");
+
+                // UI Reset
+                if (game.uiManager) {
+                    game.uiManager.update(0, 100, game.playerController.score || 0, 100);
+                }
+
+            }, 3000);
+        }
+    }
 
     // 3. Rings
     if (ringSystem && game.playerController?.mesh) {
@@ -407,11 +456,11 @@ window.addEventListener("load", () => {
     weaponSystem.update(dt);
     bulletSystem.update(dt);
     
-    // ✅ 5. Hit Detection Update (Fix for "Enemy fire not working")
+    // 5. Hit Detection
     if (hitDetection) hitDetection.update(dt);
 
     // 6. Network Sync
-    if (game.playerController?.mesh) {
+    if (game.playerController?.mesh && !game.playerController.isRespawning) {
       mpClient.sendTransform(game.playerController.mesh.position, game.playerController.mesh.quaternion);
       if (game.inputManager?.getAction?.("fire")) {
         mpClient.fire(game.playerController.mesh.position, game.playerController.mesh.quaternion);
@@ -426,13 +475,13 @@ window.addEventListener("load", () => {
         game.minimap.update(game.playerController.mesh, enemies, ringsRaw, ringSystem?.currentIndex);
     }
 
-    // ✅ 8. UI UPDATE (Fix for UI not updating)
+    // 8. UI UPDATE
     if (game.uiManager && game.playerController) {
         game.uiManager.update(
             game.playerController.speed || 0,
-            game.playerController.health || 0,  // Pass HP
+            game.playerController.health, 
             game.playerController.score || 0,
-            game.playerController.boostEnergy || 100 // Pass Boost
+            game.playerController.boostEnergy || 100
         );
     }
 
