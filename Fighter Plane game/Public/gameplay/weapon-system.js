@@ -12,7 +12,7 @@ class WeaponSystem {
         this.fireRate = options.fireRate ?? 10;
         this.cooldown = 0;
 
-        // ✅ REVERTED: Muzzle back to +6.5 (Standard for your model)
+        // Muzzle offset (your model standard)
         this.muzzleOffset = options.muzzleOffset ?? new THREE.Vector3(0, 0, 6.5);
         this.spread = options.spread ?? 0.0;
 
@@ -20,16 +20,20 @@ class WeaponSystem {
         this._spreadQuat = new THREE.Quaternion();
         this._tempQuat = new THREE.Quaternion();
 
-        this.aimAssist = options.aimAssist ?? true;
-        this.aimAssistAngle = options.aimAssistAngle ?? 1;
-        this.aimAssistStrength = options.aimAssistStrength ?? 1;
+        // ✅ Aim assist disabled (OLD system OFF)
+        this.aimAssist = false;
+        this.screenAimAssist = false;
+
+        // Target provider
         this.getTargets = options.getTargets ?? null;
 
-        this.camera = options.camera ?? null;
+        // ✅ Bullet magnet settings (new system)
+        this.magnetAim = options.magnetAim ?? true;
+        this.magnetAngleDeg = options.magnetAngleDeg ?? 30;        // ✅ 30 degree cone
+        this.magnetStrength = options.magnetStrength ?? 6.0;       // good smooth pull
 
-        this.screenAimAssist = options.screenAimAssist ?? true;
-        this.screenAimRadius = options.screenAimRadius ?? 0.55;
-        this.screenAimStrength = options.screenAimStrength ?? 0.8;
+        // optional (not used now but keep)
+        this.camera = options.camera ?? null;
     }
 
     update(dt) {
@@ -46,69 +50,29 @@ class WeaponSystem {
         }
     }
 
-    _getBestAimAssistQuat(baseQuat, origin) {
-        if (!this.aimAssist || !this.getTargets) return baseQuat;
-
-        const targets = this.getTargets();
-        if (!targets || !targets.length) return baseQuat;
-
-        // ✅ FIX: Use (0,0,1) because your game uses +Z as forward
-        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(baseQuat);
-        let best = null;
-        let bestAngle = this.aimAssistAngle;
-
-        const dir = new THREE.Vector3();
-
-        for (const t of targets) {
-            if (!t || !t.position) continue;
-
-            dir.copy(t.position).sub(origin).normalize();
-
-            const angle = forward.angleTo(dir);
-            if (angle < bestAngle) {
-                bestAngle = angle;
-                best = dir.clone();
-            }
-        }
-
-        if (!best) return baseQuat;
-
-        // Use LookAt to target the enemy
-        const m = new THREE.Matrix4();
-        m.lookAt(origin, origin.clone().add(best), new THREE.Vector3(0, 1, 0));
-        
-        const assistQuat = new THREE.Quaternion().setFromRotationMatrix(m);
-        const blended = baseQuat.clone();
-        blended.slerp(assistQuat, this.aimAssistStrength);
-
-        return blended;
-    }
-
-    _getBestScreenTarget(origin) {
-        if (!this.camera || !this.getTargets) return null;
+    // ==========================================================
+    // ✅ New: Find best target inside forward cone (30° default)
+    // ==========================================================
+    _getConeTarget(origin, baseQuat) {
+        if (!this.magnetAim || !this.getTargets) return null;
 
         const targets = this.getTargets();
         if (!targets || !targets.length) return null;
 
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(baseQuat); // +Z forward
         let best = null;
-        let bestScore = Infinity;
-        const v = new THREE.Vector3();
+        let bestAngle = THREE.MathUtils.degToRad(this.magnetAngleDeg);
+
+        const dir = new THREE.Vector3();
 
         for (const t of targets) {
             if (!t?.position) continue;
-            v.copy(t.position).project(this.camera);
 
-            // Check if in front of camera (0 to 1 in Z for standard proj)
-            if (v.z < 0 || v.z > 1) continue;
+            dir.copy(t.position).sub(origin).normalize();
+            const angle = forward.angleTo(dir);
 
-            const dx = v.x;
-            const dy = v.y;
-            const distFromCenter = Math.sqrt(dx * dx + dy * dy);
-
-            if (distFromCenter > this.screenAimRadius) continue;
-
-            if (distFromCenter < bestScore) {
-                bestScore = distFromCenter;
+            if (angle < bestAngle) {
+                bestAngle = angle;
                 best = t;
             }
         }
@@ -119,33 +83,20 @@ class WeaponSystem {
         const mesh = this.player.mesh;
         if (!mesh || !this.bulletSystem) return;
 
-        // ✅ REVERTED: Muzzle offset back to +6.5
+        // Two muzzles
         const leftMuzzle = new THREE.Vector3(-1.3, 0, 6.5);
         const rightMuzzle = new THREE.Vector3(1.3, 0, 6.5);
 
         const shootFrom = (offset) => {
+            // spawn position
             this._spawnPos.copy(offset);
             this._spawnPos.applyQuaternion(mesh.quaternion);
             this._spawnPos.add(mesh.position);
 
+            // base aim = player's current aim
             this._tempQuat.copy(mesh.quaternion);
 
-            // Aim Assist Logic
-            if (this.screenAimAssist) {
-                const target = this._getBestScreenTarget(this._spawnPos);
-                if (target) {
-                    const m = new THREE.Matrix4();
-                    m.lookAt(this._spawnPos, target.position, new THREE.Vector3(0,1,0));
-                    const assistQuat = new THREE.Quaternion().setFromRotationMatrix(m);
-                    this._tempQuat.slerp(assistQuat, this.screenAimStrength);
-                } else {
-                     this._tempQuat.copy(this._getBestAimAssistQuat(this._tempQuat, this._spawnPos));
-                }
-            } else {
-                 this._tempQuat.copy(this._getBestAimAssistQuat(this._tempQuat, this._spawnPos));
-            }
-
-            // spread
+            // spread (optional)
             if (this.spread > 0) {
                 const yaw = (Math.random() - 0.5) * this.spread;
                 const pitch = (Math.random() - 0.5) * this.spread;
@@ -154,7 +105,13 @@ class WeaponSystem {
                 this._tempQuat.multiply(this._spreadQuat);
             }
 
-            this.bulletSystem.fire(this._spawnPos, this._tempQuat);
+            // ✅ cone magnet target (DO NOT snap aim, only bullet pulls)
+            const target = this._getConeTarget(this._spawnPos, this._tempQuat);
+
+            this.bulletSystem.fire(this._spawnPos, this._tempQuat, {
+                targetPos: target ? target.position.clone() : null,
+                homingStrength: this.magnetStrength
+            });
         };
 
         shootFrom(leftMuzzle);
@@ -163,4 +120,5 @@ class WeaponSystem {
         if (window.game?.procAudio) window.game.procAudio.shoot();
     }
 }
+
 window.WeaponSystem = WeaponSystem;
