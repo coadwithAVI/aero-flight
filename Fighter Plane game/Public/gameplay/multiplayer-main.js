@@ -85,7 +85,7 @@ window.addEventListener("load", () => {
     },
 
     // ✅ FIXED: Incoming Events (Damage / Score)
-    onEvent: (evt) => {
+  onEvent: (evt) => {
       if (!evt) return;
 
       // 1. SCORE / RINGS Update
@@ -101,17 +101,27 @@ window.addEventListener("load", () => {
       // 2. HIT / DAMAGE Update (Jab enemy hume maarega)
       if (evt.type === "HIT" || evt.type === "DAMAGE") {
         const myId = mpClient.socket?.id;
+        
+        // ✅ FIX: Data extract karne ka safe tarika (Direct ya Nested)
+        // Kabhi server {targetId: '...'} bhejta hai, kabhi {msg: {targetId: '...'}}
+        const targetId = evt.targetId || evt.msg?.targetId || evt.id; 
+        const damage = evt.damage || evt.msg?.damage || 10;
+
+        // Debug log taaki pata chale event aaya
+        console.log(`📨 Hit Event Recv: Target=${targetId} MyId=${myId} Dmg=${damage}`);
+
         // Agar targetId meri hai, toh mujhe damage hua hai
-        if (evt.targetId === myId && game.playerController) {
-            const dmg = evt.damage || 10;
-            console.log(`⚠️ TOOK DAMAGE: ${dmg}`);
-            
-            // Player ki health kam karo
-            if (game.playerController.health !== undefined) {
-                game.playerController.health -= dmg;
-                if (game.playerController.health < 0) game.playerController.health = 0;
+        if (targetId && myId && targetId === myId) {
+            if (game.playerController) {
+                console.log(`⚠️ TOOK DAMAGE: ${damage}. Health before: ${game.playerController.health}`);
                 
-                // Optional: Camera shake ya red flash effect yahan daal sakte ho
+                // Player ki health kam karo
+                if (game.playerController.health !== undefined) {
+                    game.playerController.health -= damage;
+                    if (game.playerController.health < 0) game.playerController.health = 0;
+                    
+                    // ✅ Optional: Camera Shake ya Screen Flash yaha add kar sakte hain
+                }
             }
         }
       }
