@@ -3,15 +3,13 @@
 // ==========================================
 
 /**
- * Multiplayer Main (FINAL - Blink Fix + Fresh Match + CRASH FIX)
+ * Multiplayer Main (FINAL - COMPLETE FIX)
  *
- * Fixes:
- * ✅ Lobby paused (no gameplay until host START)
- * ✅ Canvas hidden in lobby (no world behind UI)
- * ✅ START spam protection (no double start)
- * ✅ Fresh match reset (player, bullets, rings)
- * ✅ Ring claim delay (prevents instant win -> blink -> back to lobby)
- * ✅ CRASH FIX: sendFire renamed to fire, and transforms sent separately
+ * Fixes Included:
+ * ✅ Lobby Logic: Ignores lobby updates when game status is 'playing' (Fixes black screen after start).
+ * ✅ Crash Fix: Uses correct 'fire' function and sends position/quaternion separately.
+ * ✅ Fresh Match: Resets bullets, player, and rings on start.
+ * ✅ Blink Fix: Delays ring claim slightly to prevent instant-win bugs.
  */
 
 window.addEventListener("load", () => {
@@ -37,7 +35,7 @@ window.addEventListener("load", () => {
     game.procAudio = new ProceduralAudio();
   }
 
-  // ✅ hide canvas in lobby
+  // ✅ Hide canvas initially (Lobby Mode)
   if (game.renderer?.domElement) {
     game.renderer.domElement.style.display = "none";
   }
@@ -50,10 +48,8 @@ window.addEventListener("load", () => {
     debug: false
   });
 
-  // ✅ important: prevent start spam
+  // Flags
   let gameStartedOnce = false;
-
-  // ✅ prevent ring instant claim (blink fix)
   let ringClaimBlockedUntil = 0;
 
   const mpClient = new MPClient({
@@ -69,18 +65,21 @@ window.addEventListener("load", () => {
 
     onDisconnected: (reason) => {
       console.warn("❌ Disconnected:", reason);
-
       game.isPaused = true;
       gameStartedOnce = false;
-
       if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
-
       game.procAudio?.playLobbyMusic?.();
       safeUI()?.onDisconnected?.(reason || "disconnected");
     },
 
     onLobbyUpdate: (msg) => {
-      // stay paused in lobby
+      // ✅ CRITICAL FIX: Agar game 'playing' state mein hai, toh lobby update ignore karo.
+      // Ye us bug ko rokta hai jahan game start hone ke turant baad screen black ho jati thi.
+      if (msg.status === "playing") {
+        return; 
+      }
+
+      // Normal Lobby Logic
       game.isPaused = true;
       gameStartedOnce = false;
 
@@ -91,7 +90,7 @@ window.addEventListener("load", () => {
     },
 
     onGameStart: (msg) => {
-      // ✅ ignore duplicate mp_game_start
+      // ✅ Prevent duplicate start calls
       if (gameStartedOnce) {
         console.warn("⚠️ Duplicate mp_game_start ignored.");
         return;
@@ -100,36 +99,33 @@ window.addEventListener("load", () => {
 
       console.log("🎮 Game Start:", msg);
 
-      // show canvas now
+      // Show Canvas
       if (game.renderer?.domElement) {
         game.renderer.domElement.style.display = "block";
       }
 
-      // ✅ block ring claim for first second (blink fix)
+      // Block ring claim briefly (prevent glitch)
       ringClaimBlockedUntil = performance.now() + 1400;
 
-      // fresh start reset
+      // Reset everything for fresh match
       freshStartMatch(msg);
 
-      // unpause gameplay
+      // Unpause
       game.isPaused = false;
 
-      // music
+      // Music
       game.procAudio?.playGameMusic?.();
 
+      // UI Update
       safeUI()?.onGameStart?.(msg);
       showHUDOnly();
     },
 
     onGameOver: (msg) => {
       console.warn("🏁 Game Over received:", msg);
-
       game.isPaused = true;
       gameStartedOnce = false;
-
-      // hide canvas again
       if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
-
       game.procAudio?.playLobbyMusic?.();
       safeUI()?.onGameOver?.(msg);
     },
@@ -198,13 +194,10 @@ window.addEventListener("load", () => {
       seed: seed ?? 12345
     });
 
-    // ✅ IMPORTANT: reset index if exists
     if (typeof ringSystem.currentIndex === "number") ringSystem.currentIndex = 0;
 
     ringSystem.onRingClaim = (ringIndex) => {
-      // ✅ extra safety: do not claim during block window
       if (performance.now() < ringClaimBlockedUntil) return;
-
       if (!mpClient.roomId) return;
       mpClient.claimRing(ringIndex);
     };
@@ -215,18 +208,6 @@ window.addEventListener("load", () => {
   // ----------------------------------------------------------
   let respawnPending = false;
   let respawnAt = 0;
-
-  function triggerRespawn() {
-    if (!game.playerController) return;
-
-    respawnPending = true;
-    respawnAt = performance.now() + 3000;
-
-    game.playerController.health = 0;
-    if (game.playerController.mesh) game.playerController.mesh.visible = false;
-
-    if (game.procAudio) game.procAudio.stopBoost();
-  }
 
   function processRespawn() {
     if (!respawnPending) return;
@@ -243,7 +224,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 6) Ensure player exists
+  // 6) Ensure player exists & Reset Match
   // ----------------------------------------------------------
   function ensureSpawnLocalPlayer() {
     if (game.playerController && game.playerController.mesh) {
@@ -256,19 +237,15 @@ window.addEventListener("load", () => {
       weaponSystem.player = game.playerController;
 
       if (game.map?.terrainMesh) game.playerController.setTerrainMesh(game.map.terrainMesh);
-
       if (!game.cameraSystem) game.cameraSystem = new CameraSystem(game.camera);
       game.cameraSystem.setTarget(game.playerController);
     }
   }
 
-  // ----------------------------------------------------------
-  // ✅ Fresh Start Reset
-  // ----------------------------------------------------------
   function freshStartMatch(msg) {
     ensureSpawnLocalPlayer();
 
-    // reset player
+    // Reset Player
     if (game.playerController) {
       game.playerController.health = 100;
       if (typeof game.playerController.respawnInstant === "function") {
@@ -280,13 +257,12 @@ window.addEventListener("load", () => {
       if (game.playerController.mesh) game.playerController.mesh.visible = true;
     }
 
-    // clear bullets
+    // Reset Bullets
     bulletSystem.clearAll();
 
-    // reset rings with new seed
+    // Reset Rings
     resetRingSystem(msg?.seed);
 
-    // respawn flags reset
     respawnPending = false;
     respawnAt = 0;
 
@@ -301,7 +277,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 8) Game loop patch
+  // 8) Game Loop (Corrected)
   // ----------------------------------------------------------
   game.animate = function () {
     if (!game.isRunning) return;
@@ -309,7 +285,6 @@ window.addEventListener("load", () => {
     requestAnimationFrame(game.animate);
 
     if (game.isPaused) {
-      // render only if canvas visible
       if (game.renderer?.domElement?.style.display !== "none") {
         game.renderer.render(game.scene, game.camera);
       }
@@ -319,13 +294,11 @@ window.addEventListener("load", () => {
     const dt = clamp(game.clock.getDelta(), 0.0, 0.05);
 
     game.inputManager?.update?.(dt);
-
     game.playerController?.update?.(dt);
 
     processRespawn();
 
     if (ringSystem && game.playerController?.mesh) {
-      // ✅ extra safety delay
       if (performance.now() > ringClaimBlockedUntil) {
         ringSystem.update(dt, game.playerController.mesh);
       }
@@ -334,15 +307,16 @@ window.addEventListener("load", () => {
     weaponSystem.update(dt);
     bulletSystem.update(dt);
 
-    // ✅ FIXED: Separated Position and Quaternion for protocol safety
+    // ✅ FIXED: Crash Prevention Logic
     if (game.playerController?.mesh) {
+      // 1. Send Transform (Arguments separated)
       mpClient.sendTransform(
         game.playerController.mesh.position, 
         game.playerController.mesh.quaternion
       );
 
+      // 2. Fire (Correct function name + Arguments separated)
       if (game.inputManager?.getAction?.("fire")) {
-        // ✅ FIXED: Using 'fire' instead of 'sendFire'
         mpClient.fire(
           game.playerController.mesh.position,
           game.playerController.mesh.quaternion
@@ -351,11 +325,9 @@ window.addEventListener("load", () => {
     }
 
     mpState.update(dt);
-
     game.cameraSystem?.update?.(dt);
-
     game.renderer.render(game.scene, game.camera);
   };
 
-  console.log("✅ Multiplayer-main loaded: blink fix + start lock + ring delay.");
+  console.log("✅ Multiplayer-main loaded (Final Stable Version)");
 });
