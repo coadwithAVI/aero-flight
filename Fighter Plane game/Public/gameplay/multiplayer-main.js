@@ -3,7 +3,7 @@
 // ==========================================
 
 /**
- * Multiplayer Main (FINAL - Blink Fix + Fresh Match)
+ * Multiplayer Main (FINAL - Blink Fix + Fresh Match + CRASH FIX)
  *
  * Fixes:
  * ✅ Lobby paused (no gameplay until host START)
@@ -11,6 +11,7 @@
  * ✅ START spam protection (no double start)
  * ✅ Fresh match reset (player, bullets, rings)
  * ✅ Ring claim delay (prevents instant win -> blink -> back to lobby)
+ * ✅ CRASH FIX: sendFire renamed to fire, and transforms sent separately
  */
 
 window.addEventListener("load", () => {
@@ -333,11 +334,19 @@ window.addEventListener("load", () => {
     weaponSystem.update(dt);
     bulletSystem.update(dt);
 
+    // ✅ FIXED: Separated Position and Quaternion for protocol safety
     if (game.playerController?.mesh) {
-      mpClient.sendTransform(game.playerController.mesh);
+      mpClient.sendTransform(
+        game.playerController.mesh.position, 
+        game.playerController.mesh.quaternion
+      );
 
       if (game.inputManager?.getAction?.("fire")) {
-        mpClient.sendFire(game.playerController.mesh);
+        // ✅ FIXED: Using 'fire' instead of 'sendFire'
+        mpClient.fire(
+          game.playerController.mesh.position,
+          game.playerController.mesh.quaternion
+        );
       }
     }
 
