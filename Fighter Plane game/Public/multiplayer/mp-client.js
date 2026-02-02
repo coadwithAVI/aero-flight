@@ -3,9 +3,13 @@
 // ==========================================
 
 /**
- * MPClient (FINAL - Socket.IO)
+ * MPClient (FINAL - Socket.IO) [UPDATED DEBUG SAFE]
  *
- * Compatible with your server.js events:
+ * Fixes:
+ * ✅ Debug logs for mp_game_start / mp_lobby_update
+ * ✅ try/catch around callbacks (silent crash fix)
+ * ✅ stable reconnect behavior
+ *
  * Receive:
  * - mp_welcome
  * - mp_room_created
@@ -27,9 +31,7 @@
  * - mp_input (optional)
  * - mp_fire
  * - mp_claim_ring
- *
- * Optional / future:
- * - mp_hit (client reported hit, server scores)
+ * - mp_hit (optional)
  * - mp_leave_room
  */
 
@@ -66,6 +68,7 @@ class MPClient {
     this.inputSendRate = options.inputSendRate ?? 20;
     this._lastInputSent = 0;
 
+    // Debug timing
     this._lastStartAt = 0;
 
     // callbacks
@@ -137,26 +140,22 @@ class MPClient {
 
   startGame() {
     if (!this.socket || !this.roomId) return;
+    if (this.debug) console.log("[MPClient] startGame emit mp_start_game:", this.roomId);
     this.socket.emit("mp_start_game", { roomId: this.roomId });
   }
 
   // Optional (future)
   leaveRoom() {
     if (!this.socket || !this.roomId) return;
-    // server may not implement it, but safe to call
     this.socket.emit("mp_leave_room", { roomId: this.roomId });
     this.roomId = null;
     this.isHost = false;
   }
 
   // ==========================================================
-  // Gameplay Send (semi authoritative)
+  // Gameplay Send
   // ==========================================================
 
-  /**
-   * Send local player transform to server (throttled)
-   * @param {THREE.Object3D} playerMesh
-   */
   sendTransform(playerMesh) {
     if (!this.socket || !this.roomId || !playerMesh) return;
     if (!this.isConnected()) return;
@@ -176,10 +175,6 @@ class MPClient {
     });
   }
 
-  /**
-   * Optional input send (future authoritative physics)
-   * input example: {pitch, roll, yaw, boost, brake, fire}
-   */
   sendInput(inputObj) {
     if (!this.socket || !this.roomId) return;
     if (!this.isConnected()) return;
@@ -195,10 +190,6 @@ class MPClient {
     });
   }
 
-  /**
-   * Fire request (server spawns bullet authoritative in room.bullets)
-   * @param {THREE.Object3D} playerMesh
-   */
   sendFire(playerMesh) {
     if (!this.socket || !this.roomId || !playerMesh) return;
     if (!this.isConnected()) return;
@@ -218,24 +209,15 @@ class MPClient {
     });
   }
 
-  /**
-   * Claim ring
-   */
   claimRing(ringIndex) {
     if (!this.socket || !this.roomId) return;
     this.socket.emit("mp_claim_ring", { roomId: this.roomId, ringIndex });
   }
 
-  /**
-   * Optional future: hit report (client hit detection)
-   * data:
-   * { victimId, bulletId, damage, pos }
-   */
   reportHit(data) {
     if (!this.socket || !this.roomId) return;
     if (!this.isConnected()) return;
 
-    // server may or may not implement mp_hit
     this.socket.emit("mp_hit", {
       roomId: this.roomId,
       ...data
@@ -254,18 +236,18 @@ class MPClient {
     // -------------------------
     s.on("connect", () => {
       if (this.debug) console.log("[MPClient] Connected:", s.id);
-      this.onConnected();
+      try { this.onConnected(); } catch (e) { console.error("onConnected crash:", e); }
     });
 
     s.on("disconnect", (reason) => {
       if (this.debug) console.warn("[MPClient] Disconnected:", reason);
 
-      // socket reconnect can happen, so keep clientId if possible
+      // reset session state
       this.roomId = null;
       this.isHost = false;
       this.seed = null;
 
-      this.onDisconnected(reason);
+      try { this.onDisconnected(reason); } catch (e) { console.error("onDisconnected crash:", e); }
     });
 
     // -------------------------
@@ -286,16 +268,20 @@ class MPClient {
       this.isHost = !!msg.isHost;
       this.seed = msg.seed;
 
-      if (this.debug) console.log("[MPClient] Room created:", this.roomId);
+      if (this.debug) console.log("[MPClient] Room created:", this.roomId, "host:", this.isHost);
 
-      this.onLobbyUpdate({
-        type: "created",
-        roomId: this.roomId,
-        players: msg.players || [],
-        hostId: msg.hostId,
-        seed: msg.seed,
-        isHost: this.isHost
-      });
+      try {
+        this.onLobbyUpdate({
+          type: "created",
+          roomId: this.roomId,
+          players: msg.players || [],
+          hostId: msg.hostId,
+          seed: msg.seed,
+          isHost: this.isHost
+        });
+      } catch (e) {
+        console.error("onLobbyUpdate crash:", e);
+      }
     });
 
     // -------------------------
@@ -306,16 +292,20 @@ class MPClient {
       this.isHost = (msg.hostId === this.clientId);
       this.seed = msg.seed;
 
-      if (this.debug) console.log("[MPClient] Room joined:", this.roomId);
+      if (this.debug) console.log("[MPClient] Room joined:", this.roomId, "isHost:", this.isHost);
 
-      this.onLobbyUpdate({
-        type: "joined",
-        roomId: this.roomId,
-        players: msg.players || [],
-        hostId: msg.hostId,
-        seed: msg.seed,
-        isHost: this.isHost
-      });
+      try {
+        this.onLobbyUpdate({
+          type: "joined",
+          roomId: this.roomId,
+          players: msg.players || [],
+          hostId: msg.hostId,
+          seed: msg.seed,
+          isHost: this.isHost
+        });
+      } catch (e) {
+        console.error("onLobbyUpdate crash:", e);
+      }
     });
 
     // -------------------------
@@ -324,32 +314,43 @@ class MPClient {
     s.on("mp_lobby_update", (msg) => {
       if (this.debug) console.log("[MPClient] Lobby update:", msg);
 
-      // keep local isHost in sync
       this.isHost = (msg.hostId === this.clientId);
 
-      this.onLobbyUpdate({
-        type: "update",
-        roomId: msg.roomId,
-        players: msg.players || [],
-        hostId: msg.hostId,
-        isHost: this.isHost
-      });
+      try {
+        this.onLobbyUpdate({
+          type: "update",
+          roomId: msg.roomId,
+          players: msg.players || [],
+          hostId: msg.hostId,
+          isHost: this.isHost
+        });
+      } catch (e) {
+        console.error("onLobbyUpdate crash:", e);
+      }
     });
 
     // -------------------------
     // Game start
     // -------------------------
     s.on("mp_game_start", (msg) => {
+      console.log("✅ CLIENT RECEIVED mp_game_start", msg);
+
+      this._lastStartAt = performance.now();
+
       this.seed = msg.seed ?? this.seed;
       this.tickRate = msg.tickRate ?? this.tickRate;
 
       if (this.debug) console.log("[MPClient] Game started seed:", this.seed, "tickRate:", this.tickRate);
-      this._lastStartAt = performance.now();
 
-      this.onGameStart({
-        seed: this.seed,
-        tickRate: this.tickRate
-      });
+      try {
+        this.onGameStart({
+          seed: this.seed,
+          tickRate: this.tickRate,
+          raw: msg
+        });
+      } catch (e) {
+        console.error("❌ onGameStart crashed:", e);
+      }
     });
 
     // -------------------------
@@ -363,31 +364,32 @@ class MPClient {
         });
       }
 
-      this.onState(snapshot);
+      try { this.onState(snapshot); } catch (e) { console.error("onState crash:", e); }
     });
 
     // -------------------------
-    // Event messages (fire etc)
+    // Event messages
     // -------------------------
     s.on("mp_event", (evt) => {
       if (this.mpState) this.mpState.applyServerEvent(evt);
-      this.onEvent(evt);
+      try { this.onEvent(evt); } catch (e) { console.error("onEvent crash:", e); }
     });
 
     // -------------------------
     // Score update
     // -------------------------
     s.on("mp_score_update", (msg) => {
-      this.onEvent({ t: "EVENT", type: "SCORE", ...msg });
+      try { this.onEvent({ t: "EVENT", type: "SCORE", ...msg }); } catch (e) { console.error("onEvent crash:", e); }
     });
 
     // -------------------------
     // Game over
     // -------------------------
     s.on("mp_game_over", (msg) => {
-      if (this.debug) console.log("[MPClient] Game Over:", msg);
       console.log("❌ GAME OVER after(ms):", performance.now() - (this._lastStartAt || performance.now()), msg);
-      this.onGameOver(msg);
+      if (this.debug) console.log("[MPClient] Game Over:", msg);
+
+      try { this.onGameOver(msg); } catch (e) { console.error("onGameOver crash:", e); }
     });
 
     // -------------------------
@@ -395,7 +397,7 @@ class MPClient {
     // -------------------------
     s.on("playerDisconnected", (id) => {
       if (this.mpState) this.mpState.removePlayer(id);
-      this.onEvent({ t: "EVENT", type: "PLAYER_LEFT", id });
+      try { this.onEvent({ t: "EVENT", type: "PLAYER_LEFT", id }); } catch (e) { console.error("onEvent crash:", e); }
     });
 
     // -------------------------
@@ -403,7 +405,7 @@ class MPClient {
     // -------------------------
     s.on("mp_error", (err) => {
       if (this.debug) console.warn("[MPClient] Error:", err);
-      this.onError(err?.msg || "Unknown MP error");
+      try { this.onError(err?.msg || "Unknown MP error"); } catch (e) { console.error("onError crash:", e); }
     });
   }
 }
