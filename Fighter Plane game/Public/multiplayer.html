@@ -1,18 +1,31 @@
 <!-- ==========================================
  PATH: Public/multiplayer.html
- Sky Pilot - Multiplayer (FINAL UPDATED)
- - Lobby UI background improved
- - No transparency issue
- - Start spam locked
+ Sky Pilot - Multiplayer (FINAL ADVANCED UI)
+ - Fixed: Start Loop Bug
+ - UI: Sci-Fi Tactical Theme
 ========================================== -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Sky Pilot - Multiplayer</title>
+  <title>Sky Pilot - Multiplayer Uplink</title>
+
+  <!-- Google Font for Sci-Fi Look -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 
   <style>
+    :root {
+      --primary: #00f3ff;
+      --secondary: #0099ff;
+      --danger: #ff4444;
+      --bg-glass: rgba(6, 11, 25, 0.85);
+      --border-glass: rgba(0, 243, 255, 0.2);
+      --font-main: 'Rajdhani', sans-serif;
+    }
+
     html, body {
       margin: 0;
       padding: 0;
@@ -20,9 +33,11 @@
       background: #000;
       width: 100%;
       height: 100%;
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: var(--font-main);
       color: white;
+      user-select: none;
     }
+    
     canvas { display: block; }
 
     /* ---------- UI ROOT ---------- */
@@ -33,47 +48,71 @@
       pointer-events: none;
     }
 
-    /* ✅ Fullscreen lobby background layer */
-    .mpLobbyBG{
+    /* ✅ ADVANCED BACKGROUND */
+    .mpLobbyBG {
       position: fixed;
       inset: 0;
       z-index: 0;
-      pointer-events:none;
-
-      background:
-        radial-gradient(circle at 18% 26%, rgba(0,255,255,0.18), transparent 45%),
-        radial-gradient(circle at 82% 74%, rgba(0,120,255,0.22), transparent 50%),
-        radial-gradient(circle at 55% 50%, rgba(255,255,255,0.05), transparent 60%),
-        linear-gradient(180deg, #02030a 0%, #050b18 45%, #000 100%);
+      pointer-events: none;
+      background: radial-gradient(circle at 50% 50%, #0d1a33 0%, #000000 100%);
     }
 
-    .mpLobbyBG::after{
-      content:"";
-      position:absolute;
-      inset:-40%;
-      background: radial-gradient(circle at center, rgba(0,255,255,0.10), transparent 55%);
-      filter: blur(40px);
-      animation: mpFloat 7s ease-in-out infinite;
-      opacity: 0.8;
+    /* Grid Overlay Effect */
+    .mpLobbyBG::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: 
+        linear-gradient(rgba(0, 243, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 243, 255, 0.05) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
     }
 
-    @keyframes mpFloat{
-      0%   { transform: translate(-2%, -2%) scale(1); }
-      50%  { transform: translate(2%, 2%) scale(1.05); }
-      100% { transform: translate(-2%, -2%) scale(1); }
+    /* Floating Orbs */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.4;
+      animation: floatOrb 10s infinite ease-in-out;
+    }
+    .orb-1 { width: 300px; height: 300px; background: var(--secondary); top: 10%; left: 20%; animation-delay: 0s; }
+    .orb-2 { width: 400px; height: 400px; background: var(--primary); bottom: 10%; right: 10%; animation-delay: -5s; }
+
+    @keyframes floatOrb {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(30px, -30px); }
     }
 
-    /* ---------- UI PANEL ---------- */
+    /* ---------- PANEL STYLES ---------- */
     .panel {
       position: relative;
-      z-index: 2;
+      z-index: 10;
       pointer-events: auto;
-      background: rgba(8, 12, 20, 0.93);
-      border: 1px solid rgba(0,255,255,0.18);
-      border-radius: 16px;
-      padding: 18px;
-      box-shadow: 0 0 35px rgba(0, 255, 255, 0.08);
-      backdrop-filter: blur(10px);
+      background: var(--bg-glass);
+      border: 1px solid var(--border-glass);
+      box-shadow: 
+        0 0 30px rgba(0, 243, 255, 0.1),
+        inset 0 0 20px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(16px);
+      padding: 2rem;
+      border-radius: 4px; /* Techy sharp corners */
+      clip-path: polygon(
+        0 0, 
+        100% 0, 
+        100% calc(100% - 20px), 
+        calc(100% - 20px) 100%, 
+        0 100%
+      );
+    }
+
+    /* Tech Lines decoration */
+    .panel::after {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
     }
 
     .centerScreen {
@@ -81,187 +120,231 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: min(760px, 92vw);
-      max-height: 85vh;
-      overflow: auto;
+      width: min(700px, 90vw);
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
     }
 
     .hidden { display: none !important; }
 
+    /* Typography */
     h1 {
-      margin: 0 0 12px 0;
-      font-size: 26px;
-      letter-spacing: 1px;
-      color: #c8f7ff;
-      text-shadow: 0 0 14px rgba(0,255,255,0.12);
+      margin: 0;
+      font-weight: 700;
+      font-size: 2.5rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: white;
+      text-shadow: 0 0 20px var(--primary);
     }
 
     .sub {
-      opacity: 0.75;
-      font-size: 13px;
-      margin-bottom: 14px;
+      font-size: 1rem;
+      color: #8faec2;
+      margin-top: -10px;
     }
 
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin-bottom: 14px;
-    }
-
-    .field {
+    /* Inputs */
+    .input-group {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 0.5rem;
     }
 
     label {
-      font-size: 12px;
-      opacity: 0.8;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--primary);
     }
 
     input {
-      padding: 12px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.14);
-      background: rgba(255,255,255,0.06);
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.1);
       color: white;
+      font-family: var(--font-main);
+      font-size: 1.2rem;
+      padding: 12px 16px;
+      border-radius: 2px;
       outline: none;
-      font-size: 14px;
+      transition: all 0.2s;
     }
 
-    input::placeholder { opacity: 0.5; }
+    input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+    }
 
+    /* Buttons */
     .btnRow {
       display: flex;
+      gap: 1rem;
+      margin-top: 1rem;
       flex-wrap: wrap;
-      gap: 10px;
     }
 
     button {
-      border: none;
-      border-radius: 12px;
-      padding: 12px 14px;
-      font-weight: bold;
+      flex: 1;
+      padding: 14px 24px;
+      font-family: var(--font-main);
+      font-weight: 700;
+      font-size: 1.1rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
       cursor: pointer;
-      letter-spacing: 0.3px;
-      transition: transform 0.12s ease, opacity 0.12s ease;
+      border: none;
+      transition: all 0.2s;
+      clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+      min-width: 140px;
     }
-    button:hover { transform: translateY(-1px); opacity: 0.95; }
-    button:disabled { cursor:not-allowed; opacity:0.55; transform:none; }
 
     .primary {
-      background: linear-gradient(90deg, #1abc9c, #00d4ff);
-      color: #000;
+      background: var(--primary);
+      color: black;
+      box-shadow: 0 0 15px rgba(0, 243, 255, 0.4);
     }
+    .primary:hover {
+      background: white;
+      box-shadow: 0 0 25px rgba(0, 243, 255, 0.7);
+      transform: translateY(-2px);
+    }
+
     .secondary {
-      background: rgba(255,255,255,0.08);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.14);
+      background: transparent;
+      border: 1px solid var(--secondary);
+      color: var(--secondary);
     }
+    .secondary:hover {
+      background: rgba(0, 153, 255, 0.15);
+      color: white;
+      border-color: white;
+    }
+
     .danger {
-      background: rgba(231,76,60,0.18);
-      border: 1px solid rgba(231,76,60,0.35);
-      color: #fff;
+      background: rgba(255, 68, 68, 0.1);
+      border: 1px solid var(--danger);
+      color: var(--danger);
+    }
+    .danger:hover {
+      background: var(--danger);
+      color: white;
     }
 
-    .status {
-      margin-top: 12px;
-      font-family: Consolas, monospace;
-      font-size: 12px;
-      opacity: 0.8;
-      min-height: 16px;
-      white-space: pre-wrap;
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      filter: grayscale(1);
     }
 
-    /* Lobby list */
+    /* Lobby Specifics */
     .lobbyGrid {
       display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 12px;
-      margin-top: 10px;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
     }
 
     .codeBox {
-      font-family: Consolas, monospace;
-      font-size: 26px;
-      letter-spacing: 4px;
-      padding: 12px;
-      border-radius: 14px;
       background: rgba(0,0,0,0.6);
-      border: 1px solid rgba(0,255,255,0.25);
-      color: #00eaff;
+      border: 1px dashed var(--primary);
+      padding: 20px;
       text-align: center;
-      user-select: all;
+      font-size: 3rem;
+      letter-spacing: 5px;
+      color: var(--primary);
+      font-weight: 700;
+      text-shadow: 0 0 20px rgba(0,243,255,0.4);
+      margin-bottom: 1rem;
     }
 
-    .plist {
-      margin-top: 10px;
-      border-radius: 14px;
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.10);
+    .playerList {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.1);
+      height: 200px;
+      overflow-y: auto;
+      padding: 5px;
     }
 
     .pitem {
       display: flex;
       justify-content: space-between;
-      padding: 10px 12px;
-      background: rgba(255,255,255,0.05);
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-      font-size: 13px;
+      align-items: center;
+      padding: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      animation: fadeIn 0.3s ease;
     }
-
-    .pitem:nth-child(odd) { background: rgba(255,255,255,0.03); }
+    .pitem:nth-child(odd) { background: rgba(255,255,255,0.02); }
 
     .tagHost {
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: rgba(0,255,255,0.14);
-      border: 1px solid rgba(0,255,255,0.25);
-      color: #9ffcff;
+      font-size: 0.7rem;
+      background: var(--primary);
+      color: black;
+      padding: 2px 6px;
+      font-weight: bold;
+      border-radius: 2px;
     }
 
-    /* Top HUD */
+    /* Status Text */
+    .status {
+      min-height: 20px;
+      font-size: 0.9rem;
+      color: #ccc;
+      margin-top: 5px;
+      text-transform: uppercase;
+    }
+
+    /* HUD */
     #topHUD {
       position: absolute;
-      top: 16px;
-      left: 16px;
+      top: 20px;
+      left: 20px;
       display: flex;
-      gap: 10px;
-      align-items: center;
-      pointer-events: none;
-      z-index: 5;
-    }
-    .pill {
-      pointer-events: none;
-      padding: 10px 12px;
-      border-radius: 999px;
-      background: rgba(0,0,0,0.55);
-      border: 1px solid rgba(255,255,255,0.12);
-      font-family: Consolas, monospace;
-      font-size: 12px;
-      opacity: 0.9;
+      gap: 15px;
+      z-index: 100;
     }
 
-    /* End screen stats */
+    .hud-pill {
+      background: rgba(0, 15, 30, 0.8);
+      border: 1px solid rgba(0, 243, 255, 0.3);
+      padding: 8px 16px;
+      font-size: 1rem;
+      color: var(--primary);
+      font-weight: 600;
+      backdrop-filter: blur(5px);
+      clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%, 0 10px);
+    }
+
+    /* End Screen Table */
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 12px;
-      font-size: 13px;
+      margin-top: 10px;
     }
-    th, td {
-      padding: 10px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
+    th {
       text-align: left;
+      color: var(--secondary);
+      border-bottom: 1px solid var(--secondary);
+      padding: 8px;
+      font-size: 0.9rem;
     }
-    th { opacity: 0.8; font-size: 12px; }
+    td {
+      padding: 10px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    tr:first-child td {
+      color: var(--primary);
+      font-weight: bold;
+      text-shadow: 0 0 10px rgba(0,243,255,0.3);
+    }
 
-    @media(max-width: 700px) {
-      .row { grid-template-columns: 1fr; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 700px) {
       .lobbyGrid { grid-template-columns: 1fr; }
-      .codeBox { font-size: 22px; }
+      h1 { font-size: 1.8rem; }
     }
   </style>
 </head>
@@ -311,174 +394,184 @@
   <div id="uiRoot">
 
     <!-- Lobby Background -->
-    <div id="mpLobbyBG" class="mpLobbyBG"></div>
+    <div id="mpLobbyBG" class="mpLobbyBG">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+    </div>
 
     <!-- Top HUD -->
     <div id="topHUD" class="hidden">
-      <div class="pill" id="hudRoom">ROOM: ----</div>
-      <div class="pill" id="hudName">YOU: ----</div>
-      <div class="pill" id="hudInfo">STATUS: LOBBY</div>
+      <div class="hud-pill" id="hudRoom">ROOM: ----</div>
+      <div class="hud-pill" id="hudName">PILOT: ----</div>
+      <div class="hud-pill" id="hudInfo">STATUS: LOBBY</div>
     </div>
 
     <!-- JOIN SCREEN -->
     <div id="screenJoin" class="panel centerScreen">
-      <h1>🌐 Multiplayer Uplink</h1>
-      <div class="sub">
-        Create a lobby or join with a 4-letter code. Host can start the game.
+      <div>
+        <h1>Sky Pilot Uplink</h1>
+        <div class="sub">Establish connection to the combat network.</div>
       </div>
 
-      <div class="row">
-        <div class="field">
-          <label>Player Name</label>
-          <input id="inpName" placeholder="Enter IGN (example: Avi)" maxlength="14" />
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div class="input-group">
+          <label>Callsign (ID)</label>
+          <input id="inpName" placeholder="MAVERICK" maxlength="12" />
         </div>
 
-        <div class="field">
-          <label>Lobby Code</label>
-          <input id="inpCode" placeholder="AB12" maxlength="4" />
+        <div class="input-group">
+          <label>Access Code</label>
+          <input id="inpCode" placeholder="A1B2" maxlength="4" style="text-transform: uppercase; letter-spacing: 2px;" />
         </div>
       </div>
+
+      <div class="status" id="joinStatus">Systems Online. Waiting for input...</div>
 
       <div class="btnRow">
-        <button id="btnCreate" class="primary">CREATE LOBBY</button>
-        <button id="btnJoin" class="secondary">JOIN LOBBY</button>
-        <button id="btnBack" class="danger">⬅ BACK TO MENU</button>
+        <button id="btnCreate" class="primary">Initialize New Squad</button>
+        <button id="btnJoin" class="secondary">Join Squad</button>
       </div>
-
-      <div class="status" id="joinStatus"></div>
+      
+      <div class="btnRow" style="margin-top: 0;">
+        <button id="btnBack" class="danger">Abort Mission</button>
+      </div>
     </div>
 
     <!-- LOBBY SCREEN -->
     <div id="screenLobby" class="panel centerScreen hidden">
-      <h1>🛫 Lobby</h1>
-      <div class="sub">Share code with friends. Host must start.</div>
+      <div>
+        <h1>Squad Lobby</h1>
+        <div class="sub">Wait for squad leader to initiate launch sequence.</div>
+      </div>
 
       <div class="lobbyGrid">
+        <!-- Left Col -->
         <div>
-          <div style="font-size:12px; opacity:0.7; margin-bottom:6px;">LOBBY CODE</div>
+          <label>Mission Access Code</label>
           <div id="lobbyCode" class="codeBox">----</div>
 
-          <div style="margin-top:14px" class="btnRow">
-            <button id="btnStart" class="primary">START GAME</button>
-            <button id="btnLeave" class="danger">LEAVE</button>
+          <div class="btnRow" style="flex-direction: column;">
+            <button id="btnStart" class="primary">INITIATE LAUNCH</button>
+            <button id="btnLeave" class="danger">LEAVE SQUAD</button>
           </div>
-
-          <div class="status" id="lobbyStatus"></div>
+          
+          <div class="status" id="lobbyStatus" style="margin-top: 10px;"></div>
         </div>
 
+        <!-- Right Col -->
         <div>
-          <div style="font-size:12px; opacity:0.7; margin-bottom:6px;">PLAYERS</div>
-          <div id="playerList" class="plist"></div>
+          <label>Active Pilots</label>
+          <div id="playerList" class="playerList">
+            <!-- Populated by JS -->
+          </div>
         </div>
       </div>
     </div>
 
     <!-- END SCREEN -->
     <div id="screenEnd" class="panel centerScreen hidden">
-      <h1 id="endTitle">🏁 Match Finished</h1>
-      <div class="sub" id="endSub">Stats:</div>
+      <div style="text-align: center;">
+        <h1 id="endTitle">Mission Complete</h1>
+        <div class="sub" id="endSub">Performance Report</div>
+      </div>
 
       <table id="statsTable">
         <thead>
           <tr>
-            <th>Player</th>
-            <th>Kills</th>
-            <th>Deaths</th>
-            <th>Rings</th>
-            <th>Score</th>
+            <th>PILOT</th>
+            <th>KILLS</th>
+            <th>DEATHS</th>
+            <th>RINGS</th>
+            <th>SCORE</th>
           </tr>
         </thead>
         <tbody id="statsBody"></tbody>
       </table>
 
-      <div style="margin-top:14px" class="btnRow">
-        <button id="btnReplay" class="primary">▶ REPLAY</button>
-        <button id="btnEndBack" class="danger">⬅ MAIN MENU</button>
+      <div class="btnRow">
+        <button id="btnReplay" class="primary">RE-ENGAGE</button>
+        <button id="btnEndBack" class="danger">RETURN TO BASE</button>
       </div>
 
-      <div class="status" id="endStatus"></div>
+      <div class="status" id="endStatus" style="text-align: center;"></div>
     </div>
   </div>
 
   <script>
     // ==========================================================
-    // Multiplayer UI Controller (FINAL UPDATED)
+    // Multiplayer UI Controller (FINAL - ADVANCED + BUG FIX)
     // ==========================================================
     const el = (id) => document.getElementById(id);
 
+    // Screens
     const screenJoin = el("screenJoin");
     const screenLobby = el("screenLobby");
     const screenEnd = el("screenEnd");
     const topHUD = el("topHUD");
-
     const mpLobbyBG = el("mpLobbyBG");
 
+    // Inputs
     const inpName = el("inpName");
     const inpCode = el("inpCode");
 
+    // Status Texts
     const joinStatus = el("joinStatus");
     const lobbyStatus = el("lobbyStatus");
+    const endStatus = el("endStatus");
 
+    // Dynamic Elements
     const lobbyCode = el("lobbyCode");
     const playerList = el("playerList");
-
-    const btnCreate = el("btnCreate");
-    const btnJoin = el("btnJoin");
-    const btnBack = el("btnBack");
-
-    const btnStart = el("btnStart");
-    const btnLeave = el("btnLeave");
-
+    const hudRoom = el("hudRoom");
+    const hudName = el("hudName");
+    const hudInfo = el("hudInfo");
     const endTitle = el("endTitle");
     const endSub = el("endSub");
     const statsBody = el("statsBody");
 
+    // Buttons
+    const btnCreate = el("btnCreate");
+    const btnJoin = el("btnJoin");
+    const btnBack = el("btnBack");
+    const btnStart = el("btnStart");
+    const btnLeave = el("btnLeave");
     const btnReplay = el("btnReplay");
     const btnEndBack = el("btnEndBack");
-    const endStatus = el("endStatus");
 
-    const hudRoom = el("hudRoom");
-    const hudName = el("hudName");
-    const hudInfo = el("hudInfo");
-
-    // ✅ start lock
+    // --- LOGIC FLAGS ---
     let __startLocked = false;
+    let __isGameRunning = false; // ✅ Prevents Lobby from popping up during game
 
     function showOnly(screen) {
       [screenJoin, screenLobby, screenEnd].forEach(s => s.classList.add("hidden"));
       screen.classList.remove("hidden");
     }
 
-    function setStatus(text, isError = false) {
-      joinStatus.innerText = text || "";
-      joinStatus.style.color = isError ? "#ff7777" : "rgba(255,255,255,0.85)";
-    }
-
-    function setLobbyStatus(text, isError = false) {
-      lobbyStatus.innerText = text || "";
-      lobbyStatus.style.color = isError ? "#ff7777" : "rgba(255,255,255,0.85)";
+    function setStatus(element, text, isError = false) {
+      element.innerText = text || "";
+      element.style.color = isError ? "#ff4444" : "#00f3ff";
     }
 
     function sanitizeCode(v) {
       return (v || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
     }
 
+    // Input Listeners
     inpCode.addEventListener("input", () => {
       inpCode.value = sanitizeCode(inpCode.value);
     });
 
+    // Button Actions
     btnBack.onclick = () => window.location.href = "./index.html";
     btnEndBack.onclick = () => window.location.href = "./index.html";
 
     btnCreate.onclick = () => {
       const name = (inpName.value || "Pilot").trim();
-      if (!window.mpClient) return setStatus("MPClient not ready.", true);
+      if (!window.mpClient) return setStatus(joinStatus, "Connection Module Offline", true);
 
       __startLocked = false;
       btnStart.disabled = false;
-
-      setStatus("Creating lobby...");
-      console.log("[UI] Create lobby:", name);
+      setStatus(joinStatus, "Initializing Lobby...");
       window.mpClient.createRoom(name);
     };
 
@@ -486,19 +579,16 @@
       const name = (inpName.value || "Pilot").trim();
       const code = sanitizeCode(inpCode.value);
 
-      if (!code || code.length !== 4) return setStatus("Enter valid 4-letter code.", true);
-      if (!window.mpClient) return setStatus("MPClient not ready.", true);
+      if (!code || code.length !== 4) return setStatus(joinStatus, "Invalid Access Code", true);
+      if (!window.mpClient) return setStatus(joinStatus, "Connection Module Offline", true);
 
       __startLocked = false;
       btnStart.disabled = false;
-
-      setStatus("Joining lobby...");
-      console.log("[UI] Join lobby:", code, name);
+      setStatus(joinStatus, "Connecting to Squad...");
       window.mpClient.joinRoom(code, name);
     };
 
     btnLeave.onclick = () => {
-      // simplest stable exit
       window.location.reload();
     };
 
@@ -507,33 +597,33 @@
       if (!window.mpClient?.roomId) return;
 
       __startLocked = true;
-
       btnStart.disabled = true;
-      btnStart.style.opacity = "0.55";
-
-      console.log("🚀 START CLICK -> sending mp_start_game", window.mpClient.roomId);
+      btnStart.innerText = "LAUNCHING...";
+      
+      console.log("🚀 INITIATING LAUNCH SEQUENCE", window.mpClient.roomId);
       window.mpClient.startGame();
-      setLobbyStatus("Starting game...");
+      setStatus(lobbyStatus, "Launch Sequence Initiated...");
     };
 
     btnReplay.onclick = () => {
-      endStatus.innerText = "Replay not implemented on server yet.";
+      setStatus(endStatus, "Replay systems calibrating (Not available on server yet).");
     };
 
     // ==========================================================
-    // UI Bridge used by multiplayer-main.js
+    // UI Bridge (Linked to Game Logic)
     // ==========================================================
     window.mpUIBridge = {
       onConnected() {
-        setStatus("✅ Connected. Create or join a lobby.");
+        setStatus(joinStatus, "✅ Uplink Established. Ready.");
+        __isGameRunning = false;
       },
 
       onDisconnected(reason) {
-        setStatus("❌ Disconnected: " + reason, true);
-
+        setStatus(joinStatus, "❌ Uplink Lost: " + reason, true);
         __startLocked = false;
+        __isGameRunning = false;
         btnStart.disabled = false;
-        btnStart.style.opacity = "1";
+        btnStart.innerText = "INITIATE LAUNCH";
 
         showOnly(screenJoin);
         topHUD.classList.add("hidden");
@@ -541,71 +631,91 @@
       },
 
       onLobbyUpdate(msg) {
-        // msg: { type, roomId, players, hostId, seed, isHost }
+        // ✅ CRITICAL FIX: Ignore lobby updates if game is running
+        if (__isGameRunning) return;
+
         showOnly(screenLobby);
-
         topHUD.classList.remove("hidden");
-        hudRoom.innerText = `ROOM: ${msg.roomId || "----"}`;
-        hudName.innerText = `YOU: ${(inpName.value || "Pilot").trim()}`;
-        hudInfo.innerText = "STATUS: LOBBY";
-
         mpLobbyBG.style.display = "block";
+
+        // Update HUD
+        hudRoom.innerText = `ROOM: ${msg.roomId}`;
+        hudName.innerText = `PILOT: ${(inpName.value || "Pilot").trim().toUpperCase()}`;
+        hudInfo.innerText = "STATUS: PRE-FLIGHT";
 
         lobbyCode.innerText = msg.roomId || "----";
 
         const myId = window.mpClient?.clientId;
         const isHost = msg.hostId && myId && msg.hostId === myId;
 
-        btnStart.style.display = isHost ? "inline-block" : "none";
+        // Host Control
+        if (isHost) {
+            btnStart.style.display = "block";
+            setStatus(lobbyStatus, "Awaiting your command, Squad Leader.");
+        } else {
+            btnStart.style.display = "none";
+            setStatus(lobbyStatus, "Waiting for Squad Leader to launch...");
+        }
 
-        // reset lock when lobby updates
+        // Reset lock
         __startLocked = false;
         btnStart.disabled = false;
-        btnStart.style.opacity = "1";
+        btnStart.innerText = "INITIATE LAUNCH";
 
-        // player list
+        // Render List
         playerList.innerHTML = "";
         (msg.players || []).forEach(p => {
           const row = document.createElement("div");
           row.className = "pitem";
           row.innerHTML = `
-            <div>${p.name || "Pilot"}</div>
-            <div>${(p.id === msg.hostId) ? "<span class='tagHost'>HOST</span>" : ""}</div>
+            <div style="font-weight:600; color:${p.id === myId ? 'var(--primary)' : 'white'}">
+                ${p.name || "Pilot"}
+            </div>
+            <div>${(p.id === msg.hostId) ? "<span class='tagHost'>LEADER</span>" : ""}</div>
           `;
           playerList.appendChild(row);
         });
-
-        setLobbyStatus(isHost ? "✅ You are Host. Press START when ready." : "Waiting for host to start...");
       },
 
       onGameStart(info) {
-        console.log("✅ UI RECEIVED GAME START", info);
+        console.log("✅ LAUNCH CONFIRMED", info);
+        
+        // ✅ Set Flag
+        __isGameRunning = true;
 
         screenJoin.classList.add("hidden");
         screenLobby.classList.add("hidden");
         screenEnd.classList.add("hidden");
 
         topHUD.classList.remove("hidden");
-        hudInfo.innerText = "STATUS: PLAYING";
+        hudInfo.innerText = "STATUS: ENGAGED";
+        hudInfo.style.color = "var(--danger)";
+        hudInfo.style.borderColor = "var(--danger)";
 
         mpLobbyBG.style.display = "none";
       },
 
       onGameOver(msg) {
-        showOnly(screenEnd);
+        // ✅ Reset Flag
+        __isGameRunning = false;
 
+        showOnly(screenEnd);
         topHUD.classList.add("hidden");
         mpLobbyBG.style.display = "block";
+        
+        // Reset HUD Style
+        hudInfo.style.color = "var(--primary)";
+        hudInfo.style.borderColor = "rgba(0, 243, 255, 0.3)";
 
-        endTitle.innerText = `🏆 Winner: ${msg.winner || "Unknown"}`;
-        endSub.innerText = "Match stats:";
+        endTitle.innerText = `VICTOR: ${msg.winner || "Unknown"}`;
+        endSub.innerText = "MISSION REPORT";
 
         const rows = Array.isArray(msg.stats) ? msg.stats.slice() : [];
         rows.sort((a, b) => (b.score - a.score));
 
-        statsBody.innerHTML = rows.map(r => `
+        statsBody.innerHTML = rows.map((r, i) => `
           <tr>
-            <td>${r.name || "Pilot"}</td>
+            <td style="color:${i===0 ? 'var(--primary)' : 'white'}">${r.name || "Pilot"}</td>
             <td>${r.kills ?? 0}</td>
             <td>${r.deaths ?? 0}</td>
             <td>${r.rings ?? 0}</td>
@@ -613,16 +723,20 @@
           </tr>
         `).join("");
 
-        endStatus.innerText = "";
+        setStatus(endStatus, "");
       },
 
       onError(text) {
-        setStatus("❌ " + text, true);
+        if(!__isGameRunning) {
+             setStatus(joinStatus, "❌ " + text, true);
+             setStatus(lobbyStatus, "❌ " + text, true);
+        }
       }
     };
 
+    // Initialize
     showOnly(screenJoin);
-    setStatus("Connecting...");
+    setStatus(joinStatus, "Connecting to Uplink...");
   </script>
 </body>
 </html>
