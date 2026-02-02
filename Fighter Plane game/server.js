@@ -192,6 +192,40 @@ function roomSnapshot(room) {
 }
 
 // ----------------------------------------------------------
+// ✅ GAME END HELPERS (ADDED ONLY)
+// ----------------------------------------------------------
+function emitGameOver(room, winnerPlayer, reason) {
+  if (!room || room.status === "finished") return;
+  room.status = "finished";
+
+  io.to(room.id).emit("mp_game_over", {
+    winnerId: winnerPlayer?.id || null,
+    winner: winnerPlayer?.name || null,
+    reason: reason || "Match ended",
+    stats: room.players.map(pp => ({
+      id: pp.id,
+      name: pp.name,
+      rings: pp.rings,
+      kills: pp.kills,
+      score: pp.score
+    }))
+  });
+
+  emitLobbyUpdate(room.id);
+}
+
+function checkLastPlayerWin(room, reason) {
+  if (!room) return;
+  if (room.status !== "playing") return;
+
+  // If only 1 player remains => winner
+  if (room.players.length === 1) {
+    const winner = room.players[0];
+    emitGameOver(room, winner, reason || "All other players left");
+  }
+}
+
+// ----------------------------------------------------------
 // ✅ SERVER TICK LOOP (20 TPS like Minecraft)
 // ----------------------------------------------------------
 const TICK_INTERVAL_MS = 1000 / SERVER_CONFIG.SERVER_TICK_RATE;
@@ -341,6 +375,9 @@ io.on("connection", (socket) => {
 
     emitLobbyUpdate(rId);
     io.to(rId).emit("playerDisconnected", socket.id);
+
+    // ✅ ADDED: end match if only 1 player left (during playing)
+    checkLastPlayerWin(room, "All other players left");
 
     console.log(`[ROOM] ${socket.id} left ${rId}`);
   });
@@ -522,21 +559,8 @@ io.on("connection", (socket) => {
 
     // win condition
     if (p.rings >= SERVER_CONFIG.TOTAL_RINGS_TO_WIN) {
-      room.status = "finished";
-
-      io.to(rId).emit("mp_game_over", {
-        winnerId: p.id,
-        winner: p.name,
-        stats: room.players.map(pp => ({
-          id: pp.id,
-          name: pp.name,
-          rings: pp.rings,
-          kills: pp.kills,
-          score: pp.score
-        }))
-      });
-
-      emitLobbyUpdate(rId);
+      // ✅ Use the same gameover emit (no logic change, just unified)
+      emitGameOver(room, p, "Objective completed: Rings cleared");
     }
   });
 
@@ -572,6 +596,9 @@ io.on("connection", (socket) => {
 
       emitLobbyUpdate(rId);
       io.to(rId).emit("playerDisconnected", socket.id);
+
+      // ✅ ADDED: end match if only 1 player left (during playing)
+      checkLastPlayerWin(room, "All other players disconnected");
 
       break;
     }
