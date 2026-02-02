@@ -3,6 +3,7 @@
  Sky Pilot - Multiplayer (FINAL ADVANCED UI)
  - Fixed: Start Loop Bug
  - UI: Sci-Fi Tactical Theme
+ - ✅ Added: Victory/Defeat rules (Last player / Rings)
 ========================================== -->
 <!DOCTYPE html>
 <html lang="en">
@@ -425,7 +426,7 @@
         </div>
       </div>
 
-      <div class="status" id="joinStatus">Systems Online. Waiting for input...</div>
+      <div class="status" id="joinStatus">Systems Online. Waiting for input.</div>
 
       <div class="btnRow">
         <button id="btnCreate" class="primary">Initialize New Squad</button>
@@ -542,6 +543,11 @@
     let __startLocked = false;
     let __isGameRunning = false; // ✅ Prevents Lobby from popping up during game
 
+    // ✅ Victory/Defeat state
+    let __matchEnded = false;
+    let __winnerId = null;
+    let __endReason = "";
+
     function showOnly(screen) {
       [screenJoin, screenLobby, screenEnd].forEach(s => s.classList.add("hidden"));
       screen.classList.remove("hidden");
@@ -571,7 +577,7 @@
 
       __startLocked = false;
       btnStart.disabled = false;
-      setStatus(joinStatus, "Initializing Lobby...");
+      setStatus(joinStatus, "Initializing Lobby.");
       window.mpClient.createRoom(name);
     };
 
@@ -584,7 +590,7 @@
 
       __startLocked = false;
       btnStart.disabled = false;
-      setStatus(joinStatus, "Connecting to Squad...");
+      setStatus(joinStatus, "Connecting to Squad.");
       window.mpClient.joinRoom(code, name);
     };
 
@@ -598,16 +604,83 @@
 
       __startLocked = true;
       btnStart.disabled = true;
-      btnStart.innerText = "LAUNCHING...";
+      btnStart.innerText = "LAUNCHING.";
       
       console.log("🚀 INITIATING LAUNCH SEQUENCE", window.mpClient.roomId);
       window.mpClient.startGame();
-      setStatus(lobbyStatus, "Launch Sequence Initiated...");
+      setStatus(lobbyStatus, "Launch Sequence Initiated.");
     };
 
     btnReplay.onclick = () => {
-      setStatus(endStatus, "Replay systems calibrating (Not available on server yet).");
+      // client-side "replay" for now
+      setStatus(endStatus, "Re-engaging systems...");
+      setTimeout(() => window.location.reload(), 650);
     };
+
+    // ==========================================================
+    // ✅ Victory/Defeat Helpers
+    // ==========================================================
+    function _safeText(v, fallback = "-") {
+      if (v === undefined || v === null) return fallback;
+      return String(v);
+    }
+
+    function _endMatch({ winnerId, reason }) {
+      if (__matchEnded) return;
+      __matchEnded = true;
+      __winnerId = winnerId || null;
+      __endReason = reason || "";
+
+      // Inform HUD
+      const myId = window.mpClient?.clientId;
+      const didWin = !!(__winnerId && myId && (__winnerId === myId));
+
+      endTitle.innerText = didWin ? "VICTORY" : "DEFEAT";
+      endSub.innerText = didWin ? "Mission Successful" : "Mission Failed";
+
+      showOnly(screenEnd);
+      topHUD.classList.add("hidden");
+      mpLobbyBG.style.display = "block";
+      __isGameRunning = false;
+
+      setStatus(endStatus, didWin ? ("✅ " + (_endReason || "You won")) : ("❌ " + (_endReason || "You lost")), !didWin);
+
+      // Optional: stop game loop
+      try {
+        window.gameManager?.stop?.();
+      } catch (e) {
+        console.warn("game stop failed:", e);
+      }
+    }
+
+    function _renderEndTable(snapshotPlayers = []) {
+      // snapshotPlayers: array from server snapshot (msg.players)
+      statsBody.innerHTML = "";
+
+      const myId = window.mpClient?.clientId;
+
+      // sort by score descending
+      const list = [...snapshotPlayers].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+      for (const p of list) {
+        const tr = document.createElement("tr");
+
+        const name = p.name || p.id || "Pilot";
+        const kills = p.kills ?? 0;
+        const deaths = p.deaths ?? 0;
+        const rings = p.rings ?? 0;
+        const score = p.score ?? 0;
+
+        tr.innerHTML = `
+          <td>${_safeText(name)} ${p.id === __winnerId ? "🏆" : ""} ${p.id === myId ? "(YOU)" : ""}</td>
+          <td>${_safeText(kills, 0)}</td>
+          <td>${_safeText(deaths, 0)}</td>
+          <td>${_safeText(rings, 0)}</td>
+          <td>${_safeText(score, 0)}</td>
+        `;
+        statsBody.appendChild(tr);
+      }
+    }
 
     // ==========================================================
     // UI Bridge (Linked to Game Logic)
@@ -616,12 +689,15 @@
       onConnected() {
         setStatus(joinStatus, "✅ Uplink Established. Ready.");
         __isGameRunning = false;
+        __matchEnded = false;
+        __winnerId = null;
       },
 
       onDisconnected(reason) {
         setStatus(joinStatus, "❌ Uplink Lost: " + reason, true);
         __startLocked = false;
         __isGameRunning = false;
+        __matchEnded = false;
         btnStart.disabled = false;
         btnStart.innerText = "INITIATE LAUNCH";
 
@@ -638,105 +714,115 @@
         topHUD.classList.remove("hidden");
         mpLobbyBG.style.display = "block";
 
-        // Update HUD
-        hudRoom.innerText = `ROOM: ${msg.roomId}`;
-        hudName.innerText = `PILOT: ${(inpName.value || "Pilot").trim().toUpperCase()}`;
-        hudInfo.innerText = "STATUS: PRE-FLIGHT";
-
+        // Room code
         lobbyCode.innerText = msg.roomId || "----";
 
-        const myId = window.mpClient?.clientId;
-        const isHost = msg.hostId && myId && msg.hostId === myId;
+        // HUD updates
+        hudRoom.innerText = "ROOM: " + (msg.roomId || "----");
+        hudName.innerText = "PILOT: " + (msg.you?.name || inpName.value || "PILOT");
+        hudInfo.innerText = "STATUS: LOBBY";
 
-        // Host Control
-        if (isHost) {
-            btnStart.style.display = "block";
-            setStatus(lobbyStatus, "Awaiting your command, Squad Leader.");
-        } else {
-            btnStart.style.display = "none";
-            setStatus(lobbyStatus, "Waiting for Squad Leader to launch...");
+        // player list
+        playerList.innerHTML = "";
+        const players = msg.players || [];
+
+        for (const p of players) {
+          const div = document.createElement("div");
+          div.className = "pitem";
+
+          div.innerHTML = `
+            <span>${p.name || "Pilot"}</span>
+            ${p.isHost ? `<span class="tagHost">HOST</span>` : ``}
+          `;
+
+          playerList.appendChild(div);
         }
 
-        // Reset lock
-        __startLocked = false;
-        btnStart.disabled = false;
-        btnStart.innerText = "INITIATE LAUNCH";
+        // host check
+        const isHost = !!msg.you?.isHost;
+        btnStart.style.display = isHost ? "block" : "none";
 
-        // Render List
-        playerList.innerHTML = "";
-        (msg.players || []).forEach(p => {
-          const row = document.createElement("div");
-          row.className = "pitem";
-          row.innerHTML = `
-            <div style="font-weight:600; color:${p.id === myId ? 'var(--primary)' : 'white'}">
-                ${p.name || "Pilot"}
-            </div>
-            <div>${(p.id === msg.hostId) ? "<span class='tagHost'>LEADER</span>" : ""}</div>
-          `;
-          playerList.appendChild(row);
-        });
+        setStatus(lobbyStatus, "Awaiting Launch Command.");
       },
 
-      onGameStart(info) {
-        console.log("✅ LAUNCH CONFIRMED", info);
-        
-        // ✅ Set Flag
+      // ✅ called from mp-client on game start
+      onGameStart(msg) {
         __isGameRunning = true;
+        __matchEnded = false;
+        __winnerId = null;
 
-        screenJoin.classList.add("hidden");
-        screenLobby.classList.add("hidden");
-        screenEnd.classList.add("hidden");
-
+        showOnly(screenLobby); // keep lobby hidden by __isGameRunning ignore updates
         topHUD.classList.remove("hidden");
-        hudInfo.innerText = "STATUS: ENGAGED";
-        hudInfo.style.color = "var(--danger)";
-        hudInfo.style.borderColor = "var(--danger)";
-
         mpLobbyBG.style.display = "none";
+
+        hudInfo.innerText = "STATUS: ENGAGED";
+        setStatus(lobbyStatus, "Engaged.");
       },
 
+      // ✅ server game over (if server supports)
       onGameOver(msg) {
-        // ✅ Reset Flag
-        __isGameRunning = false;
-
-        showOnly(screenEnd);
-        topHUD.classList.add("hidden");
-        mpLobbyBG.style.display = "block";
-        
-        // Reset HUD Style
-        hudInfo.style.color = "var(--primary)";
-        hudInfo.style.borderColor = "rgba(0, 243, 255, 0.3)";
-
-        endTitle.innerText = `VICTOR: ${msg.winner || "Unknown"}`;
-        endSub.innerText = "MISSION REPORT";
-
-        const rows = Array.isArray(msg.stats) ? msg.stats.slice() : [];
-        rows.sort((a, b) => (b.score - a.score));
-
-        statsBody.innerHTML = rows.map((r, i) => `
-          <tr>
-            <td style="color:${i===0 ? 'var(--primary)' : 'white'}">${r.name || "Pilot"}</td>
-            <td>${r.kills ?? 0}</td>
-            <td>${r.deaths ?? 0}</td>
-            <td>${r.rings ?? 0}</td>
-            <td>${r.score ?? 0}</td>
-          </tr>
-        `).join("");
-
-        setStatus(endStatus, "");
+        // msg: {winnerId, reason, players?}
+        const winnerId = msg?.winnerId || null;
+        const reason = msg?.reason || "Match ended";
+        if (Array.isArray(msg?.players)) _renderEndTable(msg.players);
+        _endMatch({ winnerId, reason });
       },
 
-      onError(text) {
-        if(!__isGameRunning) {
-             setStatus(joinStatus, "❌ " + text, true);
-             setStatus(lobbyStatus, "❌ " + text, true);
+      // ✅ update end screen table anytime
+      setEndStats(players) {
+        if (!Array.isArray(players)) return;
+        _renderEndTable(players);
+      }
+    };
+
+    // ==========================================================
+    // ✅ EXTRA Victory/Defeat logic (Client side fallback)
+    // ==========================================================
+    // - If everyone leaves and you are last -> VICTORY
+    // - If your rings reach target -> VICTORY
+    window.mpVictory = {
+      tryLastPlayerWinFromSnapshot(snapshot) {
+        if (__matchEnded) return;
+        if (!__isGameRunning) return;
+        const players = snapshot?.players;
+
+        if (!Array.isArray(players)) return;
+
+        // only count active players
+        const alive = players.filter(p => p && p.id);
+
+        if (alive.length === 1) {
+          _renderEndTable(alive);
+          _endMatch({ winnerId: alive[0].id, reason: "All other pilots disconnected" });
+        }
+      },
+
+      tryRingWinFromSnapshot(snapshot) {
+        if (__matchEnded) return;
+        if (!__isGameRunning) return;
+
+        const myId = window.mpClient?.clientId;
+        if (!myId) return;
+
+        const players = snapshot?.players;
+        if (!Array.isArray(players)) return;
+
+        const me = players.find(p => p?.id === myId);
+        if (!me) return;
+
+        // If server uses ring count in snapshot: p.rings
+        // You can tweak target
+        const ringTarget = snapshot?.ringTarget ?? 10;
+
+        if ((me.rings ?? 0) >= ringTarget) {
+          _renderEndTable(players);
+          _endMatch({ winnerId: myId, reason: "Objective completed: Rings cleared" });
         }
       }
     };
 
-    // Initialize
+    // Default view
     showOnly(screenJoin);
-    setStatus(joinStatus, "Connecting to Uplink...");
   </script>
 </body>
 </html>
