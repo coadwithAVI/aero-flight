@@ -84,7 +84,7 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
-// ✅ FIXED: Incoming Events
+// ✅ FIXED: Silent Hit Log + Respawn with 3s Delay
     onEvent: (evt) => {
       if (!evt) return;
 
@@ -102,35 +102,74 @@ window.addEventListener("load", () => {
       if (evt.type === "HIT" || evt.type === "DAMAGE") {
         const myId = mpClient.socket?.id;
 
-        // ✅ IMPORTANT: Data extract karo (Direct ya nested 'msg' mein)
-        // Server kabhi {targetId: '...'} bhejta hai, kabhi {msg: {targetId: '...'}}
+        // Data extract
         const payload = evt.msg || evt; 
         const targetId = payload.targetId || payload.id;
         const damage = payload.damage || 10;
 
         // Agar targetId MERI hai -> Mujhe damage hua
         if (targetId && myId && targetId === myId) {
-            console.log(`⚠️ I GOT HIT! Damage: ${damage}`);
+            // console.log(`⚠️ I GOT HIT! Damage: ${damage}`); // <-- REMOVED SPAM LOG
             
             if (game.playerController) {
+                // Agar pehle se respawn ho raha hai, toh aur damage ignore karein
+                if (game.playerController.isRespawning) return;
+
                 // Health decrease
                 game.playerController.health -= damage;
                 
-                // Dead check
-                if (game.playerController.health <= 0) {
-                    game.playerController.health = 0;
-                    console.log("💀 PLAYER DESTROYED");
-                    // Optional: Respawn logic here
-                }
-
-                // 🔥 UI UPDATE IMMEDIATELY
+                // Update UI immediately (Health Bar)
                 if (game.uiManager) {
                     game.uiManager.update(
                         game.playerController.speed || 0,
-                        game.playerController.health, // Updated HP
+                        Math.max(0, game.playerController.health), 
                         game.playerController.score || 0,
                         game.playerController.boostEnergy || 100
                     );
+                }
+
+                // Dead Check & Respawn Logic
+                if (game.playerController.health <= 0) {
+                    game.playerController.health = 0;
+                    game.playerController.isRespawning = true; // Flag set karein
+
+                    console.log("💀 DESTROYED! Respawning in 3s...");
+                    
+                    // 1. Player ko chhupa dein (Invisible)
+                    if (game.playerController.mesh) game.playerController.mesh.visible = false;
+                    
+                    // 2. 3 Second Delay
+                    setTimeout(() => {
+                        if (!game.playerController) return;
+
+                        // Reset Stats
+                        game.playerController.health = 100;
+                        game.playerController.isRespawning = false;
+
+                        // Reset Position (Spawn Point)
+                        if (game.playerController.respawnInstant) {
+                            game.playerController.respawnInstant();
+                        } else {
+                            // Fallback agar respawnInstant function na ho
+                            game.playerController.mesh.position.set(0, 300, 0);
+                            game.playerController.mesh.rotation.set(0, 0, 0);
+                            if (game.playerController.rb) {
+                                game.playerController.rb.velocity.set(0,0,0);
+                                game.playerController.rb.angularVelocity.set(0,0,0);
+                            }
+                        }
+
+                        // Player ko wapas dikhayein
+                        if (game.playerController.mesh) game.playerController.mesh.visible = true;
+
+                        console.log("✅ RESPAWNED");
+
+                        // UI Update again for full HP
+                        if (game.uiManager) {
+                            game.uiManager.update(0, 100, game.playerController.score || 0, 100);
+                        }
+
+                    }, 3000); // 3000ms = 3 seconds
                 }
             }
         }
