@@ -16,7 +16,7 @@ class MobileControls {
 
         this.maxRadius = 60; // joystick move radius
         
-        // CHANGED: Force enabled to true for all devices
+        // Force enabled for testing, or use isMobile()
         this.enabled = true; 
 
         if (this.enabled) {
@@ -42,7 +42,7 @@ class MobileControls {
             background: "rgba(255,255,255,0.08)",
             border: "2px solid rgba(255,255,255,0.25)",
             touchAction: "none",
-            zIndex: 999
+            zIndex: 99999 // ✅ FIXED: Higher than UI overlay
         });
 
         // joystick knob
@@ -78,7 +78,7 @@ class MobileControls {
             fontWeight: "bold",
             fontSize: "18px",
             touchAction: "none",
-            zIndex: 999
+            zIndex: 99999 // ✅ FIXED: Higher than UI overlay
         });
 
         document.body.appendChild(this.fireBtn);
@@ -99,7 +99,7 @@ class MobileControls {
             fontWeight: "bold",
             fontSize: "14px",
             touchAction: "none",
-            zIndex: 999
+            zIndex: 99999 // ✅ FIXED: Higher than UI overlay
         });
 
         document.body.appendChild(this.boostBtn);
@@ -166,16 +166,14 @@ class MobileControls {
         this.knob.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%)`;
 
         // map to input keys
-        // X => roll (A/D)
-        // Y => pitch (W/S)
-        const normX = dx / this.maxRadius; // -1..1
-        const normY = dy / this.maxRadius; // -1..1
+        const normX = dx / this.maxRadius;
+        const normY = dy / this.maxRadius;
 
         this.input.keys.a = normX < -0.3;
         this.input.keys.d = normX > 0.3;
 
-        this.input.keys.w = normY > 0.3;   // down finger => pitchDown
-        this.input.keys.s = normY < -0.3;  // up finger => pitchUp
+        this.input.keys.w = normY > 0.3;   
+        this.input.keys.s = normY < -0.3;  
     }
 
     onJoyEnd() {
