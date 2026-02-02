@@ -3,13 +3,11 @@
 // ==========================================
 
 /**
- * Multiplayer Main (FINAL - SYNC & TERRAIN WAIT FIX)
+ * Multiplayer Main (FINAL - FIXED MOBILE & MINIMAP)
  *
- * Fixes Included:
- * ✅ Rings Visiblity (Client): Adds a "Retry Loop" to wait for Terrain to load before spawning rings.
- * ✅ Active/Collected Sync: Manually hides collected rings and updates colors when Server sends score.
- * ✅ Minimap: Only shows visible rings.
- * ✅ Identity: Prevents ghost enemy bug.
+ * Fixes:
+ * ✅ Mobile Controls: Now explicitly initialized on load.
+ * ✅ Minimap Active Ring: Passed correct 'currentIndex' and full ring list to preserve indices.
  */
 
 window.addEventListener("load", () => {
@@ -33,6 +31,12 @@ window.addEventListener("load", () => {
 
   if (!game.procAudio && typeof ProceduralAudio !== "undefined") {
     game.procAudio = new ProceduralAudio();
+  }
+
+  // 📱 FIX: Initialize Mobile Controls
+  if (typeof MobileControls !== "undefined") {
+    console.log("📱 Mobile Controls Detected & Enabled");
+    game.mobileControls = new MobileControls(game.inputManager);
   }
 
   // Hide canvas initially (Lobby Mode)
@@ -109,7 +113,7 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
-    // ✅ FIXED: Update Rings Visuals on Score
+    // Update Rings Visuals on Score
     onEvent: (evt) => {
       if (!evt) return;
 
@@ -189,7 +193,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 4) Rings & Minimap Setup (RETRY LOGIC ADDED)
+  // 4) Rings & Minimap Setup
   // ----------------------------------------------------------
   let ringSystem = null;
 
@@ -208,7 +212,7 @@ window.addEventListener("load", () => {
     ringSystem = null;
   }
 
-  // ✅ Helper to find terrain
+  // Helper to find terrain
   function findTerrain() {
     let t = game.map?.terrainMesh;
     if (t) return t;
@@ -229,9 +233,9 @@ window.addEventListener("load", () => {
       return;
     }
 
-    // ✅ NEW: Retry loop. Wait for terrain to exist.
+    // Retry loop. Wait for terrain to exist.
     let attempts = 0;
-    const maxAttempts = 10; // Wait up to 5 seconds
+    const maxAttempts = 10; 
 
     const trySpawn = () => {
       const terrain = findTerrain();
@@ -240,7 +244,7 @@ window.addEventListener("load", () => {
         if (attempts < maxAttempts) {
           attempts++;
           console.log(`⏳ Waiting for terrain... (${attempts}/${maxAttempts})`);
-          setTimeout(trySpawn, 500); // Retry after 500ms
+          setTimeout(trySpawn, 500); 
           return;
         } else {
           console.error("❌ CRITICAL: Terrain not found after retries. Rings cannot spawn.");
@@ -381,21 +385,21 @@ window.addEventListener("load", () => {
 
     mpState.update(dt);
 
-    // Minimap Update
+    // FIX: Minimap Update
+    // 1. Pass FULL ring list (don't filter here) to preserve indices.
+    // 2. Pass currentIndex for highlighting.
     if (game.minimap && game.playerController?.mesh) {
         const enemies = mpState.getRemotePlayers().map(p => p.mesh);
         
-        // Ensure rings exist before map update
-        const rings = (ringSystem && Array.isArray(ringSystem.rings)) 
-            ? ringSystem.rings.map(r => r.mesh).filter(m => m && m.visible) 
-            : [];
-        
-        game.minimap.update(game.playerController.mesh, enemies, rings);
+        const ringsRaw = (ringSystem && Array.isArray(ringSystem.rings)) ? ringSystem.rings : [];
+        const activeIndex = ringSystem ? ringSystem.currentIndex : -1;
+
+        game.minimap.update(game.playerController.mesh, enemies, ringsRaw, activeIndex);
     }
 
     game.cameraSystem?.update?.(dt);
     game.renderer.render(game.scene, game.camera);
   };
 
-  console.log("✅ Multiplayer-main loaded (Visible Sync + Terrain Wait Active)");
+  console.log("✅ Multiplayer-main loaded (Mobile Controls + Minimap Fixes Applied)");
 });
