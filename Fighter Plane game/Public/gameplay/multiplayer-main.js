@@ -3,21 +3,18 @@
 // ==========================================
 
 /**
- * Multiplayer Main (FINAL - FIXED FOR HTML UI)
+ * Multiplayer Main (FINAL - UI + AUDIO FIXED)
  *
  * Fixes:
- * ✅ window.mpClient assigned (MPClient not ready bug fixed)
- * ✅ No duplicate injected lobby UI
- * ✅ Uses multiplayer.html mpUIBridge hooks
- * ✅ Lobby UI controlled only by multiplayer.html
+ * ✅ Lobby paused: game won't start until host presses START
+ * ✅ Uses mpUIBridge from multiplayer.html
+ * ✅ Lobby music + Game music using ProceduralAudio
+ * ✅ Audio unlock on user interaction supported
  */
 
 window.addEventListener("load", () => {
   console.log("🌐 Multiplayer Mode Booting...");
 
-  // ----------------------------------------------------------
-  // 0) Helpers
-  // ----------------------------------------------------------
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const safeUI = () => window.mpUIBridge || null;
 
@@ -26,21 +23,18 @@ window.addEventListener("load", () => {
   // ----------------------------------------------------------
   const game = new GameManager();
   game.init();
+
+  // ✅ IMPORTANT: Multiplayer should start PAUSED until server says start
+  game.isPaused = true;
+
   window.game = game;
 
   // Ensure UI exists
   if (!game.uiManager) game.uiManager = new UIManager();
 
-  // Audio optional
+  // ProceduralAudio (music)
   if (!game.procAudio && typeof ProceduralAudio !== "undefined") {
     game.procAudio = new ProceduralAudio();
-    window.addEventListener(
-      "click",
-      async () => {
-        if (game.procAudio) await game.procAudio.unlock();
-      },
-      { once: true }
-    );
   }
 
   // ----------------------------------------------------------
@@ -59,22 +53,41 @@ window.addEventListener("load", () => {
     onConnected: () => {
       console.log("✅ Connected to server.");
       safeUI()?.onConnected?.();
+
+      // try lobby music (will only work after unlock/click)
+      game.procAudio?.playLobbyMusic?.();
     },
 
     onDisconnected: (reason) => {
       console.warn("❌ Disconnected:", reason);
+
+      // back to lobby state
+      game.isPaused = true;
+      game.procAudio?.playLobbyMusic?.();
+
       safeUI()?.onDisconnected?.(reason || "disconnected");
     },
 
     onLobbyUpdate: (msg) => {
-      // msg: {type, roomId, players, hostId, seed, isHost}
+      // stay paused in lobby
+      game.isPaused = true;
+
+      // lobby music
+      game.procAudio?.playLobbyMusic?.();
+
       safeUI()?.onLobbyUpdate?.(msg);
     },
 
     onGameStart: (msg) => {
       console.log("🎮 Game Start:", msg);
+
+      // unpause gameplay
       game.isPaused = false;
 
+      // switch music
+      game.procAudio?.playGameMusic?.();
+
+      // UI hide
       safeUI()?.onGameStart?.(msg);
 
       ensureSpawnLocalPlayer();
@@ -84,10 +97,14 @@ window.addEventListener("load", () => {
 
     onGameOver: (msg) => {
       console.log("🏁 Game Over:", msg);
-      safeUI()?.onGameOver?.(msg);
 
-      // also pause local game loop
+      // pause
       game.isPaused = true;
+
+      // back to lobby music
+      game.procAudio?.playLobbyMusic?.();
+
+      safeUI()?.onGameOver?.(msg);
     },
 
     onError: (txt) => {
@@ -96,10 +113,9 @@ window.addEventListener("load", () => {
     }
   });
 
-  // ✅ IMPORTANT: expose client globally for multiplayer.html UI
+  // ✅ expose globally for multiplayer.html UI buttons
   window.mpClient = mpClient;
 
-  // Connect now
   mpClient.connect();
 
   // ----------------------------------------------------------
@@ -108,7 +124,7 @@ window.addEventListener("load", () => {
   const bulletSystem = new BulletSystem(game.scene);
 
   const weaponSystem = new WeaponSystem(
-    game.playerController, // will be set after spawn
+    game.playerController,
     bulletSystem,
     game.inputManager,
     game.sfx,
@@ -117,19 +133,18 @@ window.addEventListener("load", () => {
       spread: 0.01,
       camera: game.camera,
       screenAimAssist: true,
-      screenAimRadius: 0.75,     // wider angle assist
-      screenAimStrength: 0.9,    // strong assist
+      screenAimRadius: 0.75,
+      screenAimStrength: 0.90,
       getTargets: () => mpState.getRemotePlayers().map((p) => p.mesh)
     }
   );
 
-  // Map + terrain injection
   if (game.playerController && game.map?.terrainMesh) {
     game.playerController.setTerrainMesh(game.map.terrainMesh);
   }
 
   // ----------------------------------------------------------
-  // 4) Rings (sequential + seeded)
+  // 4) Rings system
   // ----------------------------------------------------------
   let ringSystem = null;
   let ringSeed = null;
@@ -137,11 +152,15 @@ window.addEventListener("load", () => {
   function ensureRingSystem(seed) {
     if (ringSystem) return;
 
+    if (typeof RingSystem === "undefined") {
+      console.warn("❌ RingSystem not loaded. Add ring-system.js in multiplayer.html");
+      return;
+    }
+
     ringSeed = seed ?? ringSeed ?? 12345;
 
-    // RingSystem should exist globally in your build
     ringSystem = new RingSystem(game.scene, game.map?.terrainMesh, {
-      ringCount: 8,              // 2 laps * 4 rings
+      ringCount: 8,
       terrainClearance: 30,
       seed: ringSeed
     });
@@ -167,7 +186,6 @@ window.addEventListener("load", () => {
     game.playerController.health = 0;
     if (game.playerController.mesh) game.playerController.mesh.visible = false;
 
-    // stop boost noise
     if (game.procAudio) game.procAudio.stopBoost();
   }
 
@@ -179,29 +197,22 @@ window.addEventListener("load", () => {
 
     if (!game.playerController) return;
 
-    // Respawn at safe start
     game.playerController.respawnInstant();
-
-    // Full hp
     game.playerController.health = 100;
 
-    // Visible
     if (game.playerController.mesh) game.playerController.mesh.visible = true;
   }
 
   // ----------------------------------------------------------
-  // 6) MP events handling (remote bullets smooth)
+  // 6) MP events handling (remote bullets)
   // ----------------------------------------------------------
   mpClient.onEvent = (evt) => {
     if (!evt || evt.type !== "FIRE") return;
-
-    // do not spawn for self (local already fires)
     if (evt.ownerId === mpClient.clientId) return;
 
     const ent = mpState.players.get(evt.ownerId);
     if (!ent?.mesh) return;
 
-    // spawn remote bullet locally (visual only)
     const p = ent.mesh.position.clone();
     const q = ent.mesh.quaternion.clone();
     bulletSystem.fire(p, q);
@@ -215,7 +226,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 8) Ensure player exists for MP mode
+  // 8) Ensure player exists in MP mode
   // ----------------------------------------------------------
   function ensureSpawnLocalPlayer() {
     if (game.playerController && game.playerController.mesh) {
@@ -248,25 +259,19 @@ window.addEventListener("load", () => {
 
     const dt = clamp(game.clock.getDelta(), 0.0, 0.05);
 
-    // input
     if (game.inputManager?.update) game.inputManager.update(dt);
 
-    // local player update
     if (game.playerController) game.playerController.update(dt);
 
-    // respawn processing
     processRespawn();
 
-    // rings update
     if (ringSystem && game.playerController?.mesh) {
       ringSystem.update(dt, game.playerController.mesh);
     }
 
-    // bullets
     weaponSystem.update(dt);
     bulletSystem.update(dt);
 
-    // send transform + fire (server authoritative event)
     if (game.playerController?.mesh) {
       mpClient.sendTransform(game.playerController.mesh);
 
@@ -275,13 +280,10 @@ window.addEventListener("load", () => {
       }
     }
 
-    // smooth remote players
     mpState.update(dt);
 
-    // camera
     if (game.cameraSystem) game.cameraSystem.update(dt);
 
-    // minimap
     if (game.minimap && game.playerController?.mesh) {
       game.minimap.update(
         game.playerController.mesh,
@@ -291,7 +293,6 @@ window.addEventListener("load", () => {
       );
     }
 
-    // UI update
     if (game.uiManager) {
       const hp = game.playerController ? (game.playerController.health ?? 100) : 100;
       const boost = game.playerController
@@ -302,14 +303,12 @@ window.addEventListener("load", () => {
       game.uiManager.updateBoost(boost, (typeof PHYSICS_CONFIG !== "undefined" ? (PHYSICS_CONFIG.boostMax ?? 100) : 100));
     }
 
-    // death check -> respawn delay
     if (game.playerController && game.playerController.health <= 0 && !respawnPending) {
       triggerRespawn();
     }
 
-    // render
     game.renderer.render(game.scene, game.camera);
   };
 
-  console.log("✅ Multiplayer-main loaded. UI bridge enabled.");
+  console.log("✅ Multiplayer-main loaded: paused lobby + procedural music enabled.");
 });
