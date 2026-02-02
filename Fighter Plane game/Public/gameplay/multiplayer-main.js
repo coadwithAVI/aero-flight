@@ -3,13 +3,13 @@
 // ==========================================
 
 /**
- * Multiplayer Main (FINAL - GREEN RINGS FIX)
+ * Multiplayer Main (FINAL - SYNC & TERRAIN WAIT FIX)
  *
  * Fixes Included:
- * ✅ Active Ring Sync: Listens to server 'SCORE' events to update RingSystem.currentIndex (Fixes Green Color).
- * ✅ Rings Visibility: Robust Terrain search to ensure rings spawn correctly.
- * ✅ Minimap Fix: Passes correct mesh to minimap.
- * ✅ Identity Fix: Prevents "Ghost Enemy" bug.
+ * ✅ Rings Visiblity (Client): Adds a "Retry Loop" to wait for Terrain to load before spawning rings.
+ * ✅ Active/Collected Sync: Manually hides collected rings and updates colors when Server sends score.
+ * ✅ Minimap: Only shows visible rings.
+ * ✅ Identity: Prevents ghost enemy bug.
  */
 
 window.addEventListener("load", () => {
@@ -59,12 +59,9 @@ window.addEventListener("load", () => {
 
     onConnected: () => {
       console.log("✅ Connected to server. ID:", mpClient.socket.id);
-      
-      // Identity Set
       if (mpClient.socket && mpClient.socket.id) {
         mpState.setLocalId(mpClient.socket.id);
       }
-
       safeUI()?.onConnected?.();
       game.procAudio?.playLobbyMusic?.();
     },
@@ -112,17 +109,37 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
-    // ✅ NEW: Event Listener for Score/Rings Sync
+    // ✅ FIXED: Update Rings Visuals on Score
     onEvent: (evt) => {
       if (!evt) return;
 
-      // Sync Rings Color/Index when server confirms score
       if (evt.type === "SCORE" && evt.msg) {
         // If this update is for ME
         if (mpClient.socket && evt.msg.id === mpClient.socket.id) {
-          if (ringSystem && typeof evt.msg.rings === "number") {
-             // Force visual system to match server count (This makes the next ring Green)
-             ringSystem.currentIndex = evt.msg.rings;
+          const newIndex = evt.msg.rings;
+          
+          if (ringSystem && typeof newIndex === "number") {
+             ringSystem.currentIndex = newIndex;
+             
+             // Manually force visibility and color update
+             if (Array.isArray(ringSystem.rings)) {
+               ringSystem.rings.forEach((r, i) => {
+                 if (!r.mesh) return;
+
+                 if (i < newIndex) {
+                   // Already collected -> Hide
+                   r.mesh.visible = false;
+                 } else if (i === newIndex) {
+                   // Active -> Show & Green
+                   r.mesh.visible = true;
+                   if (r.mesh.material) r.mesh.material.color.setHex(0x00ff00); // Green
+                 } else {
+                   // Future -> Show & Red/Blue
+                   r.mesh.visible = true;
+                   if (r.mesh.material) r.mesh.material.color.setHex(0xff0000); // Red
+                 }
+               });
+             }
           }
         }
       }
@@ -172,7 +189,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 4) Rings & Minimap Setup
+  // 4) Rings & Minimap Setup (RETRY LOGIC ADDED)
   // ----------------------------------------------------------
   let ringSystem = null;
 
@@ -191,6 +208,19 @@ window.addEventListener("load", () => {
     ringSystem = null;
   }
 
+  // ✅ Helper to find terrain
+  function findTerrain() {
+    let t = game.map?.terrainMesh;
+    if (t) return t;
+
+    game.scene.traverse(obj => {
+        if (obj.isMesh && (obj.name === "Terrain" || obj.name === "Ground" || (obj.geometry?.type === "PlaneGeometry" && obj.scale.x > 100))) {
+            t = obj;
+        }
+    });
+    return t;
+  }
+
   function resetRingSystem(seed) {
     destroyRingSystem();
 
@@ -199,38 +229,50 @@ window.addEventListener("load", () => {
       return;
     }
 
-    // Robust Terrain Search
-    let terrain = game.map?.terrainMesh;
-    if (!terrain) {
-        game.scene.traverse(obj => {
-            if (obj.isMesh && (obj.name === "Terrain" || obj.name === "Ground" || (obj.geometry?.type === "PlaneGeometry" && obj.scale.x > 100))) {
-                terrain = obj;
-            }
-        });
-    }
+    // ✅ NEW: Retry loop. Wait for terrain to exist.
+    let attempts = 0;
+    const maxAttempts = 10; // Wait up to 5 seconds
 
-    ringSystem = new RingSystem(game.scene, terrain, {
-      ringCount: 8,
-      terrainClearance: 30,
-      seed: seed ?? 12345
-    });
-
-    console.log(`💍 RingSystem Initialized. Count: ${ringSystem.rings?.length || 0}`);
-
-    // ✅ Explicitly set index to 0 at start
-    if (typeof ringSystem.currentIndex === "number") {
-        ringSystem.currentIndex = 0;
-    }
-
-    ringSystem.onRingClaim = (ringIndex) => {
-      if (performance.now() < ringClaimBlockedUntil) return;
-      if (!mpClient.roomId) return;
+    const trySpawn = () => {
+      const terrain = findTerrain();
       
-      // Local prediction (optional): instantly update color before server confirms
-      // ringSystem.currentIndex = ringIndex + 1; 
+      if (!terrain) {
+        if (attempts < maxAttempts) {
+          attempts++;
+          console.log(`⏳ Waiting for terrain... (${attempts}/${maxAttempts})`);
+          setTimeout(trySpawn, 500); // Retry after 500ms
+          return;
+        } else {
+          console.error("❌ CRITICAL: Terrain not found after retries. Rings cannot spawn.");
+          return;
+        }
+      }
 
-      mpClient.claimRing(ringIndex);
+      console.log("✅ Terrain found. Spawning Rings.");
+      
+      ringSystem = new RingSystem(game.scene, terrain, {
+        ringCount: 8,
+        terrainClearance: 30,
+        seed: seed ?? 12345
+      });
+
+      // Init colors
+      if (Array.isArray(ringSystem.rings)) {
+         ringSystem.rings.forEach((r, i) => {
+             if (i === 0 && r.mesh.material) r.mesh.material.color.setHex(0x00ff00);
+         });
+      }
+      
+      ringSystem.currentIndex = 0;
+
+      ringSystem.onRingClaim = (ringIndex) => {
+        if (performance.now() < ringClaimBlockedUntil) return;
+        if (!mpClient.roomId) return;
+        mpClient.claimRing(ringIndex);
+      };
     };
+
+    trySpawn();
   }
 
   // ----------------------------------------------------------
@@ -312,8 +354,8 @@ window.addEventListener("load", () => {
     game.playerController?.update?.(dt);
     processRespawn();
 
-    // Rings Update
-    if (ringSystem && game.playerController?.mesh) {
+    // Rings Update (Check exists)
+    if (ringSystem && ringSystem.rings && game.playerController?.mesh) {
       if (performance.now() > ringClaimBlockedUntil) {
         ringSystem.update(dt, game.playerController.mesh);
       }
@@ -343,7 +385,7 @@ window.addEventListener("load", () => {
     if (game.minimap && game.playerController?.mesh) {
         const enemies = mpState.getRemotePlayers().map(p => p.mesh);
         
-        // Safety check for rings array
+        // Ensure rings exist before map update
         const rings = (ringSystem && Array.isArray(ringSystem.rings)) 
             ? ringSystem.rings.map(r => r.mesh).filter(m => m && m.visible) 
             : [];
@@ -355,5 +397,5 @@ window.addEventListener("load", () => {
     game.renderer.render(game.scene, game.camera);
   };
 
-  console.log("✅ Multiplayer-main loaded (Final: Green Rings Sync Active)");
+  console.log("✅ Multiplayer-main loaded (Visible Sync + Terrain Wait Active)");
 });
