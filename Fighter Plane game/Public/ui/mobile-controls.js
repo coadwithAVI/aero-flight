@@ -15,7 +15,9 @@ class MobileControls {
         };
 
         this.maxRadius = 60; // joystick move radius
-        this.enabled = this.isMobile();
+        
+        // CHANGED: Force enabled to true for all devices
+        this.enabled = true; 
 
         if (this.enabled) {
             this.createUI();
