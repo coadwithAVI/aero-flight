@@ -1,10 +1,3 @@
-<!-- ==========================================
- PATH: Public/multiplayer.html
- Sky Pilot - Multiplayer (FINAL ADVANCED UI)
- - Fixed: Start Loop Bug
- - UI: Sci-Fi Tactical Theme
- - ✅ Added: Victory/Defeat rules (Last player / Rings)
-========================================== -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Sky Pilot - Multiplayer Uplink</title>
 
-  <!-- Google Font for Sci-Fi Look -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
@@ -351,63 +343,51 @@
 </head>
 
 <body>
-  <!-- Multiplayer scripts -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
-  <!-- CONFIG -->
   <script src="./core/game-config.js"></script>
   <script src="./config/config.world.js"></script>
   <script src="./config/config.physics.js"></script>
 
-  <!-- ENGINE -->
   <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
   <script src="./engine/map.js"></script>
   <script src="./engine/camera-system.js"></script>
   <script src="./engine/models.js"></script>
   <script src="./engine/collision-system.js"></script>
 
-  <!-- UI / AUDIO -->
   <script src="./ui/ui-manager.js"></script>
   <script src="./ui/minimap-system.js"></script>
   <script src="./audio/procedural-audio.js"></script>
   <script src="./audio/sfx-manager.js"></script>
   <script src="./audio/music-manager.js"></script>
 
-  <!-- GAMEPLAY -->
   <script src="./gameplay/input-manager.js"></script>
   <script src="./gameplay/player-controller.js"></script>
   <script src="./gameplay/bullet-system.js"></script>
   <script src="./gameplay/weapon-system.js"></script>
   <script src="./gameplay/ring-system.js"></script>
 
-  <!-- MP -->
   <script src="./multiplayer/mp-state.js"></script>
   <script src="./multiplayer/mp-client.js"></script>
 
-  <!-- CORE -->
   <script src="./core/game-manager.js"></script>
 
-  <!-- ENTRY -->
   <script src="./gameplay/multiplayer-main.js"></script>
 
-  <!-- UI ROOT -->
   <div id="uiRoot">
 
-    <!-- Lobby Background -->
     <div id="mpLobbyBG" class="mpLobbyBG">
       <div class="orb orb-1"></div>
       <div class="orb orb-2"></div>
     </div>
 
-    <!-- Top HUD -->
     <div id="topHUD" class="hidden">
       <div class="hud-pill" id="hudRoom">ROOM: ----</div>
       <div class="hud-pill" id="hudName">PILOT: ----</div>
       <div class="hud-pill" id="hudInfo">STATUS: LOBBY</div>
     </div>
 
-    <!-- JOIN SCREEN -->
     <div id="screenJoin" class="panel centerScreen">
       <div>
         <h1>Sky Pilot Uplink</h1>
@@ -438,7 +418,6 @@
       </div>
     </div>
 
-    <!-- LOBBY SCREEN -->
     <div id="screenLobby" class="panel centerScreen hidden">
       <div>
         <h1>Squad Lobby</h1>
@@ -446,7 +425,6 @@
       </div>
 
       <div class="lobbyGrid">
-        <!-- Left Col -->
         <div>
           <label>Mission Access Code</label>
           <div id="lobbyCode" class="codeBox">----</div>
@@ -459,17 +437,14 @@
           <div class="status" id="lobbyStatus" style="margin-top: 10px;"></div>
         </div>
 
-        <!-- Right Col -->
         <div>
           <label>Active Pilots</label>
           <div id="playerList" class="playerList">
-            <!-- Populated by JS -->
-          </div>
+            </div>
         </div>
       </div>
     </div>
 
-    <!-- END SCREEN -->
     <div id="screenEnd" class="panel centerScreen hidden">
       <div style="text-align: center;">
         <h1 id="endTitle">Mission Complete</h1>
@@ -751,7 +726,11 @@
         __matchEnded = false;
         __winnerId = null;
 
-        showOnly(screenLobby); // keep lobby hidden by __isGameRunning ignore updates
+        // ✅ CRITICAL FIX: Explicitly hide all UI screens so canvas shows
+        screenJoin.classList.add("hidden");
+        screenLobby.classList.add("hidden");
+        screenEnd.classList.add("hidden");
+
         topHUD.classList.remove("hidden");
         mpLobbyBG.style.display = "none";
 
