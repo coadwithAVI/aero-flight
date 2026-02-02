@@ -66,6 +66,8 @@ class MPClient {
     this.inputSendRate = options.inputSendRate ?? 20;
     this._lastInputSent = 0;
 
+    this._lastStartAt = 0;
+
     // callbacks
     this.onConnected = options.onConnected || (() => {});
     this.onDisconnected = options.onDisconnected || (() => {});
@@ -342,6 +344,7 @@ class MPClient {
       this.tickRate = msg.tickRate ?? this.tickRate;
 
       if (this.debug) console.log("[MPClient] Game started seed:", this.seed, "tickRate:", this.tickRate);
+      this._lastStartAt = performance.now();
 
       this.onGameStart({
         seed: this.seed,
@@ -383,6 +386,7 @@ class MPClient {
     // -------------------------
     s.on("mp_game_over", (msg) => {
       if (this.debug) console.log("[MPClient] Game Over:", msg);
+      console.log("❌ GAME OVER after(ms):", performance.now() - (this._lastStartAt || performance.now()), msg);
       this.onGameOver(msg);
     });
 
