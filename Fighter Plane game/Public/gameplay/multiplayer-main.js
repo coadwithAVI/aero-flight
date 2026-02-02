@@ -2,14 +2,6 @@
 // PATH: gameplay/multiplayer-main.js
 // ==========================================
 
-/**
- * Multiplayer Main (FINAL - FIXED MOBILE & MINIMAP)
- *
- * Fixes:
- * ✅ Mobile Controls: Now explicitly initialized on load.
- * ✅ Minimap Active Ring: Passed correct 'currentIndex' and full ring list to preserve indices.
- */
-
 window.addEventListener("load", () => {
   console.log("🌐 Multiplayer Mode Booting...");
 
@@ -33,13 +25,12 @@ window.addEventListener("load", () => {
     game.procAudio = new ProceduralAudio();
   }
 
-  // 📱 FIX: Initialize Mobile Controls
+  // ✅ MOBILE CONTROLS INIT (With Higher Z-Index Support)
   if (typeof MobileControls !== "undefined") {
     console.log("📱 Mobile Controls Detected & Enabled");
     game.mobileControls = new MobileControls(game.inputManager);
   }
 
-  // Hide canvas initially (Lobby Mode)
   if (game.renderer?.domElement) {
     game.renderer.domElement.style.display = "none";
   }
@@ -81,15 +72,11 @@ window.addEventListener("load", () => {
 
     onLobbyUpdate: (msg) => {
       if (msg.status === "playing") return;
-
-      if (msg.you && msg.you.id) {
-        mpState.setLocalId(msg.you.id);
-      }
+      if (msg.you && msg.you.id) mpState.setLocalId(msg.you.id);
 
       game.isPaused = true;
       gameStartedOnce = false;
       if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
-      game.procAudio?.playLobbyMusic?.();
       safeUI()?.onLobbyUpdate?.(msg);
     },
 
@@ -113,37 +100,19 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
-    // Update Rings Visuals on Score
+    // ✅ FIXED: Update Rings Visuals on Score
     onEvent: (evt) => {
       if (!evt) return;
 
       if (evt.type === "SCORE" && evt.msg) {
-        // If this update is for ME
+        // Only update MY rings
         if (mpClient.socket && evt.msg.id === mpClient.socket.id) {
           const newIndex = evt.msg.rings;
           
           if (ringSystem && typeof newIndex === "number") {
              ringSystem.currentIndex = newIndex;
-             
-             // Manually force visibility and color update
-             if (Array.isArray(ringSystem.rings)) {
-               ringSystem.rings.forEach((r, i) => {
-                 if (!r.mesh) return;
-
-                 if (i < newIndex) {
-                   // Already collected -> Hide
-                   r.mesh.visible = false;
-                 } else if (i === newIndex) {
-                   // Active -> Show & Green
-                   r.mesh.visible = true;
-                   if (r.mesh.material) r.mesh.material.color.setHex(0x00ff00); // Green
-                 } else {
-                   // Future -> Show & Red/Blue
-                   r.mesh.visible = true;
-                   if (r.mesh.material) r.mesh.material.color.setHex(0xff0000); // Red
-                 }
-               });
-             }
+             // Force visual update using system method
+             ringSystem._setActiveRing(newIndex); 
           }
         }
       }
@@ -212,11 +181,9 @@ window.addEventListener("load", () => {
     ringSystem = null;
   }
 
-  // Helper to find terrain
   function findTerrain() {
     let t = game.map?.terrainMesh;
     if (t) return t;
-
     game.scene.traverse(obj => {
         if (obj.isMesh && (obj.name === "Terrain" || obj.name === "Ground" || (obj.geometry?.type === "PlaneGeometry" && obj.scale.x > 100))) {
             t = obj;
@@ -233,9 +200,9 @@ window.addEventListener("load", () => {
       return;
     }
 
-    // Retry loop. Wait for terrain to exist.
+    // Wait for terrain loop
     let attempts = 0;
-    const maxAttempts = 10; 
+    const maxAttempts = 10;
 
     const trySpawn = () => {
       const terrain = findTerrain();
@@ -247,12 +214,12 @@ window.addEventListener("load", () => {
           setTimeout(trySpawn, 500); 
           return;
         } else {
-          console.error("❌ CRITICAL: Terrain not found after retries. Rings cannot spawn.");
+          console.error("❌ CRITICAL: Terrain not found. Rings cannot spawn.");
           return;
         }
       }
 
-      console.log("✅ Terrain found. Spawning Rings.");
+      console.log("✅ Terrain found. Spawning Rings with Seed:", seed);
       
       ringSystem = new RingSystem(game.scene, terrain, {
         ringCount: 8,
@@ -260,14 +227,21 @@ window.addEventListener("load", () => {
         seed: seed ?? 12345
       });
 
-      // Init colors
-      if (Array.isArray(ringSystem.rings)) {
-         ringSystem.rings.forEach((r, i) => {
-             if (i === 0 && r.mesh.material) r.mesh.material.color.setHex(0x00ff00);
-         });
-      }
-      
+      // ✅ FIX: Force Active Ring Logic Immediately
       ringSystem.currentIndex = 0;
+      if (typeof ringSystem._setActiveRing === "function") {
+          ringSystem._setActiveRing(0);
+      } else {
+          // Fallback manual color
+          if (Array.isArray(ringSystem.rings)) {
+             ringSystem.rings.forEach((r, i) => {
+                 if (r.mesh && r.mesh.material) {
+                     if (i===0) r.mesh.material.color.setHex(0x00ff00);
+                     r.mesh.visible = true;
+                 }
+             });
+          }
+      }
 
       ringSystem.onRingClaim = (ringIndex) => {
         if (performance.now() < ringClaimBlockedUntil) return;
@@ -358,7 +332,7 @@ window.addEventListener("load", () => {
     game.playerController?.update?.(dt);
     processRespawn();
 
-    // Rings Update (Check exists)
+    // Rings Update
     if (ringSystem && ringSystem.rings && game.playerController?.mesh) {
       if (performance.now() > ringClaimBlockedUntil) {
         ringSystem.update(dt, game.playerController.mesh);
@@ -385,12 +359,11 @@ window.addEventListener("load", () => {
 
     mpState.update(dt);
 
-    // FIX: Minimap Update
-    // 1. Pass FULL ring list (don't filter here) to preserve indices.
-    // 2. Pass currentIndex for highlighting.
+    // Minimap Update
     if (game.minimap && game.playerController?.mesh) {
         const enemies = mpState.getRemotePlayers().map(p => p.mesh);
         
+        // Pass RAW rings array + Current Index
         const ringsRaw = (ringSystem && Array.isArray(ringSystem.rings)) ? ringSystem.rings : [];
         const activeIndex = ringSystem ? ringSystem.currentIndex : -1;
 
@@ -401,5 +374,5 @@ window.addEventListener("load", () => {
     game.renderer.render(game.scene, game.camera);
   };
 
-  console.log("✅ Multiplayer-main loaded (Mobile Controls + Minimap Fixes Applied)");
+  console.log("✅ Multiplayer-main loaded (Fixes: Z-Index 99999, Force Active Ring)");
 });
