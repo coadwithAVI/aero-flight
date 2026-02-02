@@ -12,26 +12,15 @@
  * ✅ FIXED mp_state handler (no illegal syntax)
  * ✅ FIXED mp_score_update handler (no illegal syntax)
  *
- * Receive:
- * - mp_welcome
- * - mp_room_created
- * - mp_room_join
- * - mp_room_left
- * - mp_lobby_update
- * - mp_player_join
- * - mp_player_left
- * - mp_game_start
- * - mp_state
- * - mp_event
- * - mp_score_update
- *
- * Send:
- * - mp_create_room
- * - mp_join_room
- * - mp_leave_room
- * - mp_ready
- * - mp_input
- * - mp_fire
+ * IMPORTANT (Server compatibility):
+ * ✅ server expects:
+ * - mp_create_room: { name }
+ * - mp_join_room: { roomId, name }
+ * - mp_leave_room: { roomId }
+ * - mp_start_game: { roomId }
+ * - mp_transform: { roomId, p, q }
+ * - mp_fire: { roomId, p, q }
+ * - mp_claim_ring: { roomId, ringIndex }
  */
 
 class MPClient {
@@ -46,8 +35,11 @@ class MPClient {
     this.isConnected = false;
     this.isInRoom = false;
 
-    this.playerId = null;
+    this.playerId = null; // socket.id
     this.roomId = null;
+
+    // store last used name (for reconnect / join)
+    this.playerName = opts.playerName ?? "Pilot";
 
     // game callbacks (set by GameManager)
     this.onWelcome = opts.onWelcome ?? (() => {});
@@ -114,7 +106,9 @@ class MPClient {
       // Auto rejoin if we were in a room
       if (this._lastRoomToRejoin) {
         this.log("Auto rejoin room:", this._lastRoomToRejoin);
-        this.joinRoom(this._lastRoomToRejoin);
+
+        // 🔥 IMPORTANT: include name so server doesn't break + lobby shows correct name
+        this.joinRoom(this._lastRoomToRejoin, this.playerName);
       }
     });
 
@@ -141,6 +135,7 @@ class MPClient {
       try { this.onWelcome(msg); } catch (e) { console.error("onWelcome crash:", e); }
     });
 
+    // ✅ server emits mp_room_created
     s.on("mp_room_created", (msg) => {
       this.log("mp_room_created:", msg);
 
@@ -151,6 +146,18 @@ class MPClient {
       try { this.onRoomCreated(msg); } catch (e) { console.error("onRoomCreated crash:", e); }
     });
 
+    // ✅ your server currently emits mp_room_joined (NOT mp_room_join)
+    s.on("mp_room_joined", (msg) => {
+      this.log("mp_room_joined:", msg);
+
+      this.roomId = msg?.roomId ?? this.roomId;
+      this.isInRoom = true;
+      this._lastRoomToRejoin = this.roomId;
+
+      try { this.onRoomJoin(msg); } catch (e) { console.error("onRoomJoin crash:", e); }
+    });
+
+    // (optional compatibility)
     s.on("mp_room_join", (msg) => {
       this.log("mp_room_join:", msg);
 
@@ -176,6 +183,13 @@ class MPClient {
       try { this.onLobbyUpdate(msg); } catch (e) { console.error("onLobbyUpdate crash:", e); }
     });
 
+    // your server emits "playerDisconnected" not mp_player_left (but keep both)
+    s.on("playerDisconnected", (id) => {
+      this.log("playerDisconnected:", id);
+
+      try { this.onPlayerLeft({ id }); } catch (e) { console.error("onPlayerLeft crash:", e); }
+    });
+
     s.on("mp_player_join", (msg) => {
       this.log("mp_player_join:", msg);
 
@@ -195,6 +209,14 @@ class MPClient {
       this.log("mp_game_start:", msg);
 
       try { this.onGameStart(msg); } catch (e) { console.error("onGameStart crash:", e); }
+    });
+
+    // ✅ Game over from server
+    s.on("mp_game_over", (msg) => {
+      this.log("mp_game_over:", msg);
+
+      // forward to UI/game as event
+      try { this.onEvent({ t: "EVENT", type: "GAME_OVER", msg }); } catch (e) { console.error("onEvent crash:", e); }
     });
 
     // -------------------------
@@ -228,6 +250,12 @@ class MPClient {
       try { this.onEvent({ t: "EVENT", type: "SCORE", msg }); } catch (e) { console.error("onEvent crash:", e); }
     });
 
+    // errors
+    s.on("mp_error", (msg) => {
+      this.log("mp_error:", msg);
+      try { this.onError(msg); } catch (e) { console.error("onError crash:", e); }
+    });
+
     this.log("MPClient listeners bound.");
   }
 
@@ -247,45 +275,128 @@ class MPClient {
   }
 
   // -------------------------
-  // ROOM API
+  // ROOM API (SERVER COMPAT)
   // -------------------------
-  createRoom() {
-    if (!this.socket) return;
-    this.socket.emit("mp_create_room");
+
+  setName(name) {
+    if (typeof name === "string" && name.trim()) {
+      this.playerName = name.trim().slice(0, 12);
+    }
   }
 
-  joinRoom(roomId) {
+  createRoom(name = null) {
     if (!this.socket) return;
 
-    this._lastRoomToRejoin = roomId;
-    this.socket.emit("mp_join_room", { roomId });
+    if (name) this.setName(name);
+
+    // ✅ Server expects {name}
+    this.socket.emit("mp_create_room", { name: this.playerName });
   }
 
-  leaveRoom() {
+  joinRoom(roomId, name = null) {
     if (!this.socket) return;
 
+    const rid = String(roomId || "").toUpperCase();
+    if (!rid) return;
+
+    if (name) this.setName(name);
+
+    this._lastRoomToRejoin = rid;
+
+    // ✅ Server expects {roomId, name}
+    this.socket.emit("mp_join_room", { roomId: rid, name: this.playerName });
+  }
+
+  leaveRoom(roomId = null) {
+    if (!this.socket) return;
+
+    const rid = (roomId || this.roomId);
     this._lastRoomToRejoin = null;
-    this.socket.emit("mp_leave_room");
+
+    // ✅ Server expects {roomId}
+    this.socket.emit("mp_leave_room", { roomId: rid });
   }
 
+  startGame(roomId = null) {
+    if (!this.socket) return;
+
+    const rid = (roomId || this.roomId);
+    if (!rid) return;
+
+    this.socket.emit("mp_start_game", { roomId: rid });
+  }
+
+  // (optional) server doesn't use ready, but keep for future
   setReady(isReady = true) {
     if (!this.socket) return;
     this.socket.emit("mp_ready", { ready: !!isReady });
   }
 
   // -------------------------
-  // INPUT / ACTIONS
+  // GAMEPLAY SEND (SERVER COMPAT)
   // -------------------------
-  sendInput(input) {
+
+  /**
+   * Send transform to server (server expects mp_transform)
+   * data: {roomId, p, q}
+   */
+  sendTransform(p, q, roomId = null) {
     if (!this.socket || !this.isInRoom) return;
 
-    // input should already be compact (x,y,z + rot etc.)
-    this.socket.emit("mp_input", input);
+    const rid = (roomId || this.roomId);
+    if (!rid) return;
+
+    this.socket.emit("mp_transform", {
+      roomId: rid,
+      p: p || null,
+      q: q || null
+    });
   }
 
-  fire(payload) {
+  /**
+   * Fire bullet (server expects roomId + p/q)
+   */
+  fire(p = null, q = null, roomId = null) {
     if (!this.socket || !this.isInRoom) return;
-    this.socket.emit("mp_fire", payload ?? {});
+
+    const rid = (roomId || this.roomId);
+    if (!rid) return;
+
+    this.socket.emit("mp_fire", {
+      roomId: rid,
+      p: p || null,
+      q: q || null
+    });
+  }
+
+  /**
+   * Client reports hit
+   */
+  reportHit(targetId, bulletId = null, roomId = null) {
+    if (!this.socket || !this.isInRoom) return;
+    const rid = (roomId || this.roomId);
+    if (!rid) return;
+
+    this.socket.emit("mp_hit", {
+      roomId: rid,
+      targetId,
+      bulletId
+    });
+  }
+
+  /**
+   * Claim ring (server has sequential validation)
+   */
+  claimRing(ringIndex, roomId = null) {
+    if (!this.socket || !this.isInRoom) return;
+
+    const rid = (roomId || this.roomId);
+    if (!rid) return;
+
+    this.socket.emit("mp_claim_ring", {
+      roomId: rid,
+      ringIndex
+    });
   }
 
   // -------------------------
