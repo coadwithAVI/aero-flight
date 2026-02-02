@@ -3,11 +3,12 @@
 // ==========================================
 
 /**
- * Multiplayer Main (FINAL - RINGS VISIBILITY FIX)
+ * Multiplayer Main (FINAL - GREEN RINGS FIX)
  *
  * Fixes Included:
- * ✅ Rings Fix: Robust Terrain search to ensure rings have a surface to spawn on.
- * ✅ Minimap Crash Fix: Passes correct mesh object to minimap.
+ * ✅ Active Ring Sync: Listens to server 'SCORE' events to update RingSystem.currentIndex (Fixes Green Color).
+ * ✅ Rings Visibility: Robust Terrain search to ensure rings spawn correctly.
+ * ✅ Minimap Fix: Passes correct mesh to minimap.
  * ✅ Identity Fix: Prevents "Ghost Enemy" bug.
  */
 
@@ -111,6 +112,22 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
+    // ✅ NEW: Event Listener for Score/Rings Sync
+    onEvent: (evt) => {
+      if (!evt) return;
+
+      // Sync Rings Color/Index when server confirms score
+      if (evt.type === "SCORE" && evt.msg) {
+        // If this update is for ME
+        if (mpClient.socket && evt.msg.id === mpClient.socket.id) {
+          if (ringSystem && typeof evt.msg.rings === "number") {
+             // Force visual system to match server count (This makes the next ring Green)
+             ringSystem.currentIndex = evt.msg.rings;
+          }
+        }
+      }
+    },
+
     onGameOver: (msg) => {
       console.warn("🏁 Game Over received:", msg);
       game.isPaused = true;
@@ -155,7 +172,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 4) Rings & Minimap Setup (FIXED)
+  // 4) Rings & Minimap Setup
   // ----------------------------------------------------------
   let ringSystem = null;
 
@@ -182,28 +199,16 @@ window.addEventListener("load", () => {
       return;
     }
 
-    // ✅ ROBUST TERRAIN SEARCH:
-    // Sometimes game.map.terrainMesh is not ready instantly.
-    // We try to find ANY mesh that looks like terrain.
+    // Robust Terrain Search
     let terrain = game.map?.terrainMesh;
-
     if (!terrain) {
-        console.warn("⚠️ Terrain not found in game.map, searching scene...");
         game.scene.traverse(obj => {
-            // Check for names commonly used or large plane geometries
             if (obj.isMesh && (obj.name === "Terrain" || obj.name === "Ground" || (obj.geometry?.type === "PlaneGeometry" && obj.scale.x > 100))) {
                 terrain = obj;
             }
         });
     }
 
-    if (!terrain) {
-        console.error("❌ CRITICAL: No Terrain found for RingSystem! Rings may spawn at Y=0 or fail.");
-    } else {
-        console.log("✅ Terrain found for Rings:", terrain.name || "Unnamed Mesh");
-    }
-
-    // Initialize with whatever terrain we found (or null)
     ringSystem = new RingSystem(game.scene, terrain, {
       ringCount: 8,
       terrainClearance: 30,
@@ -212,11 +217,18 @@ window.addEventListener("load", () => {
 
     console.log(`💍 RingSystem Initialized. Count: ${ringSystem.rings?.length || 0}`);
 
-    if (typeof ringSystem.currentIndex === "number") ringSystem.currentIndex = 0;
+    // ✅ Explicitly set index to 0 at start
+    if (typeof ringSystem.currentIndex === "number") {
+        ringSystem.currentIndex = 0;
+    }
 
     ringSystem.onRingClaim = (ringIndex) => {
       if (performance.now() < ringClaimBlockedUntil) return;
       if (!mpClient.roomId) return;
+      
+      // Local prediction (optional): instantly update color before server confirms
+      // ringSystem.currentIndex = ringIndex + 1; 
+
       mpClient.claimRing(ringIndex);
     };
   }
@@ -327,11 +339,11 @@ window.addEventListener("load", () => {
 
     mpState.update(dt);
 
-    // Minimap Update (Argument Safe)
+    // Minimap Update
     if (game.minimap && game.playerController?.mesh) {
         const enemies = mpState.getRemotePlayers().map(p => p.mesh);
         
-        // Ensure ringSystem.rings is an array
+        // Safety check for rings array
         const rings = (ringSystem && Array.isArray(ringSystem.rings)) 
             ? ringSystem.rings.map(r => r.mesh).filter(m => m && m.visible) 
             : [];
@@ -343,5 +355,5 @@ window.addEventListener("load", () => {
     game.renderer.render(game.scene, game.camera);
   };
 
-  console.log("✅ Multiplayer-main loaded (Rings & Minimap Fix)");
+  console.log("✅ Multiplayer-main loaded (Final: Green Rings Sync Active)");
 });
