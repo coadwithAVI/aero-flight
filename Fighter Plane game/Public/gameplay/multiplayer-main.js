@@ -263,7 +263,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 8) Game Loop (Minimap + MP Updated)
+  // 8) Game Loop (Minimap Argument Fixed)
   // ----------------------------------------------------------
   game.animate = function () {
     if (!game.isRunning) return;
@@ -311,15 +311,14 @@ window.addEventListener("load", () => {
     // MP State (Interpolation)
     mpState.update(dt);
 
-    // ✅ CRITICAL FIX 2: Minimap Update
-    // We must manually feed MP players and rings to the minimap
+    // ✅ CRITICAL FIX: Minimap now receives the MESH, not just position
     if (game.minimap && game.playerController?.mesh) {
         const enemies = mpState.getRemotePlayers().map(p => p.mesh);
         const rings = ringSystem ? ringSystem.rings.map(r => r.mesh) : [];
         
-        // Assuming your MinimapSystem has an update(playerMesh, targets, rings) signature
-        // If it's different, adjust arguments here.
-        game.minimap.update(game.playerController.mesh.position, enemies, rings);
+        // ❌ OLD ERROR: game.minimap.update(game.playerController.mesh.position, ...
+        // ✅ CORRECT: Pass the whole mesh object
+        game.minimap.update(game.playerController.mesh, enemies, rings);
     }
 
     game.cameraSystem?.update?.(dt);
