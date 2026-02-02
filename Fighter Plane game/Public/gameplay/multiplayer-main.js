@@ -3,12 +3,14 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-  console.log("🌐 Multiplayer Booting (No Ghost Bullet + Health Fix)");
+  console.log("🌐 Multiplayer Booting (Fixed Initialization Order)");
 
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const safeUI = () => window.mpUIBridge || null;
 
+  // ----------------------------------------------------------
   // 1) Game Core
+  // ----------------------------------------------------------
   const game = new GameManager();
   game.init();
   game.isPaused = true;
@@ -21,15 +23,22 @@ window.addEventListener("load", () => {
 
   if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
 
-  // 2) MP State
+  // ----------------------------------------------------------
+  // 2) Multiplayer state
+  // ----------------------------------------------------------
   const mpState = new MPState(game.scene, {
     modelFactory: typeof ModelFactory !== "undefined" ? new ModelFactory() : null,
     debug: false
   });
 
+  // ✅ FIX: Declare ringSystem HERE (Before MPClient uses it)
+  let ringSystem = null;
   let gameStartedOnce = false;
   let ringClaimBlockedUntil = 0;
 
+  // ----------------------------------------------------------
+  // 3) MP Client (Now safe to use ringSystem)
+  // ----------------------------------------------------------
   const mpClient = new MPClient({
     mpState,
     game,
@@ -75,12 +84,14 @@ window.addEventListener("load", () => {
         if (mpClient.socket && evt.msg.id === mpClient.socket.id) {
           if (ringSystem) {
              ringSystem.currentIndex = evt.msg.rings;
-             ringSystem._setActiveRing(evt.msg.rings); 
+             if (typeof ringSystem._setActiveRing === 'function') {
+                 ringSystem._setActiveRing(evt.msg.rings);
+             }
           }
         }
       }
 
-      // DAMAGE Update (Server confirmed hit)
+      // DAMAGE Update
       if (evt.type === "HIT" || evt.type === "DAMAGE") {
          if (evt.targetId === mpClient.socket?.id && game.playerController) {
              const dmg = evt.damage || 10;
@@ -102,7 +113,9 @@ window.addEventListener("load", () => {
   window.mpClient = mpClient;
   mpClient.connect();
 
-  // 3) Systems
+  // ----------------------------------------------------------
+  // 4) Systems
+  // ----------------------------------------------------------
   const bulletSystem = new BulletSystem(game.scene);
 
   const weaponSystem = new WeaponSystem(
@@ -121,22 +134,24 @@ window.addEventListener("load", () => {
     }
   );
 
-  // ✅ HIT DETECTION (My bullets hitting Enemy)
   const hitDetection = new MPHitDetection(mpClient, bulletSystem, mpState, {
       hitRadius: 8.0, 
       damage: 15
   });
 
-  let ringSystem = null;
-
   if (typeof MinimapSystem !== "undefined" && !game.minimap) {
     game.minimap = new MinimapSystem(game);
   }
 
+  // ----------------------------------------------------------
+  // 5) Helpers
+  // ----------------------------------------------------------
   function resetRingSystem(seed) {
+    // Destroy old rings
     if (ringSystem?.rings) {
         ringSystem.rings.forEach(r => { if (r?.mesh?.parent) r.mesh.parent.remove(r.mesh); });
     }
+    // Set to null before re-creating
     ringSystem = null;
 
     if (typeof RingSystem === "undefined") return;
@@ -182,7 +197,6 @@ window.addEventListener("load", () => {
     resetRingSystem(msg?.seed);
   }
 
-  // ✅ TERRAIN CRASH LOGIC
   function checkTerrainCollision(dt) {
       if (!game.playerController || !game.playerController.mesh) return;
       if (!game.map) return;
@@ -190,25 +204,22 @@ window.addEventListener("load", () => {
       const p = game.playerController.mesh.position;
       let groundH = 0;
       
-      // Map method or simple fallback
       if (game.map.getAltitudeAt) groundH = game.map.getAltitudeAt(p.x, p.z);
       else groundH = 10; 
 
-      // Impact Threshold
       if (p.y < groundH + 2) {
           if (game.playerController.health > 0) {
-             // Damage based on time (approx 20 HP per sec on ground)
              game.playerController.health -= (30 * dt); 
              if (game.playerController.health < 0) game.playerController.health = 0;
-             
-             // Bounce
              p.y = groundH + 3;
              game.playerController.speed *= 0.95;
           }
       }
   }
 
-  // GAME LOOP
+  // ----------------------------------------------------------
+  // 6) Game Loop
+  // ----------------------------------------------------------
   game.animate = function () {
     if (!game.isRunning) return;
     requestAnimationFrame(game.animate);
@@ -222,8 +233,6 @@ window.addEventListener("load", () => {
 
     game.inputManager?.update?.(dt);
     game.playerController?.update?.(dt);
-    
-    // ✅ CRITICAL: Health & Collision Update
     checkTerrainCollision(dt);
 
     if (ringSystem && game.playerController?.mesh) {
@@ -247,11 +256,10 @@ window.addEventListener("load", () => {
         game.minimap.update(game.playerController.mesh, enemies, ringSystem?.rings || [], ringSystem?.currentIndex);
     }
 
-    // ✅ CRITICAL: UI UPDATE LOOP
     if (game.uiManager && game.playerController) {
         game.uiManager.update(
             game.playerController.speed || 0,
-            game.playerController.health, // Ab ye value update hogi
+            game.playerController.health, 
             game.playerController.score || 0,
             game.playerController.boostEnergy || 100
         );
