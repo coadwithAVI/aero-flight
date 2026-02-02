@@ -3,13 +3,13 @@
 // ==========================================
 
 /**
- * Multiplayer Main (FINAL - UI + AUDIO FIXED)
+ * Multiplayer Main (FINAL - Lobby BG + Fresh Start)
  *
  * Fixes:
  * ✅ Lobby paused: game won't start until host presses START
- * ✅ Uses mpUIBridge from multiplayer.html
+ * ✅ Lobby me canvas/game view hidden (no world behind UI)
+ * ✅ START pressed -> fresh match reset
  * ✅ Lobby music + Game music using ProceduralAudio
- * ✅ Audio unlock on user interaction supported
  */
 
 window.addEventListener("load", () => {
@@ -24,8 +24,9 @@ window.addEventListener("load", () => {
   const game = new GameManager();
   game.init();
 
-  // ✅ IMPORTANT: Multiplayer should start PAUSED until server says start
+  // ✅ Multiplayer should start PAUSED until server says start
   game.isPaused = true;
+  game.isRunning = true;
 
   window.game = game;
 
@@ -35,6 +36,11 @@ window.addEventListener("load", () => {
   // ProceduralAudio (music)
   if (!game.procAudio && typeof ProceduralAudio !== "undefined") {
     game.procAudio = new ProceduralAudio();
+  }
+
+  // ✅ IMPORTANT FIX: Lobby me game canvas hide (so no world visible behind UI)
+  if (game.renderer?.domElement) {
+    game.renderer.domElement.style.display = "none";
   }
 
   // ----------------------------------------------------------
@@ -53,18 +59,18 @@ window.addEventListener("load", () => {
     onConnected: () => {
       console.log("✅ Connected to server.");
       safeUI()?.onConnected?.();
-
-      // try lobby music (will only work after unlock/click)
       game.procAudio?.playLobbyMusic?.();
     },
 
     onDisconnected: (reason) => {
       console.warn("❌ Disconnected:", reason);
 
-      // back to lobby state
       game.isPaused = true;
-      game.procAudio?.playLobbyMusic?.();
 
+      // hide gameplay canvas again
+      if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
+
+      game.procAudio?.playLobbyMusic?.();
       safeUI()?.onDisconnected?.(reason || "disconnected");
     },
 
@@ -72,36 +78,44 @@ window.addEventListener("load", () => {
       // stay paused in lobby
       game.isPaused = true;
 
-      // lobby music
-      game.procAudio?.playLobbyMusic?.();
+      // hide canvas in lobby
+      if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
 
+      game.procAudio?.playLobbyMusic?.();
       safeUI()?.onLobbyUpdate?.(msg);
     },
 
     onGameStart: (msg) => {
       console.log("🎮 Game Start:", msg);
 
+      // show canvas now
+      if (game.renderer?.domElement) {
+        game.renderer.domElement.style.display = "block";
+      }
+
+      // ✅ Reset / fresh match
+      freshStartMatch(msg);
+
       // unpause gameplay
       game.isPaused = false;
 
-      // switch music
+      // music
       game.procAudio?.playGameMusic?.();
 
       // UI hide
       safeUI()?.onGameStart?.(msg);
 
-      ensureSpawnLocalPlayer();
-      ensureRingSystem(msg?.seed);
       showHUDOnly();
     },
 
     onGameOver: (msg) => {
       console.log("🏁 Game Over:", msg);
 
-      // pause
       game.isPaused = true;
 
-      // back to lobby music
+      // hide canvas for lobby/end
+      if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
+
       game.procAudio?.playLobbyMusic?.();
 
       safeUI()?.onGameOver?.(msg);
@@ -113,7 +127,7 @@ window.addEventListener("load", () => {
     }
   });
 
-  // ✅ expose globally for multiplayer.html UI buttons
+  // expose globally for multiplayer.html UI buttons
   window.mpClient = mpClient;
 
   mpClient.connect();
@@ -149,15 +163,24 @@ window.addEventListener("load", () => {
   let ringSystem = null;
   let ringSeed = null;
 
-  function ensureRingSystem(seed) {
-    if (ringSystem) return;
+  function resetRingSystem(seed) {
+    // destroy old rings
+    try {
+      if (ringSystem?.rings?.length) {
+        ringSystem.rings.forEach(r => {
+          if (r?.mesh && r.mesh.parent) r.mesh.parent.remove(r.mesh);
+        });
+      }
+    } catch (e) {}
+
+    ringSystem = null;
 
     if (typeof RingSystem === "undefined") {
       console.warn("❌ RingSystem not loaded. Add ring-system.js in multiplayer.html");
       return;
     }
 
-    ringSeed = seed ?? ringSeed ?? 12345;
+    ringSeed = seed ?? 12345;
 
     ringSystem = new RingSystem(game.scene, game.map?.terrainMesh, {
       ringCount: 8,
@@ -204,29 +227,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 6) MP events handling (remote bullets)
-  // ----------------------------------------------------------
-  mpClient.onEvent = (evt) => {
-    if (!evt || evt.type !== "FIRE") return;
-    if (evt.ownerId === mpClient.clientId) return;
-
-    const ent = mpState.players.get(evt.ownerId);
-    if (!ent?.mesh) return;
-
-    const p = ent.mesh.position.clone();
-    const q = ent.mesh.quaternion.clone();
-    bulletSystem.fire(p, q);
-  };
-
-  // ----------------------------------------------------------
-  // 7) HUD control
-  // ----------------------------------------------------------
-  function showHUDOnly() {
-    if (game.uiManager) game.uiManager.hidePause();
-  }
-
-  // ----------------------------------------------------------
-  // 8) Ensure player exists in MP mode
+  // 6) Ensure player exists in MP mode
   // ----------------------------------------------------------
   function ensureSpawnLocalPlayer() {
     if (game.playerController && game.playerController.mesh) {
@@ -246,21 +247,68 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 9) Patch game loop for Multiplayer
+  // ✅ FRESH START MATCH RESET (MAIN FIX)
+  // ----------------------------------------------------------
+  function freshStartMatch(msg) {
+    // spawn player controller
+    ensureSpawnLocalPlayer();
+
+    // reset player stats/position
+    if (game.playerController) {
+      game.playerController.health = 100;
+      game.playerController.boostEnergy = (game.playerController.boostEnergy ?? 100);
+
+      if (typeof game.playerController.respawnInstant === "function") {
+        game.playerController.respawnInstant();
+      } else if (game.playerController.mesh) {
+        game.playerController.mesh.position.set(0, 250, 0);
+        game.playerController.mesh.quaternion.set(0, 0, 0, 1);
+      }
+
+      if (game.playerController.mesh) game.playerController.mesh.visible = true;
+    }
+
+    // clear bullets
+    bulletSystem.clearAll();
+
+    // reset rings (fresh)
+    resetRingSystem(msg?.seed);
+
+    // reset respawn flags
+    respawnPending = false;
+    respawnAt = 0;
+
+    // hide pause UI if any
+    if (game.uiManager) game.uiManager.hidePause();
+
+    console.log("✅ Fresh match reset done.");
+  }
+
+  // ----------------------------------------------------------
+  // 7) HUD control
+  // ----------------------------------------------------------
+  function showHUDOnly() {
+    if (game.uiManager) game.uiManager.hidePause();
+  }
+
+  // ----------------------------------------------------------
+  // 8) Patch game loop for Multiplayer
   // ----------------------------------------------------------
   game.animate = function () {
     if (!game.isRunning) return;
     requestAnimationFrame(game.animate.bind(game));
 
+    // even paused: render (but canvas is hidden in lobby anyway)
     if (game.isPaused) {
-      game.renderer.render(game.scene, game.camera);
+      if (game.renderer?.domElement?.style.display !== "none") {
+        game.renderer.render(game.scene, game.camera);
+      }
       return;
     }
 
     const dt = clamp(game.clock.getDelta(), 0.0, 0.05);
 
     if (game.inputManager?.update) game.inputManager.update(dt);
-
     if (game.playerController) game.playerController.update(dt);
 
     processRespawn();
@@ -295,12 +343,10 @@ window.addEventListener("load", () => {
 
     if (game.uiManager) {
       const hp = game.playerController ? (game.playerController.health ?? 100) : 100;
-      const boost = game.playerController
-        ? game.playerController.boostEnergy
-        : (typeof PHYSICS_CONFIG !== "undefined" ? PHYSICS_CONFIG.boostMax : 100);
+      const boost = game.playerController ? (game.playerController.boostEnergy ?? 100) : 100;
 
       game.uiManager.updateHealth(hp, 100);
-      game.uiManager.updateBoost(boost, (typeof PHYSICS_CONFIG !== "undefined" ? (PHYSICS_CONFIG.boostMax ?? 100) : 100));
+      game.uiManager.updateBoost(boost, 100);
     }
 
     if (game.playerController && game.playerController.health <= 0 && !respawnPending) {
@@ -310,5 +356,5 @@ window.addEventListener("load", () => {
     game.renderer.render(game.scene, game.camera);
   };
 
-  console.log("✅ Multiplayer-main loaded: paused lobby + procedural music enabled.");
+  console.log("✅ Multiplayer-main loaded: canvas hidden in lobby + fresh start enabled.");
 });
