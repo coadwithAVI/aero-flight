@@ -84,8 +84,8 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
-    // ✅ FIXED: Incoming Events (Damage / Score)
-  onEvent: (evt) => {
+// ✅ FIXED: Incoming Events
+    onEvent: (evt) => {
       if (!evt) return;
 
       // 1. SCORE / RINGS Update
@@ -98,29 +98,39 @@ window.addEventListener("load", () => {
         }
       }
 
-      // 2. HIT / DAMAGE Update (Jab enemy hume maarega)
+      // 2. HIT / DAMAGE Update
       if (evt.type === "HIT" || evt.type === "DAMAGE") {
         const myId = mpClient.socket?.id;
-        
-        // ✅ FIX: Data extract karne ka safe tarika (Direct ya Nested)
-        // Kabhi server {targetId: '...'} bhejta hai, kabhi {msg: {targetId: '...'}}
-        const targetId = evt.targetId || evt.msg?.targetId || evt.id; 
-        const damage = evt.damage || evt.msg?.damage || 10;
 
-        // Debug log taaki pata chale event aaya
-        console.log(`📨 Hit Event Recv: Target=${targetId} MyId=${myId} Dmg=${damage}`);
+        // ✅ IMPORTANT: Data extract karo (Direct ya nested 'msg' mein)
+        // Server kabhi {targetId: '...'} bhejta hai, kabhi {msg: {targetId: '...'}}
+        const payload = evt.msg || evt; 
+        const targetId = payload.targetId || payload.id;
+        const damage = payload.damage || 10;
 
-        // Agar targetId meri hai, toh mujhe damage hua hai
+        // Agar targetId MERI hai -> Mujhe damage hua
         if (targetId && myId && targetId === myId) {
+            console.log(`⚠️ I GOT HIT! Damage: ${damage}`);
+            
             if (game.playerController) {
-                console.log(`⚠️ TOOK DAMAGE: ${damage}. Health before: ${game.playerController.health}`);
+                // Health decrease
+                game.playerController.health -= damage;
                 
-                // Player ki health kam karo
-                if (game.playerController.health !== undefined) {
-                    game.playerController.health -= damage;
-                    if (game.playerController.health < 0) game.playerController.health = 0;
-                    
-                    // ✅ Optional: Camera Shake ya Screen Flash yaha add kar sakte hain
+                // Dead check
+                if (game.playerController.health <= 0) {
+                    game.playerController.health = 0;
+                    console.log("💀 PLAYER DESTROYED");
+                    // Optional: Respawn logic here
+                }
+
+                // 🔥 UI UPDATE IMMEDIATELY
+                if (game.uiManager) {
+                    game.uiManager.update(
+                        game.playerController.speed || 0,
+                        game.playerController.health, // Updated HP
+                        game.playerController.score || 0,
+                        game.playerController.boostEnergy || 100
+                    );
                 }
             }
         }
@@ -266,6 +276,60 @@ window.addEventListener("load", () => {
              p.y = groundH + 3;
              // Slow down
              if (game.playerController.speed) game.playerController.speed *= 0.9;
+          }
+      }
+  }
+  // ✅ NEW: Raycaster setup for accurate collision
+  const _terrainRaycaster = new THREE.Raycaster();
+  const _downDir = new THREE.Vector3(0, -1, 0);
+
+  function checkTerrainCollision() {
+      if (!game.playerController || !game.playerController.mesh) return;
+      
+      // Terrain dhoondho
+      let terrain = game.map?.terrainMesh;
+      if (!terrain) {
+          // Fallback: Scene mein dhoondho agar map mein nahi mila
+          terrain = game.scene.getObjectByName("terrain") || game.scene.getObjectByName("Terrain");
+      }
+
+      if (!terrain) return; // Terrain hi nahi mila toh return
+
+      const p = game.playerController.mesh.position;
+      
+      // 1. Raycast from sky downwards at player's X,Z
+      // (Player ke upar se neeche laser maaro taaki exact zameen ki height mile)
+      const rayOrigin = new THREE.Vector3(p.x, 2000, p.z);
+      _terrainRaycaster.set(rayOrigin, _downDir);
+      
+      // Optimize: Raycaster ko sirf terrain check karne do
+      const hits = _terrainRaycaster.intersectObject(terrain, true); // true = recursive check
+      
+      if (hits.length > 0) {
+          const groundH = hits[0].point.y;
+          
+          // 2. Check collision (Player radius ~2-3 units maan ke)
+          if (p.y < groundH + 3.5) {
+              
+              // 💥 CRASH LOGIC
+              if (game.playerController.health > 0) {
+                  // Damage (Time based taaki instant kill na ho, par heavy damage ho)
+                  game.playerController.health -= 1.5; 
+                  
+                  // Console debug
+                  // console.log("💥 CRASH! Terrain Height:", groundH, "Player Y:", p.y);
+                  
+                  // Force bounce UP (Taaki zameen ke andar na ghuse)
+                  p.y = groundH + 5.0; 
+                  
+                  // Speed slow karo
+                  if (game.playerController.speed > 0) {
+                      game.playerController.speed *= 0.85;
+                  }
+                  
+                  // Visual shake (Optional - agar camera system support kare)
+                  if(game.cameraSystem) game.cameraSystem.addShake?.(0.5);
+              }
           }
       }
   }
