@@ -56,7 +56,7 @@ class BulletSystem {
     const ownerId = options.ownerId ?? "local";
 
     // Velocity from +Z forward
-    const velocity = new THREE.Vector3(0, 0, 1);
+    const velocity = new THREE.Vector3(0, 0, -1);
     velocity.applyQuaternion(startQuaternion);
     velocity.multiplyScalar(options.speed ?? this.speed);
 
@@ -195,3 +195,4 @@ class BulletSystem {
 }
 
 window.BulletSystem = BulletSystem;
+
