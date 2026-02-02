@@ -75,8 +75,6 @@ function makeRoomId() {
 // ----------------------------------------------------------
 // ✅ GAME CONFIG (Server safe defaults)
 // ----------------------------------------------------------
-// Server me browser wali config file require mat karo.
-// But agar tum future me server-config banate ho to yaha load kar sakte ho.
 const SERVER_CONFIG = {
   SERVER_TICK_RATE: 20,
 
@@ -148,54 +146,13 @@ function getRoom(roomIdRaw) {
   return rooms[roomId];
 }
 
-function emitLobbyUpdate(roomId) {
-  const room = rooms[roomId];
-  if (!room) return;
-
-  io.to(roomId).emit("mp_lobby_update", {
-    roomId,
-    hostId: room.hostId,
-    status: room.status,
-    players: room.players.map(p => ({
-      id: p.id,
-      name: p.name,
-      isHost: p.isHost,
-      hp: p.hp,
-      rings: p.rings,
-      kills: p.kills,
-      score: p.score,
-      alive: p.alive
-    }))
-  });
-}
-
-function roomSnapshot(room) {
-  return {
-    roomId: room.id,
-    status: room.status,
-    seed: room.seed,
-    tick: room.tick,
-    time: nowMs(),
-    players: room.players.map(p => ({
-      id: p.id,
-      name: p.name,
-      hp: p.hp,
-      rings: p.rings,
-      kills: p.kills,
-      score: p.score,
-      alive: p.alive,
-      p: p.p,
-      q: p.q
-    })),
-    bullets: room.bullets
-  };
-}
-
 // ----------------------------------------------------------
-// ✅ GAME END HELPERS (ADDED ONLY)
+// ✅ GAME OVER HELPERS (ADDED)
 // ----------------------------------------------------------
 function emitGameOver(room, winnerPlayer, reason) {
-  if (!room || room.status === "finished") return;
+  if (!room) return;
+  if (room.status === "finished") return;
+
   room.status = "finished";
 
   io.to(room.id).emit("mp_game_over", {
@@ -218,11 +175,71 @@ function checkLastPlayerWin(room, reason) {
   if (!room) return;
   if (room.status !== "playing") return;
 
-  // If only 1 player remains => winner
+  // if only 1 player remains => winner
   if (room.players.length === 1) {
     const winner = room.players[0];
     emitGameOver(room, winner, reason || "All other players left");
   }
+}
+
+// ----------------------------------------------------------
+// ✅ LOBBY UPDATE (FIXED FINAL)
+// - earlier you were doing io.to(roomId).emit(...)
+// - BUT client expects msg.you.isHost
+// - so we emit lobby update per player socket
+// ----------------------------------------------------------
+function emitLobbyUpdate(roomId) {
+  const room = rooms[roomId];
+  if (!room) return;
+
+  // send per-player so client can get "you"
+  for (const p of room.players) {
+    io.to(p.id).emit("mp_lobby_update", {
+      roomId,
+      hostId: room.hostId,
+      status: room.status,
+
+      // ✅ CRITICAL: helps client show Launch button
+      you: {
+        id: p.id,
+        name: p.name,
+        isHost: room.hostId === p.id
+      },
+
+      players: room.players.map(pp => ({
+        id: pp.id,
+        name: pp.name,
+        isHost: pp.id === room.hostId, // ensure correct host flag
+        hp: pp.hp,
+        rings: pp.rings,
+        kills: pp.kills,
+        score: pp.score,
+        alive: pp.alive
+      }))
+    });
+  }
+}
+
+function roomSnapshot(room) {
+  return {
+    roomId: room.id,
+    status: room.status,
+    seed: room.seed,
+    tick: room.tick,
+    time: nowMs(),
+    players: room.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      hp: p.hp,
+      rings: p.rings,
+      kills: p.kills,
+      score: p.score,
+      alive: p.alive,
+      p: p.p,
+      q: p.q
+    })),
+    bullets: room.bullets
+  };
 }
 
 // ----------------------------------------------------------
@@ -284,7 +301,7 @@ io.on("connection", (socket) => {
   // ============================
   // Create Room
   // ============================
-  socket.on("mp_create_room", ({ name }) => {
+  socket.on("mp_create_room", ({ name } = {}) => {
     const room = makeRoom();
     room.hostId = socket.id;
 
@@ -310,7 +327,7 @@ io.on("connection", (socket) => {
   // ============================
   // Join Room
   // ============================
-  socket.on("mp_join_room", ({ roomId, name }) => {
+  socket.on("mp_join_room", ({ roomId, name } = {}) => {
     const rId = String(roomId || "").toUpperCase();
     const room = rooms[rId];
 
@@ -347,7 +364,7 @@ io.on("connection", (socket) => {
   // ============================
   // Leave Room (optional)
   // ============================
-  socket.on("mp_leave_room", ({ roomId }) => {
+  socket.on("mp_leave_room", ({ roomId } = {}) => {
     const rId = String(roomId || "").toUpperCase();
     const room = rooms[rId];
     if (!room) return;
@@ -385,7 +402,7 @@ io.on("connection", (socket) => {
   // ============================
   // Host Start Game
   // ============================
-  socket.on("mp_start_game", ({ roomId }) => {
+  socket.on("mp_start_game", ({ roomId } = {}) => {
     const rId = String(roomId || "").toUpperCase();
     const room = rooms[rId];
     if (!room) return;
@@ -485,7 +502,7 @@ io.on("connection", (socket) => {
   // Hit report (client reports mp_hit)
   // server validates minimal + scoring here
   // ============================
-  socket.on("mp_hit", ({ roomId, targetId, bulletId }) => {
+  socket.on("mp_hit", ({ roomId, targetId, bulletId } = {}) => {
     const rId = String(roomId || "").toUpperCase();
     const room = rooms[rId];
     if (!room || room.status !== "playing") return;
@@ -537,7 +554,7 @@ io.on("connection", (socket) => {
   // ============================
   // Rings claim (sequential)
   // ============================
-  socket.on("mp_claim_ring", ({ roomId, ringIndex }) => {
+  socket.on("mp_claim_ring", ({ roomId, ringIndex } = {}) => {
     const rId = String(roomId || "").toUpperCase();
     const room = rooms[rId];
     if (!room || room.status !== "playing") return;
@@ -559,7 +576,6 @@ io.on("connection", (socket) => {
 
     // win condition
     if (p.rings >= SERVER_CONFIG.TOTAL_RINGS_TO_WIN) {
-      // ✅ Use the same gameover emit (no logic change, just unified)
       emitGameOver(room, p, "Objective completed: Rings cleared");
     }
   });
