@@ -1,6 +1,9 @@
 <!-- ==========================================
  PATH: Public/multiplayer.html
- Sky Pilot - Multiplayer (FINAL LOBBY BG + FRESH START READY)
+ Sky Pilot - Multiplayer (FINAL UPDATED)
+ - Lobby UI background improved
+ - No transparency issue
+ - Start spam locked
 ========================================== -->
 <!DOCTYPE html>
 <html lang="en">
@@ -30,7 +33,7 @@
       pointer-events: none;
     }
 
-    /* ✅ NEW: Fullscreen lobby background layer */
+    /* ✅ Fullscreen lobby background layer */
     .mpLobbyBG{
       position: fixed;
       inset: 0;
@@ -44,7 +47,6 @@
         linear-gradient(180deg, #02030a 0%, #050b18 45%, #000 100%);
     }
 
-    /* subtle moving shine */
     .mpLobbyBG::after{
       content:"";
       position:absolute;
@@ -66,8 +68,6 @@
       position: relative;
       z-index: 2;
       pointer-events: auto;
-
-      /* ✅ removed transparency feel */
       background: rgba(8, 12, 20, 0.93);
       border: 1px solid rgba(0,255,255,0.18);
       border-radius: 16px;
@@ -148,6 +148,7 @@
       transition: transform 0.12s ease, opacity 0.12s ease;
     }
     button:hover { transform: translateY(-1px); opacity: 0.95; }
+    button:disabled { cursor:not-allowed; opacity:0.55; transform:none; }
 
     .primary {
       background: linear-gradient(90deg, #1abc9c, #00d4ff);
@@ -170,6 +171,7 @@
       font-size: 12px;
       opacity: 0.8;
       min-height: 16px;
+      white-space: pre-wrap;
     }
 
     /* Lobby list */
@@ -220,7 +222,7 @@
       color: #9ffcff;
     }
 
-    /* Top HUD during gameplay */
+    /* Top HUD */
     #topHUD {
       position: absolute;
       top: 16px;
@@ -308,7 +310,7 @@
   <!-- UI ROOT -->
   <div id="uiRoot">
 
-    <!-- ✅ NEW Lobby Background -->
+    <!-- Lobby Background -->
     <div id="mpLobbyBG" class="mpLobbyBG"></div>
 
     <!-- Top HUD -->
@@ -318,7 +320,7 @@
       <div class="pill" id="hudInfo">STATUS: LOBBY</div>
     </div>
 
-    <!-- MAIN MENU / JOIN -->
+    <!-- JOIN SCREEN -->
     <div id="screenJoin" class="panel centerScreen">
       <h1>🌐 Multiplayer Uplink</h1>
       <div class="sub">
@@ -400,9 +402,8 @@
 
   <script>
     // ==========================================================
-    // Multiplayer UI Controller (FINAL)
+    // Multiplayer UI Controller (FINAL UPDATED)
     // ==========================================================
-
     const el = (id) => document.getElementById(id);
 
     const screenJoin = el("screenJoin");
@@ -440,6 +441,9 @@
     const hudName = el("hudName");
     const hudInfo = el("hudInfo");
 
+    // ✅ start lock
+    let __startLocked = false;
+
     function showOnly(screen) {
       [screenJoin, screenLobby, screenEnd].forEach(s => s.classList.add("hidden"));
       screen.classList.remove("hidden");
@@ -463,19 +467,18 @@
       inpCode.value = sanitizeCode(inpCode.value);
     });
 
-    btnBack.onclick = () => {
-      window.location.href = "./index.html";
-    };
-
-    btnEndBack.onclick = () => {
-      window.location.href = "./index.html";
-    };
+    btnBack.onclick = () => window.location.href = "./index.html";
+    btnEndBack.onclick = () => window.location.href = "./index.html";
 
     btnCreate.onclick = () => {
       const name = (inpName.value || "Pilot").trim();
       if (!window.mpClient) return setStatus("MPClient not ready.", true);
 
+      __startLocked = false;
+      btnStart.disabled = false;
+
       setStatus("Creating lobby...");
+      console.log("[UI] Create lobby:", name);
       window.mpClient.createRoom(name);
     };
 
@@ -486,27 +489,39 @@
       if (!code || code.length !== 4) return setStatus("Enter valid 4-letter code.", true);
       if (!window.mpClient) return setStatus("MPClient not ready.", true);
 
+      __startLocked = false;
+      btnStart.disabled = false;
+
       setStatus("Joining lobby...");
+      console.log("[UI] Join lobby:", code, name);
       window.mpClient.joinRoom(code, name);
     };
 
     btnLeave.onclick = () => {
-      window.location.reload(); // simplest stable
+      // simplest stable exit
+      window.location.reload();
     };
 
     btnStart.onclick = () => {
+      if (__startLocked) return;
       if (!window.mpClient?.roomId) return;
+
+      __startLocked = true;
+
+      btnStart.disabled = true;
+      btnStart.style.opacity = "0.55";
+
+      console.log("🚀 START CLICK -> sending mp_start_game", window.mpClient.roomId);
       window.mpClient.startGame();
       setLobbyStatus("Starting game...");
     };
 
     btnReplay.onclick = () => {
-      if (!window.mpClient?.roomId) return;
       endStatus.innerText = "Replay not implemented on server yet.";
     };
 
     // ==========================================================
-    // UI Bridge: Multiplayer-main.js will call these hooks
+    // UI Bridge used by multiplayer-main.js
     // ==========================================================
     window.mpUIBridge = {
       onConnected() {
@@ -515,12 +530,18 @@
 
       onDisconnected(reason) {
         setStatus("❌ Disconnected: " + reason, true);
+
+        __startLocked = false;
+        btnStart.disabled = false;
+        btnStart.style.opacity = "1";
+
         showOnly(screenJoin);
         topHUD.classList.add("hidden");
         mpLobbyBG.style.display = "block";
       },
 
       onLobbyUpdate(msg) {
+        // msg: { type, roomId, players, hostId, seed, isHost }
         showOnly(screenLobby);
 
         topHUD.classList.remove("hidden");
@@ -528,7 +549,7 @@
         hudName.innerText = `YOU: ${(inpName.value || "Pilot").trim()}`;
         hudInfo.innerText = "STATUS: LOBBY";
 
-        mpLobbyBG.style.display = "block"; // ✅ lobby bg ON
+        mpLobbyBG.style.display = "block";
 
         lobbyCode.innerText = msg.roomId || "----";
 
@@ -537,6 +558,12 @@
 
         btnStart.style.display = isHost ? "inline-block" : "none";
 
+        // reset lock when lobby updates
+        __startLocked = false;
+        btnStart.disabled = false;
+        btnStart.style.opacity = "1";
+
+        // player list
         playerList.innerHTML = "";
         (msg.players || []).forEach(p => {
           const row = document.createElement("div");
@@ -552,6 +579,8 @@
       },
 
       onGameStart(info) {
+        console.log("✅ UI RECEIVED GAME START", info);
+
         screenJoin.classList.add("hidden");
         screenLobby.classList.add("hidden");
         screenEnd.classList.add("hidden");
@@ -559,7 +588,7 @@
         topHUD.classList.remove("hidden");
         hudInfo.innerText = "STATUS: PLAYING";
 
-        mpLobbyBG.style.display = "none"; // ✅ hide lobby background during gameplay
+        mpLobbyBG.style.display = "none";
       },
 
       onGameOver(msg) {
@@ -569,7 +598,7 @@
         mpLobbyBG.style.display = "block";
 
         endTitle.innerText = `🏆 Winner: ${msg.winner || "Unknown"}`;
-        endSub.innerText = "Match stats (Kills / Rings / Score):";
+        endSub.innerText = "Match stats:";
 
         const rows = Array.isArray(msg.stats) ? msg.stats.slice() : [];
         rows.sort((a, b) => (b.score - a.score));
@@ -578,7 +607,7 @@
           <tr>
             <td>${r.name || "Pilot"}</td>
             <td>${r.kills ?? 0}</td>
-            <td>--</td>
+            <td>${r.deaths ?? 0}</td>
             <td>${r.rings ?? 0}</td>
             <td>${r.score ?? 0}</td>
           </tr>
@@ -592,7 +621,6 @@
       }
     };
 
-    // Start
     showOnly(screenJoin);
     setStatus("Connecting...");
   </script>
