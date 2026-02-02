@@ -49,7 +49,7 @@ class MPHitDetection {
            if(this._lastHitAt.has(key) && (now - this._lastHitAt.get(key) < 500)) continue;
            this._lastHitAt.set(key, now);
 
-           console.log(`💥 HIT DETECTED on ${rp.name || rp.id} (Dist: ${dist.toFixed(1)})`);
+//           console.log(`💥 HIT DETECTED on ${rp.name || rp.id} (Dist: ${dist.toFixed(1)})`);
 
            this.mp.socket.emit("mp_hit", {
              roomId: this.mp.roomId,
@@ -72,3 +72,4 @@ class MPHitDetection {
 }
 
 window.MPHitDetection = MPHitDetection;
+
