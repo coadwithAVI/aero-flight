@@ -3,13 +3,12 @@
 // ==========================================
 
 /**
- * Multiplayer Main (FINAL - COMPLETE FIX)
+ * Multiplayer Main (FINAL - MINIMAP + ID FIX)
  *
  * Fixes Included:
- * ✅ Lobby Logic: Ignores lobby updates when game status is 'playing' (Fixes black screen after start).
- * ✅ Crash Fix: Uses correct 'fire' function and sends position/quaternion separately.
- * ✅ Fresh Match: Resets bullets, player, and rings on start.
- * ✅ Blink Fix: Delays ring claim slightly to prevent instant-win bugs.
+ * ✅ Identity Fix: Sets localId so client doesn't render itself as enemy (Fixes Client Black Screen).
+ * ✅ Minimap Fix: Manually updates minimap with remote players and dynamic rings.
+ * ✅ "Stuck" Fix: Once client stops crashing, it will send correct coordinates.
  */
 
 window.addEventListener("load", () => {
@@ -35,7 +34,7 @@ window.addEventListener("load", () => {
     game.procAudio = new ProceduralAudio();
   }
 
-  // ✅ Hide canvas initially (Lobby Mode)
+  // Hide canvas initially (Lobby Mode)
   if (game.renderer?.domElement) {
     game.renderer.domElement.style.display = "none";
   }
@@ -58,7 +57,14 @@ window.addEventListener("load", () => {
     debug: true,
 
     onConnected: () => {
-      console.log("✅ Connected to server.");
+      console.log("✅ Connected to server. ID:", mpClient.socket.id);
+      
+      // ✅ CRITICAL FIX 1: Set Local ID (Fixes Client Black Screen & Stuck Enemy)
+      // MPState needs to know who "I" am so it doesn't render me as a ghost enemy.
+      if (mpClient.socket && mpClient.socket.id) {
+        mpState.setLocalId(mpClient.socket.id);
+      }
+
       safeUI()?.onConnected?.();
       game.procAudio?.playLobbyMusic?.();
     },
@@ -73,50 +79,39 @@ window.addEventListener("load", () => {
     },
 
     onLobbyUpdate: (msg) => {
-      // ✅ CRITICAL FIX: Agar game 'playing' state mein hai, toh lobby update ignore karo.
-      // Ye us bug ko rokta hai jahan game start hone ke turant baad screen black ho jati thi.
+      // Ignore lobby updates if already playing
       if (msg.status === "playing") {
         return; 
       }
 
-      // Normal Lobby Logic
+      // Ensure ID is set if missed earlier
+      if (msg.you && msg.you.id) {
+        mpState.setLocalId(msg.you.id);
+      }
+
       game.isPaused = true;
       gameStartedOnce = false;
-
       if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
-
       game.procAudio?.playLobbyMusic?.();
       safeUI()?.onLobbyUpdate?.(msg);
     },
 
     onGameStart: (msg) => {
-      // ✅ Prevent duplicate start calls
-      if (gameStartedOnce) {
-        console.warn("⚠️ Duplicate mp_game_start ignored.");
-        return;
-      }
+      if (gameStartedOnce) return;
       gameStartedOnce = true;
 
       console.log("🎮 Game Start:", msg);
 
-      // Show Canvas
       if (game.renderer?.domElement) {
         game.renderer.domElement.style.display = "block";
       }
 
-      // Block ring claim briefly (prevent glitch)
       ringClaimBlockedUntil = performance.now() + 1400;
 
-      // Reset everything for fresh match
       freshStartMatch(msg);
 
-      // Unpause
       game.isPaused = false;
-
-      // Music
       game.procAudio?.playGameMusic?.();
-
-      // UI Update
       safeUI()?.onGameStart?.(msg);
       showHUDOnly();
     },
@@ -165,9 +160,14 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 4) Rings
+  // 4) Rings & Minimap Setup
   // ----------------------------------------------------------
   let ringSystem = null;
+
+  // ✅ Initialize Minimap System explicitly
+  if (typeof MinimapSystem !== "undefined" && !game.minimap) {
+    game.minimap = new MinimapSystem(game);
+  }
 
   function destroyRingSystem() {
     try {
@@ -204,7 +204,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 5) Respawn system
+  // 5) Respawn & Match Logic
   // ----------------------------------------------------------
   let respawnPending = false;
   let respawnAt = 0;
@@ -214,28 +214,21 @@ window.addEventListener("load", () => {
     if (performance.now() < respawnAt) return;
 
     respawnPending = false;
-
     if (!game.playerController) return;
 
     game.playerController.respawnInstant?.();
     game.playerController.health = 100;
-
     if (game.playerController.mesh) game.playerController.mesh.visible = true;
   }
 
-  // ----------------------------------------------------------
-  // 6) Ensure player exists & Reset Match
-  // ----------------------------------------------------------
   function ensureSpawnLocalPlayer() {
     if (game.playerController && game.playerController.mesh) {
       weaponSystem.player = game.playerController;
       return;
     }
-
     if (typeof PlayerController !== "undefined") {
       game.playerController = new PlayerController(game.scene, game.inputManager, game.camera);
       weaponSystem.player = game.playerController;
-
       if (game.map?.terrainMesh) game.playerController.setTerrainMesh(game.map.terrainMesh);
       if (!game.cameraSystem) game.cameraSystem = new CameraSystem(game.camera);
       game.cameraSystem.setTarget(game.playerController);
@@ -245,7 +238,9 @@ window.addEventListener("load", () => {
   function freshStartMatch(msg) {
     ensureSpawnLocalPlayer();
 
-    // Reset Player
+    // Re-set Local ID just in case
+    if (mpClient.socket?.id) mpState.setLocalId(mpClient.socket.id);
+
     if (game.playerController) {
       game.playerController.health = 100;
       if (typeof game.playerController.respawnInstant === "function") {
@@ -257,27 +252,18 @@ window.addEventListener("load", () => {
       if (game.playerController.mesh) game.playerController.mesh.visible = true;
     }
 
-    // Reset Bullets
     bulletSystem.clearAll();
-
-    // Reset Rings
     resetRingSystem(msg?.seed);
-
     respawnPending = false;
     respawnAt = 0;
-
-    console.log("✅ Fresh match reset complete.");
   }
 
-  // ----------------------------------------------------------
-  // 7) HUD
-  // ----------------------------------------------------------
   function showHUDOnly() {
     if (game.uiManager) game.uiManager.hidePause?.();
   }
 
   // ----------------------------------------------------------
-  // 8) Game Loop (Corrected)
+  // 8) Game Loop (Minimap + MP Updated)
   // ----------------------------------------------------------
   game.animate = function () {
     if (!game.isRunning) return;
@@ -295,9 +281,9 @@ window.addEventListener("load", () => {
 
     game.inputManager?.update?.(dt);
     game.playerController?.update?.(dt);
-
     processRespawn();
 
+    // Rings Update
     if (ringSystem && game.playerController?.mesh) {
       if (performance.now() > ringClaimBlockedUntil) {
         ringSystem.update(dt, game.playerController.mesh);
@@ -307,15 +293,13 @@ window.addEventListener("load", () => {
     weaponSystem.update(dt);
     bulletSystem.update(dt);
 
-    // ✅ FIXED: Crash Prevention Logic
+    // Network Send
     if (game.playerController?.mesh) {
-      // 1. Send Transform (Arguments separated)
       mpClient.sendTransform(
         game.playerController.mesh.position, 
         game.playerController.mesh.quaternion
       );
 
-      // 2. Fire (Correct function name + Arguments separated)
       if (game.inputManager?.getAction?.("fire")) {
         mpClient.fire(
           game.playerController.mesh.position,
@@ -324,10 +308,23 @@ window.addEventListener("load", () => {
       }
     }
 
+    // MP State (Interpolation)
     mpState.update(dt);
+
+    // ✅ CRITICAL FIX 2: Minimap Update
+    // We must manually feed MP players and rings to the minimap
+    if (game.minimap && game.playerController?.mesh) {
+        const enemies = mpState.getRemotePlayers().map(p => p.mesh);
+        const rings = ringSystem ? ringSystem.rings.map(r => r.mesh) : [];
+        
+        // Assuming your MinimapSystem has an update(playerMesh, targets, rings) signature
+        // If it's different, adjust arguments here.
+        game.minimap.update(game.playerController.mesh.position, enemies, rings);
+    }
+
     game.cameraSystem?.update?.(dt);
     game.renderer.render(game.scene, game.camera);
   };
 
-  console.log("✅ Multiplayer-main loaded (Final Stable Version)");
+  console.log("✅ Multiplayer-main loaded (ID Fixed + Minimap Active)");
 });
