@@ -8,8 +8,8 @@ class MPHitDetection {
     this.bullets = bulletSystem;
     this.state = mpState;
     
-    // Hit Radius thoda bada rakha hai taaki lag mein bhi hit register ho
-    this.hitRadius = options.hitRadius ?? 15.0; 
+    // Radius aur bada kar diya safe side ke liye
+    this.hitRadius = options.hitRadius ?? 30.0; 
     this.damage = options.damage ?? 15;
     
     this._lastHitAt = new Map();
@@ -17,16 +17,15 @@ class MPHitDetection {
   }
 
   update(dt) {
-    // ✅ FIX: 'isConnected' variable hai, function nahi. Brackets () hata diye.
+    // 1. Connection Check
     if (!this.mp.socket || !this.mp.isConnected) return;
-    
     const localId = this.mp.socket.id;
 
-    // Data Check
+    // 2. Data Check
     const bullets = this.bullets?.bullets; 
     const remotes = this.state?.getRemotePlayers();
 
-    // Debug Log (Har 3 sec) - Check karne ke liye ki code chal raha hai
+    // Debug: Har 3 sec mein status
     this._logTimer += dt;
     if (this._logTimer > 3.0) {
        // console.log(`[HitSystem] Active. Bullets: ${bullets?.length || 0}, Enemies: ${remotes?.length || 0}`);
@@ -36,11 +35,10 @@ class MPHitDetection {
     if (!bullets || bullets.length === 0) return;
     if (!remotes || remotes.length === 0) return;
 
-    // Collision Loop
+    // 3. Collision Loop
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
       
-      // Sirf apni bullets check karein
       const isMine = (b.ownerId === "local") || (b.ownerId === localId);
       if (!isMine) continue; 
       if (b.remote) continue;
@@ -49,24 +47,40 @@ class MPHitDetection {
       const bPos = b.mesh.position;
 
       for (const rp of remotes) {
-        if (rp.id === localId) continue; // Khud ko damage nahi dena
+        if (rp.id === localId) continue;
         if (!rp.mesh) continue;
 
-        // Distance Check
+        // Simple Distance Check
         const dist = bPos.distanceTo(rp.mesh.position);
         
-        // Hit Check
+        // HIT DETECTED
         if (dist < this.hitRadius) {
            const key = `${b.id}-${rp.id}`;
            const now = Date.now();
 
-           // Spam filter (Avoid multiple hits from same bullet instantly)
+           // Spam filter (200ms)
            if(this._lastHitAt.has(key) && (now - this._lastHitAt.get(key) < 200)) continue;
            this._lastHitAt.set(key, now);
 
            console.log(`🎯 HIT CONFIRMED on ${rp.name || rp.id} (Dist: ${dist.toFixed(1)})`);
 
-           // 1. Server ko signal bhejo
+           // ✅ FIX: "mp_hit" ki jagah "mp_event" use karenge
+           // Kyunki server shayad mp_hit forward nahi kar raha
+           const hitPayload = {
+             type: "HIT",
+             roomId: this.mp.roomId,
+             msg: {
+                 targetId: rp.id,
+                 damage: this.damage,
+                 bulletId: b.id,
+                 attackerId: localId
+             }
+           };
+
+           // METHOD 1: Generic Event (Recommended)
+           this.mp.socket.emit("mp_event", hitPayload);
+           
+           // METHOD 2: Old Hit (Backup)
            this.mp.socket.emit("mp_hit", {
              roomId: this.mp.roomId,
              targetId: rp.id,
@@ -74,7 +88,7 @@ class MPHitDetection {
              bulletId: b.id
            });
 
-           // 2. Bullet remove karo (Visual feedback)
+           // Bullet remove visual
            if(typeof this.bullets.removeBullet === 'function') {
                this.bullets.removeBullet(i);
            } else {
@@ -82,7 +96,7 @@ class MPHitDetection {
                bullets.splice(i, 1);
            }
            
-           break; // Loop break (Ek bullet ek hi ko lagegi)
+           break; 
         }
       }
     }
