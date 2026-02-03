@@ -2,235 +2,151 @@
 // PATH: gameplay/input-manager.js
 // ==========================================
 
-/**
- * InputManager
- * - Handles keyboard & mouse input
- * - Stores key states
- * - Provides getAction() abstraction
- * - Supports settings:
- *    - sensitivity (float)
- *    - invertY (bool)
- * - Calls GameManager.startAudioContext() on first interaction
- */
-
 class InputManager {
-    constructor(gameManager = null) {
-        this.game = gameManager;
+    constructor(canvas) {
+        this.canvas = canvas;
 
-        // Settings controlled by GameManager.applySettings()
-        this.sensitivity = 1.0;
-        this.invertY = false;
+        // ------------------------------------------
+        // KEY STATE
+        // ------------------------------------------
+        this.keys = {};
 
-        // Key State
-        this.keys = {
-            w: false, s: false,
-            a: false, d: false,
-            q: false, e: false,
-
-            Shift: false,
-            " ": false,
-
-            f: false,
-            r: false,
-
-            Escape: false
-        };
-
-        // Mouse
+        // ------------------------------------------
+        // MOUSE STATE
+        // ------------------------------------------
         this.mouse = {
+            isDown: false,
             x: 0,
             y: 0,
             dx: 0,
-            dy: 0,
-            isDown: false,
-            rightDown: false
+            dy: 0
         };
 
-        // Fire latch (prevents too many fires if needed)
-        this._fireHeld = false;
+        this._lastMouseX = null;
+        this._lastMouseY = null;
 
-        // pointer lock optional
-        this.pointerLocked = false;
+        // ------------------------------------------
+        // SETTINGS
+        // ------------------------------------------
+        this.enabled = true;
 
-        this.init();
-    }
+        // ------------------------------------------
+        // EVENT BINDINGS
+        // ------------------------------------------
+        window.addEventListener("keydown", (e) => {
+            this.keys[e.key] = true;
 
-    // ==========================================================
-    // Init + Event Listeners
-    // ==========================================================
+            // also map special keys consistently
+            if (e.code === "ShiftLeft" || e.code === "ShiftRight") this.keys.Shift = true;
+            if (e.code === "Space") this.keys.Space = true;
+            if (e.code === "Escape") this.keys.Escape = true;
+        });
 
-    init() {
-        // Keyboard
-        window.addEventListener("keydown", (e) => this.onKey(e, true));
-        window.addEventListener("keyup", (e) => this.onKey(e, false));
+        window.addEventListener("keyup", (e) => {
+            this.keys[e.key] = false;
 
-        // Mouse
-        window.addEventListener("mousedown", (e) => this.onMouseDown(e));
-        window.addEventListener("mouseup", (e) => this.onMouseUp(e));
-        window.addEventListener("mousemove", (e) => this.onMouseMove(e));
+            if (e.code === "ShiftLeft" || e.code === "ShiftRight") this.keys.Shift = false;
+            if (e.code === "Space") this.keys.Space = false;
+            if (e.code === "Escape") this.keys.Escape = false;
+        });
 
-        // Disable right click menu
-        window.addEventListener("contextmenu", (e) => e.preventDefault());
+        // Mouse events (desktop aim)
+        window.addEventListener("mousedown", (e) => {
+            this.mouse.isDown = true;
+        });
 
-        // Pointer lock change
-        document.addEventListener("pointerlockchange", () => {
-            this.pointerLocked = (document.pointerLockElement != null);
+        window.addEventListener("mouseup", (e) => {
+            this.mouse.isDown = false;
+        });
+
+        window.addEventListener("mousemove", (e) => {
+            this.mouse.x = e.clientX;
+            this.mouse.y = e.clientY;
+
+            if (this._lastMouseX === null || this._lastMouseY === null) {
+                this._lastMouseX = e.clientX;
+                this._lastMouseY = e.clientY;
+                return;
+            }
+
+            const dx = e.clientX - this._lastMouseX;
+            const dy = e.clientY - this._lastMouseY;
+
+            this.mouse.dx += dx;
+            this.mouse.dy += dy;
+
+            this._lastMouseX = e.clientX;
+            this._lastMouseY = e.clientY;
+        });
+
+        window.addEventListener("blur", () => {
+            // reset everything if focus lost (prevents stuck keys)
+            this.reset();
+        });
+
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) this.reset();
         });
     }
 
-    // ==========================================================
-    // Audio unlock trigger
-    // ==========================================================
-
-    _touchAudioUnlock() {
-        // Browser requires interaction to start audio
-        if (this.game && typeof this.game.startAudioContext === "function") {
-            this.game.startAudioContext();
-        }
+    // ------------------------------------------
+    // RESET
+    // ------------------------------------------
+    reset() {
+        this.keys = {};
+        this.mouse.isDown = false;
+        this.mouse.dx = 0;
+        this.mouse.dy = 0;
+        this._lastMouseX = null;
+        this._lastMouseY = null;
     }
 
-    // ==========================================================
-    // Key Handling
-    // ==========================================================
+    // ------------------------------------------
+    // UPDATE (called every frame)
+    // ------------------------------------------
+    update(dt = 0) {
+        if (!this.enabled) return;
 
-    onKey(e, isDown) {
-        this._touchAudioUnlock();
+        // decay mouse deltas
+        this.mouse.dx *= 0.7;
+        this.mouse.dy *= 0.7;
 
-        // normalize key
-        const key = (e.key && e.key.length === 1) ? e.key.toLowerCase() : e.key;
-
-        // store
-        if (this.keys.hasOwnProperty(key)) {
-            this.keys[key] = isDown;
-        }
-
-        // special keys
-        if (e.key === "Shift") this.keys.Shift = isDown;
-        if (e.key === " ") this.keys[" "] = isDown;
-
-        // optional: prevent scrolling with space
-        if (e.key === " " || e.key === "ArrowUp" || e.key === "ArrowDown") {
-            e.preventDefault();
-        }
-
-        // Pause shortcut
-        if (key === "escape" && isDown) {
-            this.keys.Escape = true;
-        }
+        // reset escape once per frame (if you use it as "pressed this frame")
+        if (this.keys.Escape) this.keys.Escape = false;
     }
 
-    // ==========================================================
-    // Mouse Handling
-    // ==========================================================
+    // ------------------------------------------
+    // ACTIONS
+    // ------------------------------------------
+    getAction(action) {
+        if (!this.enabled) return false;
 
-    onMouseDown(e) {
-        this._touchAudioUnlock();
+        switch (action) {
+            // movement
+            case "moveForward":  return !!this.keys.w;
+            case "moveBackward": return !!this.keys.s;
+            case "moveLeft":     return !!this.keys.a;
+            case "moveRight":    return !!this.keys.d;
 
-        // Left click
-        if (e.button === 0) {
-            this.mouse.isDown = true;
+            // sprint / boost
+            case "boost":        return !!this.keys.Shift;
 
-            // Optional pointer lock on click
-            // This is optional; you can enable later if needed
-            // if (!this.pointerLocked) document.body.requestPointerLock();
-        }
+            // fire
+            case "fire":         return !!this.mouse.isDown;
 
-        // Right click
-        if (e.button === 2) {
-            this.mouse.rightDown = true;
-        }
-    }
-
-    onMouseUp(e) {
-        if (e.button === 0) this.mouse.isDown = false;
-        if (e.button === 2) this.mouse.rightDown = false;
-    }
-
-    onMouseMove(e) {
-        // pointer lock gives movementX/Y for relative movement
-        if (this.pointerLocked) {
-            this.mouse.dx += e.movementX;
-            this.mouse.dy += e.movementY;
-        } else {
-            // normalized absolute position
-            this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-        }
-    }
-
-    // ==========================================================
-    // Update (called every frame by GameManager)
-    // ==========================================================
-
-    update(deltaTime) {
-        // Escape key is a 1-frame tap trigger
-        // Reset in update so it doesn't stay stuck true
-        if (this.keys.Escape) {
-            this.keys.Escape = false;
-        }
-
-        // decay pointer movement (smooth)
-        // (helps avoid huge spikes)
-        this.mouse.dx *= 0.85;
-        this.mouse.dy *= 0.85;
-    }
-
-    // ==========================================================
-    // Action Mapping API
-    // ==========================================================
-
-    /**
-     * Returns boolean for an action name.
-     */
-    getAction(actionName) {
-        switch (actionName) {
-            // Flight
-            case "pitchUp":   return this.keys.s;
-            case "pitchDown": return this.keys.w;
-
-            case "rollLeft":  return this.keys.a;
-            case "rollRight": return this.keys.d;
-
-            case "yawLeft":   return this.keys.q;
-            case "yawRight":  return this.keys.e;
-
-            // Throttle
-            case "boost": return this.keys.Shift;
-            case "brake": return this.keys[" "];
-
-            // Combat
-            case "fire": return this.mouse.isDown || this.keys.f;
-
-            // System
-            case "pause": return this.keys.Escape;
+            // camera pitch/yaw (keyboard aim)
+            // ✅ FIX: W should mean pitchUp? Depends on your game.
+            // Usually: W => look up is NOT common; but if you use it for pitch, make it consistent.
+            // Here we keep NATURAL:
+            // - pitchUp => W
+            // - pitchDown => S
+            case "pitchUp":      return !!this.keys.w;
+            case "pitchDown":    return !!this.keys.s;
 
             default:
                 return false;
         }
     }
-
-    // ==========================================================
-    // Advanced helper (Optional)
-    // ==========================================================
-
-    /**
-     * Returns axis values -1..+1 for pitch/roll/yaw
-     * Already applies sensitivity and invertY effect.
-     */
-    getAxes() {
-        const pitch = (this.getAction("pitchUp") ? 1 : 0) - (this.getAction("pitchDown") ? 1 : 0);
-        const roll  = (this.getAction("rollLeft") ? 1 : 0) - (this.getAction("rollRight") ? 1 : 0);
-        const yaw   = (this.getAction("yawLeft") ? 1 : 0) - (this.getAction("yawRight") ? 1 : 0);
-
-        const inv = this.invertY ? -1 : 1;
-
-        return {
-            pitch: pitch * this.sensitivity * inv,
-            roll:  roll * this.sensitivity,
-            yaw:   yaw * this.sensitivity
-        };
-    }
 }
 
-// Global export
 window.InputManager = InputManager;
