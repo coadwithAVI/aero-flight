@@ -3,7 +3,7 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-    console.log("🌐 Multiplayer Mode Initializing...");
+    console.log("🌐 Multiplayer Mode Initializing... (Shooting Fix v25)");
 
     // ------------------------------------------------------------
     // 1. INITIALIZE CORE SYSTEMS
@@ -22,18 +22,16 @@ window.addEventListener("load", () => {
         game.uiManager = new UIManager();
     }
 
-    // ✅ FIX 1: MOBILE CONTROLS FORCE VISIBLE
+    // ✅ MOBILE CONTROLS FORCE VISIBLE (Z-Index Fix)
     if (typeof MobileControls !== "undefined") {
         console.log("📱 Mobile Controls Detecting...");
         game.mobileControls = new MobileControls(game.inputManager);
         
-        // जबरदस्ती Z-Index बढ़ाओ ताकि वो Lobby के ऊपर दिखें
         setTimeout(() => {
             const mc = document.getElementById("mobile-controls");
             if (mc) {
                 mc.style.zIndex = "20000"; 
                 mc.style.position = "fixed";
-                console.log("✅ Mobile Controls Layer Fixed");
             }
         }, 1000);
     }
@@ -70,8 +68,9 @@ window.addEventListener("load", () => {
 
     const bulletSystem = new BulletSystem(game.scene);
     
+    // Weapon System Setup
     const weaponSystem = new WeaponSystem(
-        null, 
+        null, // Player assigned dynamically later
         bulletSystem,
         game.inputManager,
         game.sfx || sfx, 
@@ -95,12 +94,11 @@ window.addEventListener("load", () => {
 
     mpClient.onConnected = () => {
         console.log("✅ Socket Connected:", mpClient.socket?.id);
-        // ID set immediately to prevent ghosting
         if (mpClient.socket?.id) mpState.setLocalId(mpClient.socket.id);
     };
 
     mpClient.onLobbyUpdate = (msg) => {
-        if (msg.you?.id) mpState.setLocalId(msg.you.id); // Update ID from lobby
+        if (msg.you?.id) mpState.setLocalId(msg.you.id); 
 
         if (msg.status === "playing") return; 
 
@@ -116,8 +114,6 @@ window.addEventListener("load", () => {
 
     mpClient.onGameStart = (msg) => {
         console.log("🎮 Game Started");
-        
-        // Double check local ID
         if (mpClient.socket?.id) mpState.setLocalId(mpClient.socket.id);
 
         gameStartedOnce = true;
@@ -200,10 +196,14 @@ window.addEventListener("load", () => {
             game.playerController = new PlayerController(game.scene, game.inputManager, game.camera);
             let terrain = game.map?.terrainMesh || game.scene.getObjectByName("Terrain");
             if (terrain) game.playerController.setTerrainMesh(terrain);
-            weaponSystem.player = game.playerController;
+            
             game.cameraSystem = new CameraSystem(game.camera);
             game.cameraSystem.setTarget(game.playerController);
         }
+
+        // ✅ CRITICAL FIX: Always re-attach player to weapon system
+        // This ensures shooting works after a restart
+        weaponSystem.player = game.playerController;
 
         const pc = game.playerController;
         pc.health = 100;
@@ -279,18 +279,12 @@ window.addEventListener("load", () => {
         }
     }
 
-    // ✅ FIX 2: GHOST REMOVER FUNCTION
     function removeGhostPlayer() {
         if (!mpClient.socket || !mpState) return;
         const myId = mpClient.socket.id;
-        
-        // Agar local ID set nahi hai toh set karo
         if (!mpState.localId && myId) mpState.setLocalId(myId);
 
-        // Agar MPState ke paas hamare ID ka remote player hai, toh use hata do
-        // Kyunki hum khud ko local control kar rahe hain, remote nahi
         if (mpState.remotePlayers && mpState.remotePlayers[myId]) {
-            console.log("👻 Ghost Player Detected & Removed:", myId);
             mpState.removePlayer(myId);
         }
     }
@@ -311,7 +305,6 @@ window.addEventListener("load", () => {
         try {
             const dt = Math.min(game.clock.getDelta(), 0.1);
 
-            // ✅ RUN GHOST CHECK EVERY FRAME
             removeGhostPlayer();
 
             if (game.playerController && !game.playerController.isRespawning) {
@@ -324,6 +317,8 @@ window.addEventListener("load", () => {
                         game.playerController.mesh.position,
                         game.playerController.mesh.quaternion
                     );
+                    
+                    // Network Fire
                     if (game.inputManager.getAction("fire")) {
                          mpClient.fire(
                             game.playerController.mesh.position,
@@ -363,8 +358,10 @@ window.addEventListener("load", () => {
                 ringSystem.update(dt, game.playerController.mesh);
             }
 
+            // Update Weapons (Handles Local Shooting Visuals)
             weaponSystem.update(dt);
             bulletSystem.update(dt);
+            
             hitDetection.update(dt);
             mpState.update(dt);
 
