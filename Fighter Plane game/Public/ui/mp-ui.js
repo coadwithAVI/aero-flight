@@ -2,21 +2,17 @@
 // PATH: ui/mp-ui.js
 // ==========================================
 
-/**
- * MPUI (FINAL UPDATED - With Audio Hooks & Victory Fixes)
- */
-
 class MPUI {
   constructor() {
     this.injectStyles();
     this.createDOM();
 
     // state
-    this.currentScreen = "menu"; // menu | lobby | end
+    this.currentScreen = "menu"; 
     this.roomId = null;
     this.isHost = false;
 
-    // callbacks hooks
+    // callbacks
     this.onCreate = null;
     this.onJoin = null;
     this.onLeave = null;
@@ -24,13 +20,10 @@ class MPUI {
     this.onReplay = null;
     this.onBackToMenu = null;
 
-    // default screen
     this.showMenu();
   }
 
-  // ==========================================================
-  // Styles
-  // ==========================================================
+  // ... (Styles section same as before, skipping to save space - KEEP YOUR STYLES) ...
   injectStyles() {
     const style = document.createElement("style");
     style.innerHTML = `
@@ -84,9 +77,7 @@ class MPUI {
     this._renderMenu();
   }
 
-  // ==========================================================
-  // Screen Renders
-  // ==========================================================
+  // ... (Render methods same as before) ...
   _renderMenu() {
     this.card.innerHTML = `
       <h1 class="mp-title">MULTIPLAYER</h1>
@@ -113,21 +104,18 @@ class MPUI {
     this.nameInput = this.card.querySelector("#mpName");
     this.codeInput = this.card.querySelector("#mpCode");
     this.errBox = this.card.querySelector("#mpErr");
-
     const cachedName = localStorage.getItem("SP_MP_NAME") || "Pilot";
     this.nameInput.value = cachedName;
 
-    // ✅ CLICK HANDLERS (With Audio Unlock)
     this.card.querySelector("#mpCreate").onclick = () => {
-      unlockAudio(); // Trigger Audio Resume
+      unlockAudio();
       const name = this._readName();
       if (!name) return this.showError("Enter valid name.");
       localStorage.setItem("SP_MP_NAME", name);
       if (typeof this.onCreate === "function") this.onCreate(name);
     };
-
     this.card.querySelector("#mpJoin").onclick = () => {
-      unlockAudio(); // Trigger Audio Resume
+      unlockAudio();
       const name = this._readName();
       const code = this._readCode();
       if (!name) return this.showError("Enter valid name.");
@@ -135,7 +123,6 @@ class MPUI {
       localStorage.setItem("SP_MP_NAME", name);
       if (typeof this.onJoin === "function") this.onJoin(code, name);
     };
-
     this.card.querySelector("#mpBack").onclick = () => {
       if (typeof this.onBackToMenu === "function") this.onBackToMenu();
       else window.location.href = "./index.html";
@@ -164,12 +151,9 @@ class MPUI {
     this.startBtn = this.card.querySelector("#mpStart");
     this.lobbyMsg = this.card.querySelector("#mpLobbyMsg");
 
-    this.leaveBtn.onclick = () => {
-      if (typeof this.onLeave === "function") this.onLeave();
-    };
-
+    this.leaveBtn.onclick = () => { if (typeof this.onLeave === "function") this.onLeave(); };
     this.startBtn.onclick = () => {
-      unlockAudio(); // Trigger Audio Resume
+      unlockAudio();
       if (!this.isHost) return;
       if (typeof this.onStart === "function") this.onStart();
     };
@@ -179,7 +163,6 @@ class MPUI {
   _renderEnd(stats = {}) {
     const winner = stats.winner || "Unknown";
     const rows = Array.isArray(stats.rows) ? stats.rows : [];
-
     this.card.innerHTML = `
       <h1 class="mp-title">MATCH RESULT</h1>
       <div class="mp-sub">Winner:</div>
@@ -193,7 +176,6 @@ class MPUI {
         <button id="mpBack" class="mp-btn">Back To Menu</button>
       </div>
     `;
-
     const statsBox = this.card.querySelector("#mpStats");
     statsBox.innerHTML = rows.map(r => `
       <div class="mp-player">
@@ -201,19 +183,14 @@ class MPUI {
         <div style="opacity:0.9;font-family:Consolas,monospace;">R:${r.rings ?? 0} • K:${r.kills ?? 0} • S:${r.score ?? 0}</div>
       </div>
     `).join("");
-
-    this.card.querySelector("#mpReplay").onclick = () => {
-      if (typeof this.onReplay === "function") this.onReplay();
-    };
+    this.card.querySelector("#mpReplay").onclick = () => { if (typeof this.onReplay === "function") this.onReplay(); };
     this.card.querySelector("#mpBack").onclick = () => {
       if (typeof this.onBackToMenu === "function") this.onBackToMenu();
       else window.location.href = "./index.html";
     };
   }
 
-  // ==========================================================
-  // Public Screen Controls
-  // ==========================================================
+  // Public Controls
   showMenu() {
     this.currentScreen = "menu";
     this.roomId = null;
@@ -259,19 +236,9 @@ class MPUI {
     `).join("");
     this._refreshLobbyButtons();
   }
-  setLobbyMessage(msg) {
-    if (this.lobbyMsg) this.lobbyMsg.innerText = msg;
-  }
-  showError(msg) {
-    if (!this.errBox) return;
-    this.errBox.style.display = "block";
-    this.errBox.innerText = msg;
-  }
-  clearError() {
-    if (!this.errBox) return;
-    this.errBox.style.display = "none";
-    this.errBox.innerText = "";
-  }
+  setLobbyMessage(msg) { if (this.lobbyMsg) this.lobbyMsg.innerText = msg; }
+  showError(msg) { if (this.errBox) { this.errBox.style.display = "block"; this.errBox.innerText = msg; } }
+  clearError() { if (this.errBox) { this.errBox.style.display = "none"; this.errBox.innerText = ""; } }
   _readName() { return (this.nameInput?.value || "").trim().substring(0, 12); }
   _readCode() { const r = (this.codeInput?.value || "").trim(); return r.length === 4 ? r : ""; }
   _refreshLobbyButtons() {
@@ -329,7 +296,6 @@ let __matchEnded = false;
 let __winnerId = null;
 let __endReason = "";
 
-// ✅ AUDIO UNLOCK HELPER
 function unlockAudio() {
     if (window.game && window.game.procAudio) {
         window.game.procAudio.unlock();
@@ -337,13 +303,11 @@ function unlockAudio() {
              window.game.procAudio.playLobbyMusic();
         }
     }
-    if (window.game && window.game.sfx) {
-        window.game.sfx.init();
-    }
+    if (window.game && window.game.sfx) window.game.sfx.init();
 }
 
 function showOnly(screen) {
-  [screenJoin, screenLobby, screenEnd].forEach(s => s.classList.add("hidden"));
+  [screenJoin, screenLobby, screenEnd].forEach(s => s?.classList.add("hidden"));
   if (screen) screen.classList.remove("hidden");
 }
 
@@ -360,7 +324,7 @@ if (btnEndBack) btnEndBack.onclick = () => window.location.href = "./index.html"
 
 if (btnCreate) {
     btnCreate.onclick = () => {
-        unlockAudio(); // ✅ Audio Unlock
+        unlockAudio();
         const name = (inpName.value || "Pilot").trim();
         if (!window.mpClient) return setStatus(joinStatus, "Connection Module Offline", true);
         __startLocked = false;
@@ -371,7 +335,7 @@ if (btnCreate) {
 }
 if (btnJoin) {
     btnJoin.onclick = () => {
-        unlockAudio(); // ✅ Audio Unlock
+        unlockAudio();
         const name = (inpName.value || "Pilot").trim();
         const code = sanitizeCode(inpCode.value);
         if (!code || code.length !== 4) return setStatus(joinStatus, "Invalid Access Code", true);
@@ -386,7 +350,7 @@ if (btnLeave) btnLeave.onclick = () => window.location.reload();
 
 if (btnStart) {
     btnStart.onclick = () => {
-        unlockAudio(); // ✅ Audio Unlock
+        unlockAudio();
         if (__startLocked) return;
         if (!window.mpClient?.roomId) return;
         __startLocked = true;
@@ -405,14 +369,21 @@ if (btnReplay) {
 
 function _safeText(v, fallback = "-") { return (v === undefined || v === null) ? fallback : String(v); }
 
-// ✅ VICTORY / DEFEAT AUDIO LOGIC
+// ✅ SAFE END MATCH (Fixes Pause & Audio)
 function _endMatch({ winnerId, reason }) {
   if (__matchEnded) return;
   __matchEnded = true;
   __winnerId = winnerId || null;
   __endReason = reason || "";
+  __isGameRunning = false;
+  
+  // ⛔ FORCE PAUSE
+  if (window.game) {
+      window.game.isPaused = true; 
+      window.game.isRunning = false;
+  }
 
-  // ✅ Trigger Audio
+  // ✅ AUDIO
   if (window.game && window.game.procAudio) {
       window.game.procAudio.stopMusic();
       const myId = window.mpClient?.clientId;
@@ -428,9 +399,10 @@ function _endMatch({ winnerId, reason }) {
   if (endSub) endSub.innerText = didWin ? "Mission Successful" : "Mission Failed";
 
   showOnly(screenEnd);
+  
+  // ✅ BLACK SCREEN FIX: Safe Access
   if(topHUD) topHUD.classList.add("hidden");
   if(mpLobbyBG) mpLobbyBG.style.display = "block";
-  __isGameRunning = false;
 
   setStatus(endStatus, didWin ? ("✅ " + (_endReason || "You won")) : ("❌ " + (_endReason || "You lost")), !didWin);
   try { window.gameManager?.stop?.(); } catch (e) { console.warn("game stop failed:", e); }
@@ -468,14 +440,18 @@ window.mpUIBridge = {
     __matchEnded = false;
     if(btnStart) { btnStart.disabled = false; btnStart.innerText = "INITIATE LAUNCH"; }
     showOnly(screenJoin);
+    
+    // ✅ BLACK SCREEN FIX
     if(topHUD) topHUD.classList.add("hidden");
     if(mpLobbyBG) mpLobbyBG.style.display = "block";
   },
   onLobbyUpdate(msg) {
     if (__isGameRunning) return;
     showOnly(screenLobby);
+    // ✅ SAFETY CHECKS
     if(topHUD) topHUD.classList.remove("hidden");
     if(mpLobbyBG) mpLobbyBG.style.display = "block";
+    
     if(lobbyCode) lobbyCode.innerText = msg.roomId || "----";
     if(hudRoom) hudRoom.innerText = "ROOM: " + (msg.roomId || "----");
     if(hudName) hudName.innerText = "PILOT: " + (msg.you?.name || inpName.value || "PILOT");
@@ -498,9 +474,9 @@ window.mpUIBridge = {
     __isGameRunning = true;
     __matchEnded = false;
     __winnerId = null;
-    screenJoin.classList.add("hidden");
-    screenLobby.classList.add("hidden");
-    screenEnd.classList.add("hidden");
+    screenJoin?.classList.add("hidden");
+    screenLobby?.classList.add("hidden");
+    screenEnd?.classList.add("hidden");
     if(respawnOverlay) respawnOverlay.classList.add("hidden");
     if(topHUD) topHUD.classList.remove("hidden");
     if(mpLobbyBG) mpLobbyBG.style.display = "none";
@@ -525,7 +501,7 @@ window.mpUIBridge = {
   }
 };
 
-// ✅ CLIENT SIDE WIN CHECK FALLBACK (Needed for onState)
+// ✅ VICTORY DEBUGGING LOGIC
 window.mpVictory = {
   tryLastPlayerWinFromSnapshot(snapshot) {
     if (__matchEnded) return;
@@ -547,7 +523,12 @@ window.mpVictory = {
     if (!Array.isArray(players)) return;
     const me = players.find(p => p?.id === myId);
     if (!me) return;
+    
     const ringTarget = snapshot?.ringTarget ?? 10;
+    
+    // ✅ DEBUG: Check why it's not triggering
+    // console.log(`Stats Check: Rings ${me.rings}/${ringTarget}`);
+
     if ((me.rings ?? 0) >= ringTarget) {
       _renderEndTable(players);
       _endMatch({ winnerId: myId, reason: "Objective completed: Rings cleared" });
