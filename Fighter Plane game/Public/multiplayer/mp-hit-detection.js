@@ -8,50 +8,34 @@ class MPHitDetection {
     this.bullets = bulletSystem;
     this.state = mpState;
     
-    // Increased Hit Radius (Hitbox)
-    this.hitRadius = options.hitRadius ?? 18.0; 
+    // 🔥 HIT RADIUS: Isse bada rakha hai taaki hit aasani se ho (20-25 best hai)
+    this.hitRadius = options.hitRadius ?? 25.0; 
     this.damage = options.damage ?? 15;
     
     this._lastHitAt = new Map();
-    
-    // Debug Timer (Har second status check karega)
-    this._debugTimer = 0;
-  }
-
-  // Helper: Point to Line Segment Distance (For Fast Bullets)
-  _distToSegmentSquared(p, v, w) {
-    const l2 = v.distanceToSquared(w);
-    if (l2 === 0) return p.distanceToSquared(v);
-    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y) + (p.z - v.z) * (w.z - v.z)) / l2;
-    t = Math.max(0, Math.min(1, t));
-    const x = v.x + t * (w.x - v.x);
-    const y = v.y + t * (w.y - v.y);
-    const z = v.z + t * (w.z - v.z);
-    // distance squared
-    return (p.x - x) ** 2 + (p.y - y) ** 2 + (p.z - z) ** 2;
+    this._logTimer = 0;
   }
 
   update(dt) {
     // 1. Connection Check
-    if (!this.mp.socket || !this.mp.isConnected) return;
+    if (!this.mp.socket || !this.mp.isConnected()) return;
     const localId = this.mp.socket.id;
 
     // 2. Data Check
     const bullets = this.bullets?.bullets; 
     const remotes = this.state?.getRemotePlayers();
 
-    if (!bullets || bullets.length === 0) return;
-    if (!remotes || remotes.length === 0) {
-        // Debug Log (Har 3 second mein ek baar bataye ki enemies nahi hain)
-        this._debugTimer += dt;
-        if(this._debugTimer > 3.0) {
-            console.log("⚠️ No enemies found for hit detection.");
-            this._debugTimer = 0;
-        }
-        return;
+    // Debug: Har 3 sec mein bataye ki system chal raha hai
+    this._logTimer += dt;
+    if (this._logTimer > 3.0) {
+       // console.log(`[HitSystem] Active. Bullets: ${bullets?.length || 0}, Enemies: ${remotes?.length || 0}`);
+       this._logTimer = 0;
     }
 
-    // 3. Collision Loop
+    if (!bullets || bullets.length === 0) return;
+    if (!remotes || remotes.length === 0) return;
+
+    // 3. Collision Loop (Simple Distance Check)
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
       
@@ -61,33 +45,32 @@ class MPHitDetection {
       if (b.remote) continue;
       if (!b.mesh) continue;
 
-      const currentPos = b.mesh.position;
-      
-      // Calculate Previous Position (Backtrack using velocity)
-      // Ye zaroori hai fast bullets ke liye taaki wo aar-paar na nikle
-      const prevPos = currentPos.clone().sub(b.vel.clone().multiplyScalar(dt));
+      const bPos = b.mesh.position;
 
       for (const rp of remotes) {
         if (rp.id === localId) continue; // Khud ko mat maaro
         if (!rp.mesh) continue;
 
-        const enemyPos = rp.mesh.position;
+        // ✅ SIMPLE DISTANCE CHECK (Sabse reliable)
+        const dist = bPos.distanceTo(rp.mesh.position);
+        
+        // Debug: Agar goli paas se nikle (100 units) toh log karo
+        if (dist < 100) {
+            // console.log(`🔍 Bullet close to ${rp.name}: ${Math.round(dist)}m`);
+        }
 
-        // ✅ ADVANCED CHECK: Distance from Enemy Center to Bullet Path (Line Segment)
-        const distSq = this._distToSegmentSquared(enemyPos, prevPos, currentPos);
-        const radiusSq = this.hitRadius * this.hitRadius;
-
-        if (distSq < radiusSq) {
+        // HIT CHECK
+        if (dist < this.hitRadius) {
            const key = `${b.id}-${rp.id}`;
            const now = Date.now();
 
-           // Prevent double hits (Spam filter)
+           // Spam filter (200ms)
            if(this._lastHitAt.has(key) && (now - this._lastHitAt.get(key) < 200)) continue;
            this._lastHitAt.set(key, now);
 
-           console.log(`🎯 BULLSEYE! Hit Player: ${rp.name || rp.id}`);
+           console.log(`🎯 HIT CONFIRMED on ${rp.name || rp.id} (Dist: ${dist.toFixed(1)})`);
 
-           // Server ko batao
+           // 1. Server ko batao
            this.mp.socket.emit("mp_hit", {
              roomId: this.mp.roomId,
              targetId: rp.id,
@@ -95,7 +78,7 @@ class MPHitDetection {
              bulletId: b.id
            });
 
-           // Bullet Remove Karo
+           // 2. Bullet turant hatao (Visual feel ke liye)
            if(typeof this.bullets.removeBullet === 'function') {
                this.bullets.removeBullet(i);
            } else {
@@ -103,8 +86,7 @@ class MPHitDetection {
                bullets.splice(i, 1);
            }
            
-           // Ek bullet ek hi ko lagegi
-           break; 
+           break; // Ek goli ek hi ko lagegi
         }
       }
     }
