@@ -3,14 +3,19 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-    console.log("🌐 Multiplayer Mode Initializing... (Shooting Fix v25)");
+    console.log("🌐 Multiplayer Mode Initializing... (Stats & Audio Fix v26)");
 
     // ------------------------------------------------------------
-    // 1. INITIALIZE CORE SYSTEMS
+    // 1. INITIALIZE AUDIO & SYSTEMS
     // ------------------------------------------------------------
     const procAudio = (typeof ProceduralAudio !== "undefined") ? new ProceduralAudio() : null;
-    const sfx = (typeof SFXManager !== "undefined") ? new SFXManager({ masterVolume: 0.3, enableEngineHum: false }) : null;
-    if (sfx) sfx.init();
+    const sfx = (typeof SFXManager !== "undefined") ? new SFXManager({ masterVolume: 0.4, enableEngineHum: false }) : null;
+    
+    // Unlock Audio on first interaction
+    document.addEventListener('click', () => {
+        if(sfx) sfx.init();
+        if(procAudio) procAudio.unlock();
+    }, { once: true });
 
     const game = new GameManager();
     game.init(); 
@@ -22,18 +27,51 @@ window.addEventListener("load", () => {
         game.uiManager = new UIManager();
     }
 
-    // ✅ MOBILE CONTROLS FORCE VISIBLE (Z-Index Fix)
+    // ------------------------------------------------------------
+    // 2. MOBILE CONTROLS INJECTOR (GUARANTEED FIX)
+    // ------------------------------------------------------------
     if (typeof MobileControls !== "undefined") {
-        console.log("📱 Mobile Controls Detecting...");
+        console.log("📱 Injecting Mobile Controls...");
         game.mobileControls = new MobileControls(game.inputManager);
         
+        // Force inject HTML if missing or hidden
         setTimeout(() => {
-            const mc = document.getElementById("mobile-controls");
-            if (mc) {
-                mc.style.zIndex = "20000"; 
-                mc.style.position = "fixed";
+            let mc = document.getElementById("mobile-controls");
+            if (!mc) {
+                // Creates controls dynamically if HTML is missing
+                const div = document.createElement("div");
+                div.id = "mobile-controls";
+                div.innerHTML = `
+                    <div id="joystick-zone" style="position:absolute; bottom:50px; left:50px; width:120px; height:120px; background:rgba(255,255,255,0.1); border-radius:50%; pointer-events:auto;"></div>
+                    <button id="btn-fire" class="mobile-btn" style="position:absolute; bottom:60px; right:40px; width:80px; height:80px; background:rgba(255,0,0,0.5); border:2px solid red; border-radius:50%; color:white; font-weight:bold; pointer-events:auto;">FIRE</button>
+                    <button id="btn-boost" class="mobile-btn" style="position:absolute; bottom:160px; right:40px; width:60px; height:60px; background:rgba(255,255,0,0.5); border:2px solid yellow; border-radius:50%; color:black; font-weight:bold; pointer-events:auto;">BST</button>
+                `;
+                document.body.appendChild(div);
+                mc = div;
             }
-        }, 1000);
+            mc.style.zIndex = "2147483647"; // Max Z-Index
+            mc.style.position = "fixed";
+            mc.style.bottom = "0";
+            mc.style.left = "0";
+            mc.style.width = "100%";
+            mc.style.height = "100%";
+            mc.style.pointerEvents = "none"; // Let clicks pass through empty areas
+            
+            // Re-bind events explicitly
+            const btnFire = document.getElementById("btn-fire");
+            const btnBoost = document.getElementById("btn-boost");
+            
+            if(btnFire) {
+                btnFire.style.pointerEvents = "auto";
+                btnFire.addEventListener("touchstart", (e) => { e.preventDefault(); game.inputManager.keys[' ']=true; });
+                btnFire.addEventListener("touchend", (e) => { e.preventDefault(); game.inputManager.keys[' ']=false; });
+            }
+            if(btnBoost) {
+                btnBoost.style.pointerEvents = "auto";
+                btnBoost.addEventListener("touchstart", (e) => { e.preventDefault(); game.inputManager.keys['Shift']=true; });
+                btnBoost.addEventListener("touchend", (e) => { e.preventDefault(); game.inputManager.keys['Shift']=false; });
+            }
+        }, 500);
     }
 
     const mpState = new MPState(game.scene, {
@@ -42,7 +80,7 @@ window.addEventListener("load", () => {
     });
 
     // ------------------------------------------------------------
-    // 2. NETWORK CLIENT & UI BRIDGE
+    // 3. NETWORK CLIENT
     // ------------------------------------------------------------
     const mpClient = new MPClient({
         mpState: mpState,
@@ -56,11 +94,12 @@ window.addEventListener("load", () => {
         : null;
 
     // ------------------------------------------------------------
-    // 3. GAMEPLAY VARIABLES
+    // 4. GAMEPLAY SYSTEMS
     // ------------------------------------------------------------
     let gameStartedOnce = false;
     let ringClaimBlockedUntil = 0;
     let ringSystem = null;
+    let lastBoostTime = 0;
 
     if (typeof MinimapSystem !== "undefined" && !game.minimap) {
         game.minimap = new MinimapSystem(game);
@@ -68,9 +107,9 @@ window.addEventListener("load", () => {
 
     const bulletSystem = new BulletSystem(game.scene);
     
-    // Weapon System Setup
+    // Weapon System
     const weaponSystem = new WeaponSystem(
-        null, // Player assigned dynamically later
+        null, 
         bulletSystem,
         game.inputManager,
         game.sfx || sfx, 
@@ -89,17 +128,15 @@ window.addEventListener("load", () => {
     });
 
     // ------------------------------------------------------------
-    // 4. CLIENT EVENTS
+    // 5. EVENT HANDLING (Stats & Audio)
     // ------------------------------------------------------------
 
     mpClient.onConnected = () => {
-        console.log("✅ Socket Connected:", mpClient.socket?.id);
         if (mpClient.socket?.id) mpState.setLocalId(mpClient.socket.id);
     };
 
     mpClient.onLobbyUpdate = (msg) => {
         if (msg.you?.id) mpState.setLocalId(msg.you.id); 
-
         if (msg.status === "playing") return; 
 
         if (msg.status === "lobby" && gameStartedOnce) {
@@ -113,17 +150,37 @@ window.addEventListener("load", () => {
     };
 
     mpClient.onGameStart = (msg) => {
-        console.log("🎮 Game Started");
         if (mpClient.socket?.id) mpState.setLocalId(mpClient.socket.id);
-
         gameStartedOnce = true;
         game.isPaused = false;
         ringClaimBlockedUntil = performance.now() + 2000;
 
         if (game.renderer?.domElement) game.renderer.domElement.style.display = "block";
-        
         freshStartMatch(msg);
         if (mpUI) mpUI.onGameStart();
+    };
+
+    // ✅ STATS SYNCING (Crucial Fix)
+    mpClient.onState = (snapshot) => {
+        if (!game.playerController) return;
+        const myId = mpClient.socket?.id;
+        
+        // Find me in the server snapshot
+        const meServer = snapshot.players.find(p => p.id === myId);
+        
+        if (meServer) {
+            // Sync Server Stats to Local Player
+            // This ensures Score/Kills/Rings are accurate for Game Over
+            game.playerController.score = meServer.score || 0;
+            game.playerController.kills = meServer.kills || 0; // Requires adding .kills to PlayerController if not present
+            
+            // Also update Rings locally if needed
+            if (ringSystem && typeof meServer.rings === "number") {
+                if (ringSystem.currentIndex !== meServer.rings) {
+                    ringSystem._setActiveRing(meServer.rings);
+                }
+            }
+        }
     };
 
     mpClient.onEvent = (evt) => {
@@ -132,18 +189,15 @@ window.addEventListener("load", () => {
 
         switch (evt.type) {
             case "GAME_OVER":
-                console.log("🏁 GAME OVER");
                 game.isPaused = true; 
                 if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
                 if (mpUI) mpUI.showGameOver(evt.msg);
                 break;
 
             case "SCORE":
+                // Play Audio Only (Stats synced in onState)
                 if (evt.msg && evt.msg.id === myId) {
-                    if (ringSystem && typeof evt.msg.rings === "number") {
-                        ringSystem._setActiveRing(evt.msg.rings);
-                        if (procAudio) procAudio.ring();
-                    }
+                    if (procAudio) procAudio.ring();
                 }
                 break;
 
@@ -157,25 +211,14 @@ window.addEventListener("load", () => {
                 const targetId = payload.targetId || payload.id;
                 const damage = payload.damage || 10;
                 
-                if (targetId === myId && game.playerController) {
-                    if (!game.playerController.isRespawning) {
-                        game.playerController.health -= damage;
-                        
-                        // Safe Camera Shake
-                        if (game.cameraSystem && typeof game.cameraSystem.addShake === "function") {
-                            game.cameraSystem.addShake(0.5);
-                        } else if (game.cameraSystem && typeof game.cameraSystem.shake === "function") {
-                            game.cameraSystem.shake(0.5);
-                        }
-
-                        if (game.uiManager) {
-                            game.uiManager.update(
-                                game.playerController.speed || 0,
-                                Math.max(0, game.playerController.health),
-                                game.playerController.score || 0,
-                                100
-                            );
-                        }
+                if (targetId === myId && game.playerController && !game.playerController.isRespawning) {
+                    game.playerController.health -= damage;
+                    
+                    if (game.cameraSystem && game.cameraSystem.addShake) {
+                        game.cameraSystem.addShake(0.5);
+                    }
+                    if (game.uiManager) {
+                        game.uiManager.update(game.playerController.speed, game.playerController.health, game.playerController.score, 100);
                     }
                 }
                 break;
@@ -189,7 +232,7 @@ window.addEventListener("load", () => {
     mpClient.connect();
 
     // ------------------------------------------------------------
-    // 5. HELPER FUNCTIONS
+    // 6. HELPER FUNCTIONS
     // ------------------------------------------------------------
     function freshStartMatch(msg) {
         if (!game.playerController) {
@@ -201,13 +244,13 @@ window.addEventListener("load", () => {
             game.cameraSystem.setTarget(game.playerController);
         }
 
-        // ✅ CRITICAL FIX: Always re-attach player to weapon system
-        // This ensures shooting works after a restart
+        // Re-attach weapon system
         weaponSystem.player = game.playerController;
 
         const pc = game.playerController;
         pc.health = 100;
         pc.score = 0;
+        pc.kills = 0; // Ensure kills property exists
         pc.isRespawning = false;
         pc.mesh.visible = true;
 
@@ -224,9 +267,7 @@ window.addEventListener("load", () => {
 
     function resetRingSystem(seed) {
         if (ringSystem && ringSystem.rings) {
-            ringSystem.rings.forEach(r => { 
-                if (r.mesh && r.mesh.parent) r.mesh.parent.remove(r.mesh); 
-            });
+            ringSystem.rings.forEach(r => { if (r.mesh && r.mesh.parent) r.mesh.parent.remove(r.mesh); });
         }
         ringSystem = null;
 
@@ -268,11 +309,7 @@ window.addEventListener("load", () => {
                     pc.health -= 2.0; 
                     p.y = groundH + 5.0; 
                     pc.speed *= 0.9;
-                    
-                    if (game.cameraSystem && typeof game.cameraSystem.addShake === "function") {
-                        game.cameraSystem.addShake(0.5);
-                    }
-
+                    if (game.cameraSystem?.addShake) game.cameraSystem.addShake(0.5);
                     if (game.uiManager) game.uiManager.update(pc.speed, pc.health, pc.score, 100);
                 }
             }
@@ -283,14 +320,13 @@ window.addEventListener("load", () => {
         if (!mpClient.socket || !mpState) return;
         const myId = mpClient.socket.id;
         if (!mpState.localId && myId) mpState.setLocalId(myId);
-
         if (mpState.remotePlayers && mpState.remotePlayers[myId]) {
             mpState.removePlayer(myId);
         }
     }
 
     // ------------------------------------------------------------
-    // 6. GAME LOOP
+    // 7. GAME LOOP (The Heartbeat)
     // ------------------------------------------------------------
     game.animate = function () {
         requestAnimationFrame(game.animate);
@@ -312,19 +348,25 @@ window.addEventListener("load", () => {
                 game.playerController.update(dt);
                 checkTerrainCollision();
 
-                if (mpClient.isInRoom && game.playerController.mesh) {
-                    mpClient.sendTransform(
-                        game.playerController.mesh.position,
-                        game.playerController.mesh.quaternion
-                    );
-                    
-                    // Network Fire
-                    if (game.inputManager.getAction("fire")) {
-                         mpClient.fire(
-                            game.playerController.mesh.position,
-                            game.playerController.mesh.quaternion
-                         );
+                // ✅ AUDIO FIX: Fire Sound
+                if (game.inputManager.getAction("fire")) {
+                    // Fire network event
+                    if (mpClient.isInRoom) {
+                        mpClient.fire(game.playerController.mesh.position, game.playerController.mesh.quaternion);
                     }
+                    // Play local sound immediately
+                    if (sfx) sfx.playShoot();
+                }
+
+                // ✅ AUDIO FIX: Boost Sound
+                if (game.inputManager.getAction("boost")) {
+                    if (procAudio) procAudio.startBoost();
+                } else {
+                    if (procAudio) procAudio.stopBoost();
+                }
+
+                if (mpClient.isInRoom && game.playerController.mesh) {
+                    mpClient.sendTransform(game.playerController.mesh.position, game.playerController.mesh.quaternion);
                 }
             }
 
@@ -358,10 +400,8 @@ window.addEventListener("load", () => {
                 ringSystem.update(dt, game.playerController.mesh);
             }
 
-            // Update Weapons (Handles Local Shooting Visuals)
             weaponSystem.update(dt);
             bulletSystem.update(dt);
-            
             hitDetection.update(dt);
             mpState.update(dt);
 
@@ -370,11 +410,12 @@ window.addEventListener("load", () => {
                 game.minimap.update(game.playerController.mesh, enemies, ringSystem?.rings || [], ringSystem?.currentIndex);
             }
 
+            // ✅ STATS SYNC to HUD
             if (game.uiManager && game.playerController) {
                 game.uiManager.update(
                     game.playerController.speed || 0,
                     game.playerController.health,
-                    game.playerController.score || 0,
+                    game.playerController.score || 0, // Now synced from server
                     game.playerController.boostEnergy || 100
                 );
             }
