@@ -3,13 +3,13 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-    console.log("🌐 Multiplayer Mode Initializing... (Joystick & Sound Fix v30)");
+    console.log("🌐 Multiplayer Mode Initializing... (Minimap & Joystick Fixed vFinal)");
 
     // 1. Audio Systems
     const procAudio = (typeof ProceduralAudio !== "undefined") ? new ProceduralAudio() : null;
     const sfx = (typeof SFXManager !== "undefined") ? new SFXManager({ masterVolume: 0.4, enableEngineHum: false }) : null;
     
-    // Unlock Audio
+    // Unlock Audio on Interaction
     const unlockAudio = () => {
         if(sfx) sfx.init();
         if(procAudio) procAudio.unlock();
@@ -31,18 +31,20 @@ window.addEventListener("load", () => {
     }
 
     // ------------------------------------------------------------
-    // 3. ✅ MANUAL JOYSTICK IMPLEMENTATION (Self-Contained)
+    // ✅ 3. MANUAL JOYSTICK LOGIC (Embedded for reliability)
     // ------------------------------------------------------------
     function setupVirtualJoystick() {
         const zone = document.getElementById('joystick-zone');
         const knob = document.getElementById('joystick-knob');
         
-        if (!zone || !knob) return;
+        // Agar elements nahi mile (PC par), to function stop kar do
+        if (!zone || !knob || zone.offsetParent === null) return; 
 
         let startX = 0, startY = 0;
         let isDragging = false;
         const maxDist = 40; // Joystick range
 
+        // --- Touch Handling ---
         zone.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
@@ -60,7 +62,7 @@ window.addEventListener("load", () => {
             let dx = touch.clientX - startX;
             let dy = touch.clientY - startY;
             
-            // Distance limit
+            // Limit Distance
             const dist = Math.sqrt(dx*dx + dy*dy);
             if (dist > maxDist) {
                 const angle = Math.atan2(dy, dx);
@@ -68,26 +70,24 @@ window.addEventListener("load", () => {
                 dy = Math.sin(angle) * maxDist;
             }
 
-            // Move Knob
+            // Move UI Knob
             knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
 
-            // Map to Game Input (X = Roll/Turn, Y = Pitch)
-            // Normalize -1 to 1
+            // Normalize (-1 to 1) for Game Input
             const valX = dx / maxDist;
             const valY = dy / maxDist;
 
-            // Inject into InputManager
+            // Send to Input Manager
             if (game.inputManager) {
                 game.inputManager.virtualAxis = { x: valX, y: valY };
             }
-
         }, { passive: false });
 
         const endDrag = (e) => {
             e.preventDefault();
             isDragging = false;
             knob.style.transition = '0.2s ease-out';
-            knob.style.transform = `translate(-50%, -50%)`; // Reset to center
+            knob.style.transform = `translate(-50%, -50%)`; // Reset Center
             if (game.inputManager) {
                 game.inputManager.virtualAxis = { x: 0, y: 0 };
             }
@@ -96,36 +96,33 @@ window.addEventListener("load", () => {
         zone.addEventListener('touchend', endDrag);
         zone.addEventListener('touchcancel', endDrag);
 
-        // --- BUTTONS ---
+        // --- Button Handling ---
         const bindBtn = (id, key) => {
             const btn = document.getElementById(id);
             if (!btn) return;
             btn.addEventListener("touchstart", (e) => { 
-                e.preventDefault(); 
-                game.inputManager.keys[key] = true; 
+                e.preventDefault(); game.inputManager.keys[key] = true; 
             }, { passive: false });
             btn.addEventListener("touchend", (e) => { 
-                e.preventDefault(); 
-                game.inputManager.keys[key] = false; 
+                e.preventDefault(); game.inputManager.keys[key] = false; 
             }, { passive: false });
         };
 
         bindBtn('btn-fire', ' ');
         bindBtn('btn-boost', 'Shift');
         
-        console.log("✅ Virtual Joystick Active");
+        console.log("✅ Virtual Joystick Attached");
     }
 
-    // Call it immediately
+    // Attempt to setup joystick (will work if elements exist)
     setupVirtualJoystick();
 
-
+    // 4. MP Setup
     const mpState = new MPState(game.scene, {
         modelFactory: typeof ModelFactory !== "undefined" ? new ModelFactory() : null,
         debug: false
     });
 
-    // 4. Client
     const mpClient = new MPClient({
         mpState: mpState,
         playerName: localStorage.getItem("sky_pilot_name") || "Pilot",
@@ -137,14 +134,16 @@ window.addEventListener("load", () => {
         ? new MPUIManager(mpClient, procAudio) 
         : null;
 
-    // 5. Game Logic Vars
+    // 5. Game Vars
     let gameStartedOnce = false;
     let ringClaimBlockedUntil = 0;
     let ringSystem = null;
+    
+    // Timer Variables (Sound Limit Logic)
     let lastFireTime = 0; 
     let lastSoundTime = 0;
-    const FIRE_DELAY = 60;   
-    const SOUND_DELAY = 150; 
+    const FIRE_DELAY = 60;    // Fast Fire
+    const SOUND_DELAY = 150;  // Slower Sound
 
     if (typeof MinimapSystem !== "undefined" && !game.minimap) {
         game.minimap = new MinimapSystem(game);
@@ -152,7 +151,6 @@ window.addEventListener("load", () => {
 
     const bulletSystem = new BulletSystem(game.scene);
     
-    // Weapon System
     const weaponSystem = new WeaponSystem(
         null, 
         bulletSystem,
@@ -173,7 +171,7 @@ window.addEventListener("load", () => {
     });
 
     // ------------------------------------------------------------
-    // 6. EVENT HANDLING
+    // 6. EVENTS
     // ------------------------------------------------------------
 
     mpClient.onConnected = () => {
@@ -185,7 +183,7 @@ window.addEventListener("load", () => {
         if (msg.status === "playing") return; 
 
         if (msg.status === "lobby" && gameStartedOnce) {
-            window.location.reload();
+            window.location.reload(); // Reload on back to lobby
             return;
         }
 
@@ -205,19 +203,15 @@ window.addEventListener("load", () => {
         if (mpUI) mpUI.onGameStart();
     };
 
-    // ✅ SCORE SYNC
     mpClient.onState = (snapshot) => {
         if (!game.playerController) return;
         const myId = mpClient.socket?.id;
         
-        // Find local player in server data
         const meServer = snapshot.players.find(p => p.id === myId);
         if (meServer) {
-            // Apply Stats
             game.playerController.score = meServer.score || 0;
             game.playerController.kills = meServer.kills || 0;
             
-            // Sync Ring Index
             if (ringSystem && typeof meServer.rings === "number") {
                 if (ringSystem.currentIndex !== meServer.rings) {
                     ringSystem._setActiveRing(meServer.rings);
@@ -237,8 +231,8 @@ window.addEventListener("load", () => {
                 if (mpUI) mpUI.showGameOver(evt.msg);
                 break;
 
-            case "SCORE":
-                // Server confirmed score - safe to ignore sound here since we play it on collision
+            case "SCORE": 
+                // Local feedback is instant, server confirms it here
                 break;
 
             case "KILL":
@@ -312,13 +306,11 @@ window.addEventListener("load", () => {
                 ringSystem.currentIndex = 0;
                 ringSystem._setActiveRing(0);
                 
-                // ✅ SOUND FIX: Play sound immediately on client claim
                 ringSystem.onRingClaim = (idx) => {
                     if (performance.now() > ringClaimBlockedUntil && mpClient.isConnected()) {
-                        // 1. Play Sound Locally (Instant Feedback)
-                        if (procAudio) procAudio.ring(); 
-
-                        // 2. Tell Server
+                        // Sound instant
+                        if (procAudio) procAudio.ring();
+                        // Sync
                         mpClient.claimRing(idx);
                     }
                 };
@@ -389,6 +381,7 @@ window.addEventListener("load", () => {
                 game.playerController.update(dt);
                 checkTerrainCollision();
 
+                // Fire with Logic
                 if (game.inputManager.getAction("fire")) {
                     if (now - lastFireTime > FIRE_DELAY) {
                         if (mpClient.isInRoom) {
@@ -448,17 +441,22 @@ window.addEventListener("load", () => {
             hitDetection.update(dt);
             mpState.update(dt);
 
+            // ✅ MINIMAP FIX: Correctly access enemy list
             if (game.minimap && game.playerController?.mesh) {
-                const enemies = mpState.getRemotePlayers().map(p => p.mesh).filter(m => m);
-                game.minimap.update(game.playerController.mesh, enemies, ringSystem?.rings || [], ringSystem?.currentIndex);
+                // MPState se direct mesh list nikalo
+                const enemies = mpState.getRemotePlayers()
+                    .filter(p => p && p.mesh && p.mesh.visible) // Only visible enemies
+                    .map(p => p.mesh);
+                    
+                const ringsRaw = ringSystem?.rings || [];
+                game.minimap.update(game.playerController.mesh, enemies, ringsRaw, ringSystem?.currentIndex);
             }
 
-            // ✅ UI UPDATE (Ensures Score is visible)
             if (game.uiManager && game.playerController) {
                 game.uiManager.update(
                     game.playerController.speed || 0,
                     game.playerController.health,
-                    game.playerController.score || 0, // Should be synced now
+                    game.playerController.score || 0, 
                     game.playerController.boostEnergy || 100
                 );
             }
