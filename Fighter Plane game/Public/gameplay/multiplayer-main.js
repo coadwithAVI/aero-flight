@@ -84,7 +84,7 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
-    // ✅ FIXED: HIT EVENT & HEALTH LOGIC
+// ✅ FIXED: Deep Debugging for Health Issue
     onEvent: (evt) => {
       if (!evt) return;
 
@@ -100,21 +100,26 @@ window.addEventListener("load", () => {
 
       // 2. HIT / DAMAGE Update
       if (evt.type === "HIT" || evt.type === "DAMAGE") {
+        
         // Data Extraction
         const payload = evt.msg || evt; 
         const targetId = payload.targetId || payload.id;
         const damage = payload.damage || 10;
-
-        // ✅ IMPORTANT: ID Check (Socket ID OR Local State ID)
-        // Kabhi server internal ID use karta hai, kabhi socket ID
-        const socketId = mpClient.socket?.id;
-        const localId = mpState.localId;
         
-        const isMe = (targetId && (targetId === socketId || targetId === localId));
+        const myId = mpClient.socket?.id;
 
-        if (isMe) {
-            // Respawn ke time invincible
-            if (game.playerController && game.playerController.isRespawning) return;
+        // 🕵️‍♂️ JASOOS LOG: Ye bata dega ki signal pahuncha ya nahi
+        // Isse console mein check karein jab HIT ho
+        console.log(`📨 PACKET RECVD: Target=${targetId} | MyID=${myId}`);
+
+        // ID Matching (String conversion taaki format ka issue na ho)
+        if (targetId && myId && String(targetId) === String(myId)) {
+            
+            // Invincibility Check
+            if (game.playerController && game.playerController.isRespawning) {
+                console.log("🛡️ BLOCKED: Player is respawning (Invincible)");
+                return;
+            }
 
             if (game.playerController) {
                 const oldHP = game.playerController.health;
@@ -123,10 +128,9 @@ window.addEventListener("load", () => {
                 game.playerController.health -= damage;
                 
                 const newHP = game.playerController.health;
-                console.log(`⚠️ DAMAGE! HP: ${oldHP} -> ${newHP} (Dmg: ${damage})`);
+                console.log(`⚠️ OUCH! DAMAGE TAKEN! HP: ${oldHP} -> ${newHP}`);
 
                 // --- FORCE UI UPDATE ---
-                // Ye ensure karega ki UI update ho chahe kuch bhi ho
                 if (game.uiManager) {
                     game.uiManager.update(
                         game.playerController.speed || 0,
@@ -137,8 +141,8 @@ window.addEventListener("load", () => {
                 }
             }
         } else {
-             // Optional: Debug agar ID match nahi hui
-             // console.log(`ℹ️ Hit received for ${targetId} (Not me)`);
+             // Agar ID match nahi hui toh ye print hoga
+             // console.log("ℹ️ Hit packet ignored: Not for me");
         }
       }
     },
