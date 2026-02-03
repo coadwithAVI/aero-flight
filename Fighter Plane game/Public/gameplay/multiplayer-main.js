@@ -3,26 +3,10 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-    console.log("🌐 Multiplayer Mode Initializing... (Mobile Input Force Fix v34)");
+    console.log("🌐 Multiplayer Mode Initializing...");
 
     // ------------------------------------------------------------
-    // 1. DEVICE DETECTION
-    // ------------------------------------------------------------
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 0);
-    console.log("📱 Device Type:", isMobile ? "Mobile" : "PC");
-
-    // ------------------------------------------------------------
-    // 2. GLOBAL MOBILE STATE
-    // ------------------------------------------------------------
-    window.mobileState = {
-        x: 0,
-        y: 0,
-        fire: false,
-        boost: false
-    };
-
-    // ------------------------------------------------------------
-    // 3. AUDIO SETUP
+    // 1. AUDIO SETUP
     // ------------------------------------------------------------
     const procAudio = (typeof ProceduralAudio !== "undefined") ? new ProceduralAudio() : null;
     const sfx = (typeof SFXManager !== "undefined") ? new SFXManager({ masterVolume: 0.4, enableEngineHum: false }) : null;
@@ -37,7 +21,7 @@ window.addEventListener("load", () => {
     document.addEventListener('touchstart', unlockAudio);
 
     // ------------------------------------------------------------
-    // 4. GAME ENGINE SETUP
+    // 2. GAME ENGINE SETUP
     // ------------------------------------------------------------
     const game = new GameManager();
     game.init(); 
@@ -50,110 +34,18 @@ window.addEventListener("load", () => {
     }
 
     // ------------------------------------------------------------
-    // 5. MANUAL JOYSTICK & BUTTON LOGIC
+    // 3. MOBILE CONTROLS (NEW INTEGRATION)
     // ------------------------------------------------------------
-    function setupMobileInputs() {
-        // PC par ye setup karne ki zarurat nahi
-        if (!isMobile) return;
-
-        const zone = document.getElementById('joystick-zone');
-        const knob = document.getElementById('joystick-knob');
-        const btnFire = document.getElementById('btn-fire');
-        const btnBoost = document.getElementById('btn-boost');
-
-        if (!zone || !knob) return;
-
-        console.log("📱 Mobile Inputs Active");
-
-        let startX = 0, startY = 0;
-        let isDragging = false;
-        const maxDist = 40;
-
-        // --- JOYSTICK ---
-        zone.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touch = e.touches[0];
-            startX = touch.clientX;
-            startY = touch.clientY;
-            isDragging = true;
-            knob.style.transition = 'none';
-        }, { passive: false });
-
-        zone.addEventListener('touchmove', (e) => {
-            if (!isDragging) return;
-            e.preventDefault();
-            const touch = e.touches[0];
-            
-            let dx = touch.clientX - startX;
-            let dy = touch.clientY - startY;
-            
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist > maxDist) {
-                const angle = Math.atan2(dy, dx);
-                dx = Math.cos(angle) * maxDist;
-                dy = Math.sin(angle) * maxDist;
-            }
-
-            knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-            window.mobileState.x = dx / maxDist;
-            window.mobileState.y = dy / maxDist;
-        }, { passive: false });
-
-        const endDrag = (e) => {
-            e.preventDefault();
-            isDragging = false;
-            knob.style.transition = '0.2s ease-out';
-            knob.style.transform = `translate(-50%, -50%)`;
-            window.mobileState.x = 0;
-            window.mobileState.y = 0;
-        };
-
-        zone.addEventListener('touchend', endDrag);
-        zone.addEventListener('touchcancel', endDrag);
-
-        // --- FIRE BUTTON (Touch Events) ---
-        if (btnFire) {
-            btnFire.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                window.mobileState.fire = true;
-                btnFire.style.opacity = "0.5"; // Visual Feedback
-                btnFire.style.transform = "scale(0.9)";
-            }, { passive: false });
-
-            const releaseFire = (e) => {
-                e.preventDefault();
-                window.mobileState.fire = false;
-                btnFire.style.opacity = "1";
-                btnFire.style.transform = "scale(1)";
-            };
-            btnFire.addEventListener('touchend', releaseFire);
-            btnFire.addEventListener('touchcancel', releaseFire);
-        }
-
-        // --- BOOST BUTTON (Touch Events) ---
-        if (btnBoost) {
-            btnBoost.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                window.mobileState.boost = true;
-                btnBoost.style.opacity = "0.5"; // Visual Feedback
-                btnBoost.style.transform = "scale(0.9)";
-            }, { passive: false });
-
-            const releaseBoost = (e) => {
-                e.preventDefault();
-                window.mobileState.boost = false;
-                btnBoost.style.opacity = "1";
-                btnBoost.style.transform = "scale(1)";
-            };
-            btnBoost.addEventListener('touchend', releaseBoost);
-            btnBoost.addEventListener('touchcancel', releaseBoost);
-        }
+    // This connects to the separate mobile-controls.js file
+    if (typeof MobileControls !== "undefined") {
+        console.log("📱 MobileControls Class Found. Initializing...");
+        new MobileControls(game.inputManager);
+    } else {
+        console.warn("⚠️ MobileControls Class NOT Found.");
     }
 
-    setupMobileInputs();
-
     // ------------------------------------------------------------
-    // 6. MP CONFIG
+    // 4. MP CONFIG
     // ------------------------------------------------------------
     const mpState = new MPState(game.scene, {
         modelFactory: typeof ModelFactory !== "undefined" ? new ModelFactory() : null,
@@ -206,7 +98,7 @@ window.addEventListener("load", () => {
     });
 
     // ------------------------------------------------------------
-    // 7. EVENTS
+    // 5. EVENTS
     // ------------------------------------------------------------
     mpClient.onConnected = () => {
         if (mpClient.socket?.id) mpState.setLocalId(mpClient.socket.id);
@@ -282,7 +174,7 @@ window.addEventListener("load", () => {
     mpClient.connect();
 
     // ------------------------------------------------------------
-    // 8. HELPER FUNCTIONS
+    // 6. HELPER FUNCTIONS
     // ------------------------------------------------------------
     function freshStartMatch(msg) {
         if (!game.playerController) {
@@ -369,7 +261,7 @@ window.addEventListener("load", () => {
     }
 
     // ------------------------------------------------------------
-    // 9. GAME LOOP
+    // 7. GAME LOOP
     // ------------------------------------------------------------
     game.animate = function () {
         requestAnimationFrame(game.animate);
@@ -390,29 +282,8 @@ window.addEventListener("load", () => {
             if (game.playerController && !game.playerController.isRespawning) {
                 
                 // 1. Reset Inputs (Clean slate for frame)
+                // Mobile inputs are now handled by MobileControls class directly writing to inputManager
                 game.inputManager.update(dt);
-
-                // 2. FORCE APPLY MOBILE INPUTS (This fixes buttons not working)
-                if (isMobile && window.mobileState) {
-                    // Joystick override
-                    if (window.mobileState.x > 0.3) game.inputManager.keys['d'] = true;
-                    else if (window.mobileState.x < -0.3) game.inputManager.keys['a'] = true;
-                    
-                    if (window.mobileState.y > 0.3) game.inputManager.keys['s'] = true;
-                    else if (window.mobileState.y < -0.3) game.inputManager.keys['w'] = true;
-
-                    // ✅ FIRE FIX: Force key state 'true' as long as button is held
-                    if (window.mobileState.fire) {
-                        game.inputManager.keys[' '] = true; 
-                        game.inputManager.keys['Space'] = true; 
-                    }
-
-                    // ✅ BOOST FIX: Force key state 'true'
-                    if (window.mobileState.boost) {
-                        game.inputManager.keys['Shift'] = true;
-                        game.inputManager.keys['ShiftLeft'] = true;
-                    }
-                }
 
                 game.playerController.update(dt);
                 checkTerrainCollision();
