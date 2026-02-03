@@ -3,115 +3,109 @@
 // ==========================================
 
 class MobileControls {
-    constructor(inputManager) {
+    constructor(inputManager, options = {}) {
         this.input = inputManager;
 
+        this.enabled = true;
         this.joy = {
             active: false,
+            id: null,
             startX: 0,
             startY: 0,
             dx: 0,
             dy: 0
         };
 
-        this.maxRadius = 60; // joystick move radius
-        
-        // Force enabled for testing, or use isMobile()
-        this.enabled = true; 
+        this.maxRadius = options.maxRadius || 50;
 
-        if (this.enabled) {
-            this.createUI();
-            this.attachEvents();
-        }
-    }
+        // ----------------------------------------------------------
+        // Root container (always on top)
+        // ----------------------------------------------------------
+        this.root = document.createElement("div");
+        this.root.id = "mobileControlsRoot";
+        Object.assign(this.root.style, {
+            position: "fixed",
+            inset: "0px",
+            zIndex: "99999",
+            pointerEvents: "none"
+        });
+        document.body.appendChild(this.root);
 
-    isMobile() {
-        return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    }
-
-    createUI() {
-        // joystick base
-        this.base = document.createElement("div");
-        Object.assign(this.base.style, {
+        // ----------------------------------------------------------
+        // Joystick base
+        // ----------------------------------------------------------
+        this.joyBase = document.createElement("div");
+        this.joyBase.id = "joyBase";
+        Object.assign(this.joyBase.style, {
             position: "absolute",
-            bottom: "40px",
-            left: "40px",
-            width: "140px",
-            height: "140px",
+            left: "60px",
+            bottom: "60px",
+            width: "120px",
+            height: "120px",
             borderRadius: "50%",
             background: "rgba(255,255,255,0.08)",
-            border: "2px solid rgba(255,255,255,0.25)",
+            border: "2px solid rgba(255,255,255,0.15)",
+            pointerEvents: "auto",
             touchAction: "none",
-            zIndex: 99999 // ✅ FIXED: Higher than UI overlay
+            userSelect: "none"
         });
 
-        // joystick knob
+        // Joystick knob
         this.knob = document.createElement("div");
+        this.knob.id = "joyKnob";
         Object.assign(this.knob.style, {
             position: "absolute",
-            top: "50%",
             left: "50%",
-            width: "55px",
-            height: "55px",
-            transform: "translate(-50%, -50%)",
+            top: "50%",
+            width: "50px",
+            height: "50px",
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.25)",
-            border: "2px solid rgba(255,255,255,0.3)"
+            transform: "translate(-50%, -50%)",
+            background: "rgba(255,255,255,0.18)",
+            border: "2px solid rgba(255,255,255,0.25)"
         });
 
-        this.base.appendChild(this.knob);
-        document.body.appendChild(this.base);
+        this.joyBase.appendChild(this.knob);
+        this.root.appendChild(this.joyBase);
 
-        // fire button
+        // ----------------------------------------------------------
+        // Buttons container
+        // ----------------------------------------------------------
+        this.buttons = document.createElement("div");
+        Object.assign(this.buttons.style, {
+            position: "absolute",
+            right: "40px",
+            bottom: "50px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "14px",
+            pointerEvents: "auto"
+        });
+        this.root.appendChild(this.buttons);
+
+        // FIRE button
         this.fireBtn = document.createElement("button");
         this.fireBtn.innerText = "FIRE";
-        Object.assign(this.fireBtn.style, {
-            position: "absolute",
-            bottom: "60px",
-            right: "40px",
-            width: "110px",
-            height: "110px",
-            borderRadius: "50%",
-            background: "rgba(255,80,80,0.25)",
-            border: "2px solid rgba(255,80,80,0.6)",
-            color: "white",
-            fontWeight: "bold",
-            fontSize: "18px",
-            touchAction: "none",
-            zIndex: 99999 // ✅ FIXED: Higher than UI overlay
-        });
+        Object.assign(this.fireBtn.style, this._btnStyle());
+        this.buttons.appendChild(this.fireBtn);
 
-        document.body.appendChild(this.fireBtn);
-
-        // boost button
+        // BOOST button
         this.boostBtn = document.createElement("button");
         this.boostBtn.innerText = "BOOST";
-        Object.assign(this.boostBtn.style, {
-            position: "absolute",
-            bottom: "190px",
-            right: "55px",
-            width: "90px",
-            height: "55px",
-            borderRadius: "12px",
-            background: "rgba(120,200,255,0.25)",
-            border: "2px solid rgba(120,200,255,0.6)",
-            color: "white",
-            fontWeight: "bold",
-            fontSize: "14px",
-            touchAction: "none",
-            zIndex: 99999 // ✅ FIXED: Higher than UI overlay
-        });
+        Object.assign(this.boostBtn.style, this._btnStyle());
+        this.buttons.appendChild(this.boostBtn);
 
-        document.body.appendChild(this.boostBtn);
-    }
+        // ----------------------------------------------------------
+        // Events: joystick
+        // ----------------------------------------------------------
+        this.joyBase.addEventListener("touchstart", (e) => this.onJoyStart(e), { passive: false });
+        this.joyBase.addEventListener("touchmove", (e) => this.onJoyMove(e), { passive: false });
+        this.joyBase.addEventListener("touchend", (e) => this.onJoyEnd(e), { passive: false });
+        this.joyBase.addEventListener("touchcancel", (e) => this.onJoyEnd(e), { passive: false });
 
-    attachEvents() {
-        // joystick touch
-        this.base.addEventListener("touchstart", (e) => this.onJoyStart(e), { passive: false });
-        this.base.addEventListener("touchmove", (e) => this.onJoyMove(e), { passive: false });
-        this.base.addEventListener("touchend", () => this.onJoyEnd());
-
-        // fire
+        // ----------------------------------------------------------
+        // Events: FIRE
+        // ----------------------------------------------------------
         this.fireBtn.addEventListener("touchstart", (e) => {
             e.preventDefault();
             this.input.mouse.isDown = true;
@@ -122,7 +116,9 @@ class MobileControls {
             this.input.mouse.isDown = false;
         }, { passive: false });
 
-        // boost
+        // ----------------------------------------------------------
+        // Events: BOOST
+        // ----------------------------------------------------------
         this.boostBtn.addEventListener("touchstart", (e) => {
             e.preventDefault();
             this.input.keys.Shift = true;
@@ -132,31 +128,96 @@ class MobileControls {
             e.preventDefault();
             this.input.keys.Shift = false;
         }, { passive: false });
+
+        // ✅ extra safety: prevent stuck buttons if touch is cancelled
+        this.fireBtn.addEventListener("touchcancel", (e) => {
+            e.preventDefault();
+            this.releaseActions();
+        }, { passive: false });
+
+        this.boostBtn.addEventListener("touchcancel", (e) => {
+            e.preventDefault();
+            this.releaseActions();
+        }, { passive: false });
+
+        // ✅ extra safety: if tab/app loses focus, release actions
+        this._onBlur = () => this.releaseActions();
+        window.addEventListener("blur", this._onBlur);
+
+        this._onVisibilityChange = () => {
+            if (document.hidden) this.releaseActions();
+        };
+        document.addEventListener("visibilitychange", this._onVisibilityChange);
     }
 
+    _btnStyle() {
+        return {
+            width: "120px",
+            height: "60px",
+            borderRadius: "14px",
+            border: "2px solid rgba(255,255,255,0.2)",
+            background: "rgba(255,255,255,0.10)",
+            color: "white",
+            fontSize: "16px",
+            fontWeight: "700",
+            letterSpacing: "0.5px",
+            touchAction: "none"
+        };
+    }
+
+    // ----------------------------------------------------------
+    // SAFETY: release pressed actions (prevents stuck fire/boost)
+    // ----------------------------------------------------------
+    releaseActions() {
+        if (!this.input) return;
+        if (this.input.mouse) this.input.mouse.isDown = false;
+        if (this.input.keys) this.input.keys.Shift = false;
+    }
+
+    // ----------------------------------------------------------
+    // JOYSTICK HANDLERS
+    // ----------------------------------------------------------
     onJoyStart(e) {
+        if (!this.enabled) return;
+
         e.preventDefault();
-        const t = e.touches[0];
+        const t = e.changedTouches[0];
         this.joy.active = true;
-        this.joy.startX = t.clientX;
-        this.joy.startY = t.clientY;
+        this.joy.id = t.identifier;
+
+        const rect = this.joyBase.getBoundingClientRect();
+        this.joy.startX = rect.left + rect.width / 2;
+        this.joy.startY = rect.top + rect.height / 2;
+
         this.joy.dx = 0;
         this.joy.dy = 0;
     }
 
     onJoyMove(e) {
+        if (!this.enabled || !this.joy.active) return;
         e.preventDefault();
-        if (!this.joy.active) return;
 
-        const t = e.touches[0];
-        let dx = t.clientX - this.joy.startX;
-        let dy = t.clientY - this.joy.startY;
+        let t = null;
+        for (const touch of e.touches) {
+            if (touch.identifier === this.joy.id) {
+                t = touch;
+                break;
+            }
+        }
+        if (!t) return;
 
-        // clamp radius
-        const dist = Math.sqrt(dx*dx + dy*dy);
+        const dxRaw = t.clientX - this.joy.startX;
+        const dyRaw = t.clientY - this.joy.startY;
+
+        // clamp circle
+        const dist = Math.hypot(dxRaw, dyRaw);
+        let dx = dxRaw;
+        let dy = dyRaw;
+
         if (dist > this.maxRadius) {
-            dx = dx / dist * this.maxRadius;
-            dy = dy / dist * this.maxRadius;
+            const ratio = this.maxRadius / dist;
+            dx *= ratio;
+            dy *= ratio;
         }
 
         this.joy.dx = dx;
@@ -172,19 +233,24 @@ class MobileControls {
         this.input.keys.a = normX < -0.3;
         this.input.keys.d = normX > 0.3;
 
-        this.input.keys.w = normY > 0.3;   
-        this.input.keys.s = normY < -0.3;  
+        // ✅ FIXED: UP on joystick => W, DOWN => S
+        this.input.keys.w = normY < -0.3; // move forward (UP on joystick)
+        this.input.keys.s = normY > 0.3;  // move backward (DOWN on joystick)
     }
 
-    onJoyEnd() {
+    onJoyEnd(e) {
+        if (!this.enabled) return;
+
+        // if cancelled/ended: reset joystick
         this.joy.active = false;
+        this.joy.id = null;
         this.joy.dx = 0;
         this.joy.dy = 0;
 
         // reset knob
         this.knob.style.transform = "translate(-50%, -50%)";
 
-        // reset input
+        // reset movement keys
         this.input.keys.a = false;
         this.input.keys.d = false;
         this.input.keys.w = false;
