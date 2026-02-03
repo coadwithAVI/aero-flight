@@ -3,7 +3,7 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-  console.log("🌐 Multiplayer Mode Booting... (Final v16 - Receiver Fixed)");
+  console.log("🌐 Multiplayer Mode Booting... ");
 
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const safeUI = () => window.mpUIBridge || null;
@@ -432,3 +432,4 @@ window.addEventListener("load", () => {
     game.renderer.render(game.scene, game.camera);
   };
 });
+
