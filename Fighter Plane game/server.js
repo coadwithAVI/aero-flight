@@ -184,9 +184,6 @@ function checkLastPlayerWin(room, reason) {
 
 // ----------------------------------------------------------
 // ✅ LOBBY UPDATE (FIXED FINAL)
-// - earlier you were doing io.to(roomId).emit(...)
-// - BUT client expects msg.you.isHost
-// - so we emit lobby update per player socket
 // ----------------------------------------------------------
 function emitLobbyUpdate(roomId) {
   const room = rooms[roomId];
@@ -393,7 +390,7 @@ io.on("connection", (socket) => {
     emitLobbyUpdate(rId);
     io.to(rId).emit("playerDisconnected", socket.id);
 
-    // ✅ ADDED: end match if only 1 player left (during playing)
+    // check win
     checkLastPlayerWin(room, "All other players left");
 
     console.log(`[ROOM] ${socket.id} left ${rId}`);
@@ -412,7 +409,7 @@ io.on("connection", (socket) => {
     room.status = "playing";
     room.tick = 0;
 
-    // reset hp alive; keep score/rings? (as per your rules reset should not happen on respawn only)
+    // reset hp alive; keep score/rings
     room.players.forEach(p => {
       p.hp = 100;
       p.alive = true;
@@ -499,8 +496,22 @@ io.on("connection", (socket) => {
   });
 
   // ============================
-  // Hit report (client reports mp_hit)
-  // server validates minimal + scoring here
+  // ✅ FIX: Generic Event Relay
+  // Iske bina mp_event nahi pahunchta
+  // ============================
+  socket.on("mp_event", (data) => {
+    if (!data || !data.roomId) return;
+    
+    const rId = String(data.roomId).toUpperCase();
+    const room = rooms[rId];
+    if (!room || room.status !== "playing") return;
+
+    // Direct relay to everyone in room
+    io.to(rId).emit("mp_event", data);
+  });
+
+  // ============================
+  // Hit report (Server Validated + Broadcast)
   // ============================
   socket.on("mp_hit", ({ roomId, targetId, bulletId } = {}) => {
     const rId = String(roomId || "").toUpperCase();
@@ -517,18 +528,27 @@ io.on("connection", (socket) => {
     // Optional: validate bullet exists & belongs to attacker
     if (bulletId) {
       const b = room.bullets.find(bb => bb.id === bulletId);
-      if (!b) return;
-      if (b.ownerId !== attacker.id) return;
+      if (!b) return; // bullet invalid/expired
+      if (b.ownerId !== attacker.id) return; // not your bullet
     }
 
     // apply damage
     target.hp -= SERVER_CONFIG.BULLET_DAMAGE;
+    
+    // ✅ ALSO SEND BACK EVENT (Safety backup)
+    io.to(rId).emit("mp_event", {
+        t: "EVENT",
+        type: "DAMAGE",
+        targetId: target.id,
+        attackerId: attacker.id,
+        damage: SERVER_CONFIG.BULLET_DAMAGE
+    });
 
     // death
     if (target.hp <= 0) {
       target.hp = 0;
       target.alive = false;
-      target.respawnAt = nowMs() + 3000; // ✅ 3s delay
+      target.respawnAt = nowMs() + 3000; // 3s delay
 
       attacker.kills += 1;
       attacker.score += SERVER_CONFIG.SCORE_KILL;
@@ -613,7 +633,7 @@ io.on("connection", (socket) => {
       emitLobbyUpdate(rId);
       io.to(rId).emit("playerDisconnected", socket.id);
 
-      // ✅ ADDED: end match if only 1 player left (during playing)
+      // check win
       checkLastPlayerWin(room, "All other players disconnected");
 
       break;
