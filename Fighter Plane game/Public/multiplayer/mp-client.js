@@ -243,8 +243,18 @@ class MPClient {
       try { this.onEvent(evt); } catch (e) { console.error("onEvent crash:", e); }
     });
 
+    // ✅ FIX: Ye code add karein taaki HIT register ho sake
+    s.on("mp_hit", (msg) => {
+      // Server se hit aaya, isse game event mein convert karo
+      const evt = {
+         type: "HIT",
+         msg: msg
+      };
+      try { this.onEvent(evt); } catch (e) { console.error("onHit crash:", e); }
+    });
+
     // -------------------------
-    // Score update (FIXED)
+    // Score update
     // -------------------------
     s.on("mp_score_update", (msg) => {
       try { this.onEvent({ t: "EVENT", type: "SCORE", msg }); } catch (e) { console.error("onEvent crash:", e); }
