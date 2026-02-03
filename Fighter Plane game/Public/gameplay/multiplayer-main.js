@@ -3,7 +3,7 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-  console.log("🌐 Multiplayer Mode Booting... (Final v14 - Hit/Health Fix)");
+  console.log("🌐 Multiplayer Mode Booting... (Final v15 - Hit Sync Fix)");
 
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const safeUI = () => window.mpUIBridge || null;
@@ -21,7 +21,7 @@ window.addEventListener("load", () => {
 
   if (!game.uiManager) game.uiManager = new UIManager();
 
-  if (!game.procAudio && typeof ProceduralAudio !== "undefined") {
+  if (game.procAudio && typeof ProceduralAudio !== "undefined") {
     game.procAudio = new ProceduralAudio();
   }
 
@@ -84,13 +84,19 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
-// ✅ FIXED: Deep Debugging for Health Issue
+    // ✅ FIXED: ULTRA ROBUST HIT LISTENER
     onEvent: (evt) => {
       if (!evt) return;
+      
+      // DEBUG: Har event ko log karo taaki pata chale victim ko kuch mil raha hai ya nahi
+      // console.log("📩 EVENT IN:", evt.type, evt);
+
+      const socket = window.mpClient?.socket; // Window global se uthao safe side ke liye
+      const myId = socket?.id;
 
       // 1. SCORE Update
       if (evt.type === "SCORE" && evt.msg) {
-        if (mpClient.socket && evt.msg.id === mpClient.socket.id) {
+        if (socket && evt.msg.id === socket.id) {
           if (ringSystem && typeof evt.msg.rings === "number") {
              ringSystem.currentIndex = evt.msg.rings;
              ringSystem._setActiveRing(evt.msg.rings); 
@@ -101,48 +107,43 @@ window.addEventListener("load", () => {
       // 2. HIT / DAMAGE Update
       if (evt.type === "HIT" || evt.type === "DAMAGE") {
         
-        // Data Extraction
+        // Data Extraction (Har tarah ka structure check karo)
         const payload = evt.msg || evt; 
-        const targetId = payload.targetId || payload.id;
+        
+        // Target ID dhoondo (kabhi 'targetId', kabhi 'id', kabhi 'victimId')
+        const targetId = payload.targetId || payload.id || payload.victimId;
         const damage = payload.damage || 10;
         
-        const myId = mpClient.socket?.id;
-
-        // 🕵️‍♂️ JASOOS LOG: Ye bata dega ki signal pahuncha ya nahi
-        // Isse console mein check karein jab HIT ho
-        console.log(`📨 PACKET RECVD: Target=${targetId} | MyID=${myId}`);
-
-        // ID Matching (String conversion taaki format ka issue na ho)
+        // Agar main hi target hu
         if (targetId && myId && String(targetId) === String(myId)) {
             
+            console.log(`🩸 I WAS HIT! Damage: ${damage} | Attacker: ${payload.attackerId || 'Unknown'}`);
+
             // Invincibility Check
             if (game.playerController && game.playerController.isRespawning) {
-                console.log("🛡️ BLOCKED: Player is respawning (Invincible)");
                 return;
             }
 
             if (game.playerController) {
-                const oldHP = game.playerController.health;
-                
                 // --- APPLY DAMAGE ---
                 game.playerController.health -= damage;
                 
-                const newHP = game.playerController.health;
-                console.log(`⚠️ OUCH! DAMAGE TAKEN! HP: ${oldHP} -> ${newHP}`);
-
+                // --- VISUAL SHAKE (Proof ki hit laga) ---
+                if (game.cameraSystem?.addShake) game.cameraSystem.addShake(0.8);
+                
                 // --- FORCE UI UPDATE ---
                 if (game.uiManager) {
                     game.uiManager.update(
                         game.playerController.speed || 0,
-                        Math.max(0, newHP),
+                        Math.max(0, game.playerController.health),
                         game.playerController.score || 0,
                         game.playerController.boostEnergy || 100
                     );
                 }
+                
+                // Debug log
+                console.log(`⚠️ NEW HP: ${game.playerController.health}`);
             }
-        } else {
-             // Agar ID match nahi hui toh ye print hoga
-             // console.log("ℹ️ Hit packet ignored: Not for me");
         }
       }
     },
@@ -179,7 +180,7 @@ window.addEventListener("load", () => {
 
   // ✅ HIT DETECTION (Client side)
   const hitDetection = new MPHitDetection(mpClient, bulletSystem, mpState, {
-      hitRadius: 18.0, 
+      hitRadius: 22.0, // Thoda aur easy banaya hit karna
       damage: 15
   });
 
