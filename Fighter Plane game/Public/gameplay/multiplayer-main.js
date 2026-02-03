@@ -36,8 +36,6 @@ window.addEventListener("load", () => {
     // ------------------------------------------------------------
     // 3. MOBILE CONTROLS (SAFE INTEGRATION)
     // ------------------------------------------------------------
-    // ✅ only enable on real touch devices / small screens
-    // ✅ prevent duplicates (multiple init causes double touch handlers)
     const isTouchDevice = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
     const isLikelyMobile = isTouchDevice && Math.min(window.innerWidth, window.innerHeight) <= 1024;
 
@@ -73,12 +71,7 @@ window.addEventListener("load", () => {
 
     // Game Logic Vars
     let gameStartedOnce = false;
-    let ringClaimBlockedUntil = 0;
     let ringSystem = null;
-    let lastFireTime = 0;
-    let lastSoundTime = 0;
-    const FIRE_DELAY = 100;
-    const SOUND_DELAY = 150;
 
     if (typeof MinimapSystem !== "undefined" && !game.minimap) {
         game.minimap = new MinimapSystem(game);
@@ -87,25 +80,40 @@ window.addEventListener("load", () => {
     // ------------------------------------------------------------
     // WEAPON / BULLET / HIT SYSTEM
     // ------------------------------------------------------------
-    const bulletSystem = new MPBulletSystem(
-        game.scene,
-        {
+    // ✅ FIX: MPBulletSystem not defined -> fallback safely
+    const BulletSystemClass =
+        (typeof MPBulletSystem !== "undefined") ? MPBulletSystem :
+        (typeof BulletSystem !== "undefined") ? BulletSystem :
+        null;
+
+    if (!BulletSystemClass) {
+        console.error("❌ Neither MPBulletSystem nor BulletSystem is defined. Check script loading order.");
+    }
+
+    const bulletSystem = BulletSystemClass
+        ? new BulletSystemClass(game.scene, {
             modelFactory: typeof ModelFactory !== "undefined" ? new ModelFactory() : null,
             camera: game.camera,
             screenAimAssist: true,
             getTargets: () => mpState.getRemotePlayers().map((p) => p.mesh)
-        }
-    );
+        })
+        : {
+            update() {}
+        };
 
-    const weaponSystem = new WeaponSystem(game.playerController, bulletSystem, game.inputManager, sfx, {
-        autoFire: false,
-        fireRate: 100
-    });
+    const weaponSystem = (typeof WeaponSystem !== "undefined")
+        ? new WeaponSystem(game.playerController, bulletSystem, game.inputManager, sfx, {
+            autoFire: false,
+            fireRate: 100
+        })
+        : { update() {} };
 
-    const hitDetection = new MPHitDetection(mpClient, bulletSystem, mpState, {
-        hitRadius: 24.0,
-        damage: 15
-    });
+    const hitDetection = (typeof MPHitDetection !== "undefined")
+        ? new MPHitDetection(mpClient, bulletSystem, mpState, {
+            hitRadius: 24.0,
+            damage: 15
+        })
+        : { update() {} };
 
     // ------------------------------------------------------------
     // 5. EVENTS
@@ -142,7 +150,7 @@ window.addEventListener("load", () => {
             }
         }
 
-        // Setup ring system (if available)
+        // Setup ring system
         if (typeof RingSystem !== "undefined") {
             ringSystem = new RingSystem(game.scene, game.playerController?.mesh);
         }
@@ -150,23 +158,37 @@ window.addEventListener("load", () => {
         game.isPaused = false;
     };
 
-    // MP UI start button should call this
     if (mpUI) {
-        mpUI.onStartClicked = () => {
-            startGame();
-        };
+        mpUI.onStartClicked = () => startGame();
     } else {
-        // fallback: auto start if mpUI not present
         setTimeout(() => startGame(), 2000);
     }
 
     // ------------------------------------------------------------
-    // 7. MAIN GAME LOOP
+    // 7. MAIN GAME LOOP  (ONLY FPS CAP + ANTI DUPLICATE)
     // ------------------------------------------------------------
-    let lastTime = performance.now();
 
-    game.loop = () => {
+    // ✅ ANTI-DUPLICATE LOOP
+    if (window.__mpLoopStarted) {
+        console.warn("⚠️ Multiplayer loop already started. Skipping duplicate start.");
+        return;
+    }
+    window.__mpLoopStarted = true;
+
+    // ✅ FPS CAP (60)
+    const TARGET_FPS = 60;
+    const FRAME_TIME = 1000 / TARGET_FPS;
+
+    let lastTime = performance.now();
+    let lastFrameMS = 0;
+
+    game.loop = (nowMS) => {
         requestAnimationFrame(game.loop);
+
+        // FPS lock
+        if (!lastFrameMS) lastFrameMS = nowMS;
+        if (nowMS - lastFrameMS < FRAME_TIME) return;
+        lastFrameMS = nowMS;
 
         const now = performance.now();
         const dt = Math.min(0.05, (now - lastTime) / 1000);
@@ -213,7 +235,7 @@ window.addEventListener("load", () => {
             }
 
             // HUD update
-            if (game.uiManager && game.playerController) {
+            if (game.uiManager && game.playerController && typeof game.uiManager.updateHUD === "function") {
                 game.uiManager.updateHUD(
                     game.playerController.speed || 0,
                     game.playerController.health,
@@ -233,6 +255,5 @@ window.addEventListener("load", () => {
         }
     };
 
-    // start loop
-    game.loop();
+    requestAnimationFrame(game.loop);
 });
