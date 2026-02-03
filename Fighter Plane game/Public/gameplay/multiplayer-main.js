@@ -3,7 +3,7 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-    console.log("🌐 Multiplayer Mode Initializing... (Mobile Fix v23)");
+    console.log("🌐 Multiplayer Mode Initializing...");
 
     // ------------------------------------------------------------
     // 1. INITIALIZE CORE SYSTEMS
@@ -22,10 +22,20 @@ window.addEventListener("load", () => {
         game.uiManager = new UIManager();
     }
 
-    // ✅ FIX 1: MOBILE CONTROLS RESTORED
+    // ✅ FIX 1: MOBILE CONTROLS FORCE VISIBLE
     if (typeof MobileControls !== "undefined") {
-        console.log("📱 Mobile Controls Detected & Attached");
+        console.log("📱 Mobile Controls Detecting...");
         game.mobileControls = new MobileControls(game.inputManager);
+        
+        // जबरदस्ती Z-Index बढ़ाओ ताकि वो Lobby के ऊपर दिखें
+        setTimeout(() => {
+            const mc = document.getElementById("mobile-controls");
+            if (mc) {
+                mc.style.zIndex = "20000"; 
+                mc.style.position = "fixed";
+                console.log("✅ Mobile Controls Layer Fixed");
+            }
+        }, 1000);
     }
 
     const mpState = new MPState(game.scene, {
@@ -84,11 +94,14 @@ window.addEventListener("load", () => {
     // ------------------------------------------------------------
 
     mpClient.onConnected = () => {
-        console.log("✅ Socket Connected");
+        console.log("✅ Socket Connected:", mpClient.socket?.id);
+        // ID set immediately to prevent ghosting
         if (mpClient.socket?.id) mpState.setLocalId(mpClient.socket.id);
     };
 
     mpClient.onLobbyUpdate = (msg) => {
+        if (msg.you?.id) mpState.setLocalId(msg.you.id); // Update ID from lobby
+
         if (msg.status === "playing") return; 
 
         if (msg.status === "lobby" && gameStartedOnce) {
@@ -103,6 +116,10 @@ window.addEventListener("load", () => {
 
     mpClient.onGameStart = (msg) => {
         console.log("🎮 Game Started");
+        
+        // Double check local ID
+        if (mpClient.socket?.id) mpState.setLocalId(mpClient.socket.id);
+
         gameStartedOnce = true;
         game.isPaused = false;
         ringClaimBlockedUntil = performance.now() + 2000;
@@ -148,7 +165,7 @@ window.addEventListener("load", () => {
                     if (!game.playerController.isRespawning) {
                         game.playerController.health -= damage;
                         
-                        // ✅ FIX 2: SAFE CAMERA SHAKE
+                        // Safe Camera Shake
                         if (game.cameraSystem && typeof game.cameraSystem.addShake === "function") {
                             game.cameraSystem.addShake(0.5);
                         } else if (game.cameraSystem && typeof game.cameraSystem.shake === "function") {
@@ -252,16 +269,29 @@ window.addEventListener("load", () => {
                     p.y = groundH + 5.0; 
                     pc.speed *= 0.9;
                     
-                    // ✅ FIX 2: SAFE CAMERA SHAKE
                     if (game.cameraSystem && typeof game.cameraSystem.addShake === "function") {
                         game.cameraSystem.addShake(0.5);
-                    } else if (game.cameraSystem && typeof game.cameraSystem.shake === "function") {
-                        game.cameraSystem.shake(0.5);
                     }
 
                     if (game.uiManager) game.uiManager.update(pc.speed, pc.health, pc.score, 100);
                 }
             }
+        }
+    }
+
+    // ✅ FIX 2: GHOST REMOVER FUNCTION
+    function removeGhostPlayer() {
+        if (!mpClient.socket || !mpState) return;
+        const myId = mpClient.socket.id;
+        
+        // Agar local ID set nahi hai toh set karo
+        if (!mpState.localId && myId) mpState.setLocalId(myId);
+
+        // Agar MPState ke paas hamare ID ka remote player hai, toh use hata do
+        // Kyunki hum khud ko local control kar rahe hain, remote nahi
+        if (mpState.remotePlayers && mpState.remotePlayers[myId]) {
+            console.log("👻 Ghost Player Detected & Removed:", myId);
+            mpState.removePlayer(myId);
         }
     }
 
@@ -280,6 +310,9 @@ window.addEventListener("load", () => {
 
         try {
             const dt = Math.min(game.clock.getDelta(), 0.1);
+
+            // ✅ RUN GHOST CHECK EVERY FRAME
+            removeGhostPlayer();
 
             if (game.playerController && !game.playerController.isRespawning) {
                 game.inputManager.update(dt);
