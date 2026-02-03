@@ -3,15 +3,13 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-    console.log("🌐 Multiplayer Mode Initializing... (Final Fix v29)");
+    console.log("🌐 Multiplayer Mode Initializing... (Joystick & Sound Fix v30)");
 
-    // ------------------------------------------------------------
-    // 1. INITIALIZE AUDIO & SYSTEMS
-    // ------------------------------------------------------------
+    // 1. Audio Systems
     const procAudio = (typeof ProceduralAudio !== "undefined") ? new ProceduralAudio() : null;
     const sfx = (typeof SFXManager !== "undefined") ? new SFXManager({ masterVolume: 0.4, enableEngineHum: false }) : null;
     
-    // Unlock Audio on first interaction
+    // Unlock Audio
     const unlockAudio = () => {
         if(sfx) sfx.init();
         if(procAudio) procAudio.unlock();
@@ -21,6 +19,7 @@ window.addEventListener("load", () => {
     document.addEventListener('click', unlockAudio);
     document.addEventListener('touchstart', unlockAudio);
 
+    // 2. Game Engine
     const game = new GameManager();
     game.init(); 
     game.isPaused = true;
@@ -32,56 +31,101 @@ window.addEventListener("load", () => {
     }
 
     // ------------------------------------------------------------
-    // 2. MOBILE CONTROLS (Manual Binding)
+    // 3. ✅ MANUAL JOYSTICK IMPLEMENTATION (Self-Contained)
     // ------------------------------------------------------------
-    if (typeof MobileControls !== "undefined") {
-        console.log("📱 Initializing Mobile Controls...");
-        game.mobileControls = new MobileControls(game.inputManager);
+    function setupVirtualJoystick() {
+        const zone = document.getElementById('joystick-zone');
+        const knob = document.getElementById('joystick-knob');
         
-        setTimeout(() => {
-            const btnFire = document.getElementById("btn-fire");
-            const btnBoost = document.getElementById("btn-boost");
+        if (!zone || !knob) return;
 
-            // Prevent Zoom/Scroll behavior
-            const preventDefaults = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-            };
+        let startX = 0, startY = 0;
+        let isDragging = false;
+        const maxDist = 40; // Joystick range
 
-            if (btnFire) {
-                btnFire.addEventListener("touchstart", (e) => { 
-                    preventDefaults(e);
-                    game.inputManager.keys[' '] = true; 
-                }, { passive: false });
+        zone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            startX = touch.clientX;
+            startY = touch.clientY;
+            isDragging = true;
+            knob.style.transition = 'none';
+        }, { passive: false });
 
-                btnFire.addEventListener("touchend", (e) => { 
-                    preventDefaults(e);
-                    game.inputManager.keys[' '] = false; 
-                }, { passive: false });
+        zone.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            
+            let dx = touch.clientX - startX;
+            let dy = touch.clientY - startY;
+            
+            // Distance limit
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist > maxDist) {
+                const angle = Math.atan2(dy, dx);
+                dx = Math.cos(angle) * maxDist;
+                dy = Math.sin(angle) * maxDist;
             }
 
-            if (btnBoost) {
-                btnBoost.addEventListener("touchstart", (e) => { 
-                    preventDefaults(e);
-                    game.inputManager.keys['Shift'] = true; 
-                }, { passive: false });
+            // Move Knob
+            knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
 
-                btnBoost.addEventListener("touchend", (e) => { 
-                    preventDefaults(e);
-                    game.inputManager.keys['Shift'] = false; 
-                }, { passive: false });
+            // Map to Game Input (X = Roll/Turn, Y = Pitch)
+            // Normalize -1 to 1
+            const valX = dx / maxDist;
+            const valY = dy / maxDist;
+
+            // Inject into InputManager
+            if (game.inputManager) {
+                game.inputManager.virtualAxis = { x: valX, y: valY };
             }
-        }, 500);
+
+        }, { passive: false });
+
+        const endDrag = (e) => {
+            e.preventDefault();
+            isDragging = false;
+            knob.style.transition = '0.2s ease-out';
+            knob.style.transform = `translate(-50%, -50%)`; // Reset to center
+            if (game.inputManager) {
+                game.inputManager.virtualAxis = { x: 0, y: 0 };
+            }
+        };
+
+        zone.addEventListener('touchend', endDrag);
+        zone.addEventListener('touchcancel', endDrag);
+
+        // --- BUTTONS ---
+        const bindBtn = (id, key) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            btn.addEventListener("touchstart", (e) => { 
+                e.preventDefault(); 
+                game.inputManager.keys[key] = true; 
+            }, { passive: false });
+            btn.addEventListener("touchend", (e) => { 
+                e.preventDefault(); 
+                game.inputManager.keys[key] = false; 
+            }, { passive: false });
+        };
+
+        bindBtn('btn-fire', ' ');
+        bindBtn('btn-boost', 'Shift');
+        
+        console.log("✅ Virtual Joystick Active");
     }
+
+    // Call it immediately
+    setupVirtualJoystick();
+
 
     const mpState = new MPState(game.scene, {
         modelFactory: typeof ModelFactory !== "undefined" ? new ModelFactory() : null,
         debug: false
     });
 
-    // ------------------------------------------------------------
-    // 3. NETWORK CLIENT
-    // ------------------------------------------------------------
+    // 4. Client
     const mpClient = new MPClient({
         mpState: mpState,
         playerName: localStorage.getItem("sky_pilot_name") || "Pilot",
@@ -93,19 +137,12 @@ window.addEventListener("load", () => {
         ? new MPUIManager(mpClient, procAudio) 
         : null;
 
-    // ------------------------------------------------------------
-    // 4. GAMEPLAY VARIABLES
-    // ------------------------------------------------------------
+    // 5. Game Logic Vars
     let gameStartedOnce = false;
     let ringClaimBlockedUntil = 0;
     let ringSystem = null;
-
-    // ✅ NEW: Separate Timers for Fire and Sound
     let lastFireTime = 0; 
     let lastSoundTime = 0;
-    
-    // Setting: Fire fast (60ms), but Sound slow (150ms)
-    // Isse 2-3 goli niklegi par awaaz ek baar aayegi.
     const FIRE_DELAY = 60;   
     const SOUND_DELAY = 150; 
 
@@ -136,7 +173,7 @@ window.addEventListener("load", () => {
     });
 
     // ------------------------------------------------------------
-    // 5. EVENT HANDLING
+    // 6. EVENT HANDLING
     // ------------------------------------------------------------
 
     mpClient.onConnected = () => {
@@ -168,16 +205,19 @@ window.addEventListener("load", () => {
         if (mpUI) mpUI.onGameStart();
     };
 
-    // Stats Sync
+    // ✅ SCORE SYNC
     mpClient.onState = (snapshot) => {
         if (!game.playerController) return;
         const myId = mpClient.socket?.id;
         
+        // Find local player in server data
         const meServer = snapshot.players.find(p => p.id === myId);
         if (meServer) {
+            // Apply Stats
             game.playerController.score = meServer.score || 0;
             game.playerController.kills = meServer.kills || 0;
             
+            // Sync Ring Index
             if (ringSystem && typeof meServer.rings === "number") {
                 if (ringSystem.currentIndex !== meServer.rings) {
                     ringSystem._setActiveRing(meServer.rings);
@@ -198,9 +238,7 @@ window.addEventListener("load", () => {
                 break;
 
             case "SCORE":
-                if (evt.msg && evt.msg.id === myId) {
-                    if (procAudio) procAudio.ring();
-                }
+                // Server confirmed score - safe to ignore sound here since we play it on collision
                 break;
 
             case "KILL":
@@ -231,7 +269,7 @@ window.addEventListener("load", () => {
     mpClient.connect();
 
     // ------------------------------------------------------------
-    // 6. HELPER FUNCTIONS
+    // 7. HELPER FUNCTIONS
     // ------------------------------------------------------------
     function freshStartMatch(msg) {
         if (!game.playerController) {
@@ -273,8 +311,14 @@ window.addEventListener("load", () => {
                 ringSystem = new RingSystem(game.scene, terrain, { seed: seed });
                 ringSystem.currentIndex = 0;
                 ringSystem._setActiveRing(0);
+                
+                // ✅ SOUND FIX: Play sound immediately on client claim
                 ringSystem.onRingClaim = (idx) => {
                     if (performance.now() > ringClaimBlockedUntil && mpClient.isConnected()) {
+                        // 1. Play Sound Locally (Instant Feedback)
+                        if (procAudio) procAudio.ring(); 
+
+                        // 2. Tell Server
                         mpClient.claimRing(idx);
                     }
                 };
@@ -322,7 +366,7 @@ window.addEventListener("load", () => {
     }
 
     // ------------------------------------------------------------
-    // 7. GAME LOOP
+    // 8. GAME LOOP
     // ------------------------------------------------------------
     game.animate = function () {
         requestAnimationFrame(game.animate);
@@ -345,20 +389,13 @@ window.addEventListener("load", () => {
                 game.playerController.update(dt);
                 checkTerrainCollision();
 
-                // ✅ SEPARATE FIRE & SOUND LOGIC
                 if (game.inputManager.getAction("fire")) {
-                    
-                    // 1. Bullet Fire (Fast - 60ms delay)
-                    // Ye tezi se goli chalayega jaisa aap chahte hain
                     if (now - lastFireTime > FIRE_DELAY) {
                         if (mpClient.isInRoom) {
                             mpClient.fire(game.playerController.mesh.position, game.playerController.mesh.quaternion);
                         }
                         lastFireTime = now;
                     }
-
-                    // 2. Sound (Slow - 150ms delay)
-                    // Ye sound ko rok kar rakhega taaki "Double Sound" na aaye
                     if (now - lastSoundTime > SOUND_DELAY) {
                         if (sfx) sfx.playShoot();
                         lastSoundTime = now;
@@ -416,11 +453,12 @@ window.addEventListener("load", () => {
                 game.minimap.update(game.playerController.mesh, enemies, ringSystem?.rings || [], ringSystem?.currentIndex);
             }
 
+            // ✅ UI UPDATE (Ensures Score is visible)
             if (game.uiManager && game.playerController) {
                 game.uiManager.update(
                     game.playerController.speed || 0,
                     game.playerController.health,
-                    game.playerController.score || 0, 
+                    game.playerController.score || 0, // Should be synced now
                     game.playerController.boostEnergy || 100
                 );
             }
