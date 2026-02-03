@@ -3,12 +3,15 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-    console.log("🌐 Multiplayer Mode Initializing... (Controls & Double-Fire Fix v28)");
+    console.log("🌐 Multiplayer Mode Initializing... (Final Fix v29)");
 
-    // 1. Audio Systems
+    // ------------------------------------------------------------
+    // 1. INITIALIZE AUDIO & SYSTEMS
+    // ------------------------------------------------------------
     const procAudio = (typeof ProceduralAudio !== "undefined") ? new ProceduralAudio() : null;
     const sfx = (typeof SFXManager !== "undefined") ? new SFXManager({ masterVolume: 0.4, enableEngineHum: false }) : null;
     
+    // Unlock Audio on first interaction
     const unlockAudio = () => {
         if(sfx) sfx.init();
         if(procAudio) procAudio.unlock();
@@ -18,43 +21,39 @@ window.addEventListener("load", () => {
     document.addEventListener('click', unlockAudio);
     document.addEventListener('touchstart', unlockAudio);
 
-    // 2. Game Engine
     const game = new GameManager();
     game.init(); 
     game.isPaused = true;
     game.isRunning = true;
-    window.game = game; // Debugging
+    window.game = game;
 
     if (!game.uiManager && typeof UIManager !== "undefined") {
         game.uiManager = new UIManager();
     }
 
     // ------------------------------------------------------------
-    // 3. MOBILE CONTROLS (MANUAL BINDING FIX)
+    // 2. MOBILE CONTROLS (Manual Binding)
     // ------------------------------------------------------------
     if (typeof MobileControls !== "undefined") {
         console.log("📱 Initializing Mobile Controls...");
         game.mobileControls = new MobileControls(game.inputManager);
         
-        // Manual binding ensures touches register correctly
         setTimeout(() => {
             const btnFire = document.getElementById("btn-fire");
             const btnBoost = document.getElementById("btn-boost");
 
-            // Helper to prevent default browser behavior (zoom/scroll)
+            // Prevent Zoom/Scroll behavior
             const preventDefaults = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
             };
 
             if (btnFire) {
-                // Touch Start -> Fire ON
                 btnFire.addEventListener("touchstart", (e) => { 
                     preventDefaults(e);
                     game.inputManager.keys[' '] = true; 
                 }, { passive: false });
 
-                // Touch End -> Fire OFF
                 btnFire.addEventListener("touchend", (e) => { 
                     preventDefaults(e);
                     game.inputManager.keys[' '] = false; 
@@ -62,13 +61,11 @@ window.addEventListener("load", () => {
             }
 
             if (btnBoost) {
-                // Touch Start -> Boost ON
                 btnBoost.addEventListener("touchstart", (e) => { 
                     preventDefaults(e);
                     game.inputManager.keys['Shift'] = true; 
                 }, { passive: false });
 
-                // Touch End -> Boost OFF
                 btnBoost.addEventListener("touchend", (e) => { 
                     preventDefaults(e);
                     game.inputManager.keys['Shift'] = false; 
@@ -82,7 +79,9 @@ window.addEventListener("load", () => {
         debug: false
     });
 
-    // 4. Client
+    // ------------------------------------------------------------
+    // 3. NETWORK CLIENT
+    // ------------------------------------------------------------
     const mpClient = new MPClient({
         mpState: mpState,
         playerName: localStorage.getItem("sky_pilot_name") || "Pilot",
@@ -94,12 +93,21 @@ window.addEventListener("load", () => {
         ? new MPUIManager(mpClient, procAudio) 
         : null;
 
-    // 5. Game Logic Vars
+    // ------------------------------------------------------------
+    // 4. GAMEPLAY VARIABLES
+    // ------------------------------------------------------------
     let gameStartedOnce = false;
     let ringClaimBlockedUntil = 0;
     let ringSystem = null;
-    let lastFireTime = 0; // ✅ Fix for Double Fire
-    const FIRE_RATE = 150; // ms between shots
+
+    // ✅ NEW: Separate Timers for Fire and Sound
+    let lastFireTime = 0; 
+    let lastSoundTime = 0;
+    
+    // Setting: Fire fast (60ms), but Sound slow (150ms)
+    // Isse 2-3 goli niklegi par awaaz ek baar aayegi.
+    const FIRE_DELAY = 60;   
+    const SOUND_DELAY = 150; 
 
     if (typeof MinimapSystem !== "undefined" && !game.minimap) {
         game.minimap = new MinimapSystem(game);
@@ -128,7 +136,7 @@ window.addEventListener("load", () => {
     });
 
     // ------------------------------------------------------------
-    // 6. EVENT HANDLING
+    // 5. EVENT HANDLING
     // ------------------------------------------------------------
 
     mpClient.onConnected = () => {
@@ -160,20 +168,16 @@ window.addEventListener("load", () => {
         if (mpUI) mpUI.onGameStart();
     };
 
-    // ✅ SCORE & STATS SYNC FIX
+    // Stats Sync
     mpClient.onState = (snapshot) => {
         if (!game.playerController) return;
         const myId = mpClient.socket?.id;
         
-        // Find local player in server data
         const meServer = snapshot.players.find(p => p.id === myId);
-        
         if (meServer) {
-            // Force update local stats from server
             game.playerController.score = meServer.score || 0;
             game.playerController.kills = meServer.kills || 0;
             
-            // Sync Rings
             if (ringSystem && typeof meServer.rings === "number") {
                 if (ringSystem.currentIndex !== meServer.rings) {
                     ringSystem._setActiveRing(meServer.rings);
@@ -188,7 +192,6 @@ window.addEventListener("load", () => {
 
         switch (evt.type) {
             case "GAME_OVER":
-                console.log("🏁 GAME OVER TRIGGERED");
                 game.isPaused = true; 
                 if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
                 if (mpUI) mpUI.showGameOver(evt.msg);
@@ -212,10 +215,7 @@ window.addEventListener("load", () => {
                 
                 if (targetId === myId && game.playerController && !game.playerController.isRespawning) {
                     game.playerController.health -= damage;
-                    
-                    if (game.cameraSystem && game.cameraSystem.addShake) {
-                        game.cameraSystem.addShake(0.5);
-                    }
+                    if (game.cameraSystem?.addShake) game.cameraSystem.addShake(0.5);
                     if (game.uiManager) {
                         game.uiManager.update(game.playerController.speed, game.playerController.health, game.playerController.score, 100);
                     }
@@ -231,21 +231,18 @@ window.addEventListener("load", () => {
     mpClient.connect();
 
     // ------------------------------------------------------------
-    // 7. HELPER FUNCTIONS
+    // 6. HELPER FUNCTIONS
     // ------------------------------------------------------------
     function freshStartMatch(msg) {
         if (!game.playerController) {
             game.playerController = new PlayerController(game.scene, game.inputManager, game.camera);
             let terrain = game.map?.terrainMesh || game.scene.getObjectByName("Terrain");
             if (terrain) game.playerController.setTerrainMesh(terrain);
-            
             game.cameraSystem = new CameraSystem(game.camera);
             game.cameraSystem.setTarget(game.playerController);
         }
 
-        // Re-attach weapon system
         weaponSystem.player = game.playerController;
-
         const pc = game.playerController;
         pc.health = 100;
         pc.score = 0;
@@ -325,7 +322,7 @@ window.addEventListener("load", () => {
     }
 
     // ------------------------------------------------------------
-    // 8. GAME LOOP (The Heartbeat)
+    // 7. GAME LOOP
     // ------------------------------------------------------------
     game.animate = function () {
         requestAnimationFrame(game.animate);
@@ -348,21 +345,26 @@ window.addEventListener("load", () => {
                 game.playerController.update(dt);
                 checkTerrainCollision();
 
-                // ✅ FIRE SOUND & LOGIC FIX (Debounce)
+                // ✅ SEPARATE FIRE & SOUND LOGIC
                 if (game.inputManager.getAction("fire")) {
-                    if (now - lastFireTime > FIRE_RATE) {
-                        lastFireTime = now;
-                        
-                        // 1. Send to Network
+                    
+                    // 1. Bullet Fire (Fast - 60ms delay)
+                    // Ye tezi se goli chalayega jaisa aap chahte hain
+                    if (now - lastFireTime > FIRE_DELAY) {
                         if (mpClient.isInRoom) {
                             mpClient.fire(game.playerController.mesh.position, game.playerController.mesh.quaternion);
                         }
-                        // 2. Play Local Sound ONCE
+                        lastFireTime = now;
+                    }
+
+                    // 2. Sound (Slow - 150ms delay)
+                    // Ye sound ko rok kar rakhega taaki "Double Sound" na aaye
+                    if (now - lastSoundTime > SOUND_DELAY) {
                         if (sfx) sfx.playShoot();
+                        lastSoundTime = now;
                     }
                 }
 
-                // Boost Sound
                 if (game.inputManager.getAction("boost")) {
                     if (procAudio) procAudio.startBoost();
                 } else {
@@ -374,7 +376,6 @@ window.addEventListener("load", () => {
                 }
             }
 
-            // Death Logic
             if (game.playerController && game.playerController.health <= 0 && !game.playerController.isRespawning) {
                 game.playerController.health = 0;
                 game.playerController.isRespawning = true;
@@ -383,7 +384,6 @@ window.addEventListener("load", () => {
                 if (mpUI) mpUI.showRespawn(4);
             }
 
-            // Respawn Logic
             if (game.playerController?.isRespawning) {
                 game.playerController.respawnTimer -= dt;
                 if (mpUI) mpUI.showRespawn(Math.ceil(game.playerController.respawnTimer));
@@ -416,7 +416,6 @@ window.addEventListener("load", () => {
                 game.minimap.update(game.playerController.mesh, enemies, ringSystem?.rings || [], ringSystem?.currentIndex);
             }
 
-            // UI Update (Synced Score)
             if (game.uiManager && game.playerController) {
                 game.uiManager.update(
                     game.playerController.speed || 0,
