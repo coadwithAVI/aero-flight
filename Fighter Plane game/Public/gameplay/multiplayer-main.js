@@ -3,7 +3,7 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-  console.log("🌐 Multiplayer Mode Booting... (Final v12 - Respawn + Terrain Fix)");
+  console.log("🌐 Multiplayer Mode Booting... (Final v14 - Hit/Health Fix)");
 
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const safeUI = () => window.mpUIBridge || null;
@@ -25,7 +25,7 @@ window.addEventListener("load", () => {
     game.procAudio = new ProceduralAudio();
   }
 
-  // ✅ MOBILE CONTROLS
+  // Mobile Controls
   if (typeof MobileControls !== "undefined") {
     game.mobileControls = new MobileControls(game.inputManager);
   }
@@ -84,11 +84,11 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
-    // ✅ FIXED: Event Handling (Hits & Score)
+    // ✅ FIXED: HIT EVENT & HEALTH LOGIC
     onEvent: (evt) => {
       if (!evt) return;
 
-      // 1. SCORE / RINGS Update
+      // 1. SCORE Update
       if (evt.type === "SCORE" && evt.msg) {
         if (mpClient.socket && evt.msg.id === mpClient.socket.id) {
           if (ringSystem && typeof evt.msg.rings === "number") {
@@ -100,34 +100,45 @@ window.addEventListener("load", () => {
 
       // 2. HIT / DAMAGE Update
       if (evt.type === "HIT" || evt.type === "DAMAGE") {
-        const myId = mpClient.socket?.id;
-
-        // ✅ Robust Data Extraction
+        // Data Extraction
         const payload = evt.msg || evt; 
         const targetId = payload.targetId || payload.id;
         const damage = payload.damage || 10;
 
-        // Agar mujhe goli lagi hai
-        if (targetId && myId && targetId === myId) {
-            
-            // Agar pehle se mar chuke hain toh aur damage nahi
+        // ✅ IMPORTANT: ID Check (Socket ID OR Local State ID)
+        // Kabhi server internal ID use karta hai, kabhi socket ID
+        const socketId = mpClient.socket?.id;
+        const localId = mpState.localId;
+        
+        const isMe = (targetId && (targetId === socketId || targetId === localId));
+
+        if (isMe) {
+            // Respawn ke time invincible
             if (game.playerController && game.playerController.isRespawning) return;
 
-            console.log(`⚠️ DAMAGE RECEIVED: -${damage} HP`);
-            
             if (game.playerController) {
+                const oldHP = game.playerController.health;
+                
+                // --- APPLY DAMAGE ---
                 game.playerController.health -= damage;
                 
-                // UI update immediately
+                const newHP = game.playerController.health;
+                console.log(`⚠️ DAMAGE! HP: ${oldHP} -> ${newHP} (Dmg: ${damage})`);
+
+                // --- FORCE UI UPDATE ---
+                // Ye ensure karega ki UI update ho chahe kuch bhi ho
                 if (game.uiManager) {
                     game.uiManager.update(
                         game.playerController.speed || 0,
-                        Math.max(0, game.playerController.health),
+                        Math.max(0, newHP),
                         game.playerController.score || 0,
                         game.playerController.boostEnergy || 100
                     );
                 }
             }
+        } else {
+             // Optional: Debug agar ID match nahi hui
+             // console.log(`ℹ️ Hit received for ${targetId} (Not me)`);
         }
       }
     },
@@ -144,7 +155,7 @@ window.addEventListener("load", () => {
   mpClient.connect();
 
   // ----------------------------------------------------------
-  // 3) Systems (Bullets, Weapons, HITS)
+  // 3) Systems
   // ----------------------------------------------------------
   const bulletSystem = new BulletSystem(game.scene);
 
@@ -162,10 +173,9 @@ window.addEventListener("load", () => {
     }
   );
 
-  // ✅ HIT DETECTION (Client side checks if I hit someone)
-  // Radius increased to 14.0 for better registration
+  // ✅ HIT DETECTION (Client side)
   const hitDetection = new MPHitDetection(mpClient, bulletSystem, mpState, {
-      hitRadius: 14.0, 
+      hitRadius: 18.0, 
       damage: 15
   });
 
@@ -210,7 +220,7 @@ window.addEventListener("load", () => {
   }
 
   // ----------------------------------------------------------
-  // 5) Helpers: Spawn & Collision
+  // 5) Helpers
   // ----------------------------------------------------------
   function ensureSpawnLocalPlayer() {
     if (typeof PlayerController !== "undefined" && !game.playerController) {
@@ -238,8 +248,6 @@ window.addEventListener("load", () => {
 
     bulletSystem.clearAll();
     resetRingSystem(msg?.seed);
-    
-    // UI Reset
     safeUI()?.hideRespawn?.();
   }
 
@@ -247,20 +255,19 @@ window.addEventListener("load", () => {
     if (game.uiManager) game.uiManager.hidePause?.();
   }
 
-  // ✅ RAYCASTER TERRAIN COLLISION (Accurate)
+  // ✅ RAYCASTER TERRAIN COLLISION
   const _terrainRaycaster = new THREE.Raycaster();
   const _downDir = new THREE.Vector3(0, -1, 0);
 
   function checkTerrainCollision() {
       if (!game.playerController || !game.playerController.mesh) return;
-      if (game.playerController.isRespawning) return; // Marne ke baad collision ignore
+      if (game.playerController.isRespawning) return; 
 
       let terrain = game.map?.terrainMesh || game.scene.getObjectByName("Terrain");
       if (!terrain) return;
 
       const p = game.playerController.mesh.position;
       
-      // Raycast from high up
       const rayOrigin = new THREE.Vector3(p.x, 2000, p.z);
       _terrainRaycaster.set(rayOrigin, _downDir);
       
@@ -269,27 +276,33 @@ window.addEventListener("load", () => {
       if (hits.length > 0) {
           const groundH = hits[0].point.y;
           
-          // Collision Threshold
           if (p.y < groundH + 3.5) {
-              
               if (game.playerController.health > 0) {
-                  game.playerController.health -= 1.5; // Damage per frame on drag
+                  const dmg = 1.5;
+                  game.playerController.health -= dmg; 
                   
                   // Force bounce UP
                   p.y = groundH + 5.0; 
-                  
-                  // Slow down
                   if (game.playerController.speed) game.playerController.speed *= 0.85;
                   
-                  // Optional Camera Shake
                   if(game.cameraSystem?.addShake) game.cameraSystem.addShake(0.5);
+
+                  // Update UI on terrain hit
+                  if (game.uiManager) {
+                    game.uiManager.update(
+                        game.playerController.speed || 0,
+                        Math.max(0, game.playerController.health),
+                        game.playerController.score || 0,
+                        game.playerController.boostEnergy || 100
+                    );
+                  }
               }
           }
       }
   }
 
   // ----------------------------------------------------------
-  // 6) GAME LOOP (Animation)
+  // 6) GAME LOOP
   // ----------------------------------------------------------
   game.animate = function () {
     if (!game.isRunning) return;
@@ -304,38 +317,38 @@ window.addEventListener("load", () => {
 
     const dt = clamp(game.clock.getDelta(), 0.0, 0.05);
 
-    // 1. Inputs & Player Logic (Only if alive)
+    // 1. Inputs
     if (!game.playerController?.isRespawning) {
         game.inputManager?.update?.(dt);
         game.playerController?.update?.(dt);
-        checkTerrainCollision(); // ✅ Terrain Check
+        checkTerrainCollision(); 
     }
 
-    // 2. DEATH MONITOR (Respawn Logic Start)
+    // 2. DEATH MONITOR
     if (game.playerController && game.playerController.health <= 0) {
         if (!game.playerController.isRespawning) {
             game.playerController.health = 0;
             game.playerController.isRespawning = true;
-            game.playerController.respawnTimer = 3.9; // ~4 sec total (buffer)
+            game.playerController.respawnTimer = 3.9;
 
             console.log("💀 PILOT DOWN. Respawn Sequence...");
 
-            // Hide Player
             if (game.playerController.mesh) game.playerController.mesh.visible = false;
             
-            // Stop Physics
             if (game.playerController.rb) {
                 game.playerController.rb.velocity.set(0,0,0);
                 game.playerController.rb.angularVelocity.set(0,0,0);
             }
+
+            // Force UI update to show 0 HP
+            if (game.uiManager) game.uiManager.update(0, 0, game.playerController.score||0, 100);
         }
     }
 
-    // 3. RESPAWN PHASE (Timer Loop)
+    // 3. RESPAWN PHASE
     if (game.playerController?.isRespawning) {
         game.playerController.respawnTimer -= dt;
         
-        // Update UI (Show 3..2..1)
         const ui = safeUI();
         if (ui && ui.showRespawn) {
             let timeLeft = Math.ceil(game.playerController.respawnTimer);
@@ -343,13 +356,10 @@ window.addEventListener("load", () => {
             ui.showRespawn(timeLeft);
         }
 
-        // Check if time over
         if (game.playerController.respawnTimer <= 0) {
-             // Reset
              game.playerController.isRespawning = false;
              game.playerController.health = 100;
              
-             // Reset Pos
              if (game.playerController.respawnInstant) {
                  game.playerController.respawnInstant();
              } else {
@@ -357,19 +367,14 @@ window.addEventListener("load", () => {
                  game.playerController.mesh.rotation.set(0, 0, 0);
              }
              
-             // Visible
              game.playerController.mesh.visible = true;
              
-             // Hide UI
              if (ui && ui.hideRespawn) ui.hideRespawn();
-             
-             // Reset HP Bar
              if (game.uiManager) game.uiManager.update(0, 100, game.playerController.score || 0, 100);
              
              console.log("✅ RESPAWNED.");
         }
 
-        // Render scene but skip rest of update
         mpState.update(dt);
         game.renderer.render(game.scene, game.camera);
         return; 
@@ -382,7 +387,7 @@ window.addEventListener("load", () => {
         }
     }
 
-    // 5. Weapons & Bullets
+    // 5. Weapons
     weaponSystem.update(dt);
     bulletSystem.update(dt);
     
@@ -405,7 +410,7 @@ window.addEventListener("load", () => {
         game.minimap.update(game.playerController.mesh, enemies, ringsRaw, ringSystem?.currentIndex);
     }
 
-    // 9. UI UPDATE
+    // 9. UI UPDATE (Routine)
     if (game.uiManager && game.playerController) {
         game.uiManager.update(
             game.playerController.speed || 0,
