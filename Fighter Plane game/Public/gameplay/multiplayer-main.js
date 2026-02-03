@@ -3,7 +3,7 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-    console.log("🌐 Multiplayer Mode Initializing... (Final Fix v22)");
+    console.log("🌐 Multiplayer Mode Initializing... (Mobile Fix v23)");
 
     // ------------------------------------------------------------
     // 1. INITIALIZE CORE SYSTEMS
@@ -20,6 +20,12 @@ window.addEventListener("load", () => {
 
     if (!game.uiManager && typeof UIManager !== "undefined") {
         game.uiManager = new UIManager();
+    }
+
+    // ✅ FIX 1: MOBILE CONTROLS RESTORED
+    if (typeof MobileControls !== "undefined") {
+        console.log("📱 Mobile Controls Detected & Attached");
+        game.mobileControls = new MobileControls(game.inputManager);
     }
 
     const mpState = new MPState(game.scene, {
@@ -82,32 +88,25 @@ window.addEventListener("load", () => {
         if (mpClient.socket?.id) mpState.setLocalId(mpClient.socket.id);
     };
 
-    // ✅ FIXED LOBBY UPDATE LOGIC
     mpClient.onLobbyUpdate = (msg) => {
-        // 1. If Game is Playing, DO NOT HIDE SCREEN
-        if (msg.status === "playing") {
-            return; 
-        }
+        if (msg.status === "playing") return; 
 
-        // 2. If Back to Lobby after game -> Reload
         if (msg.status === "lobby" && gameStartedOnce) {
             window.location.reload();
             return;
         }
 
-        // 3. Normal Lobby Mode
         if (mpUI) mpUI.updateLobby(msg);
         game.isPaused = true;
         if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
     };
 
     mpClient.onGameStart = (msg) => {
-        console.log("🎮 Game Started by Host");
+        console.log("🎮 Game Started");
         gameStartedOnce = true;
         game.isPaused = false;
         ringClaimBlockedUntil = performance.now() + 2000;
 
-        // Force Show Canvas
         if (game.renderer?.domElement) game.renderer.domElement.style.display = "block";
         
         freshStartMatch(msg);
@@ -122,7 +121,6 @@ window.addEventListener("load", () => {
             case "GAME_OVER":
                 console.log("🏁 GAME OVER");
                 game.isPaused = true; 
-                // Hide canvas on end
                 if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
                 if (mpUI) mpUI.showGameOver(evt.msg);
                 break;
@@ -149,7 +147,14 @@ window.addEventListener("load", () => {
                 if (targetId === myId && game.playerController) {
                     if (!game.playerController.isRespawning) {
                         game.playerController.health -= damage;
-                        if (game.cameraSystem?.addShake) game.cameraSystem.addShake(0.5);
+                        
+                        // ✅ FIX 2: SAFE CAMERA SHAKE
+                        if (game.cameraSystem && typeof game.cameraSystem.addShake === "function") {
+                            game.cameraSystem.addShake(0.5);
+                        } else if (game.cameraSystem && typeof game.cameraSystem.shake === "function") {
+                            game.cameraSystem.shake(0.5);
+                        }
+
                         if (game.uiManager) {
                             game.uiManager.update(
                                 game.playerController.speed || 0,
@@ -246,7 +251,14 @@ window.addEventListener("load", () => {
                     pc.health -= 2.0; 
                     p.y = groundH + 5.0; 
                     pc.speed *= 0.9;
-                    if (game.cameraSystem) game.cameraSystem.addShake(0.5);
+                    
+                    // ✅ FIX 2: SAFE CAMERA SHAKE
+                    if (game.cameraSystem && typeof game.cameraSystem.addShake === "function") {
+                        game.cameraSystem.addShake(0.5);
+                    } else if (game.cameraSystem && typeof game.cameraSystem.shake === "function") {
+                        game.cameraSystem.shake(0.5);
+                    }
+
                     if (game.uiManager) game.uiManager.update(pc.speed, pc.health, pc.score, 100);
                 }
             }
