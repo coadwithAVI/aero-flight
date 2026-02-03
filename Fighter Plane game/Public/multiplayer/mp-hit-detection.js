@@ -44,14 +44,14 @@ class MPHitDetection {
            const key = `${b.id}-${rp.id}`;
            const now = Date.now();
 
+           // Spam filter (200ms)
            if(this._lastHitAt.has(key) && (now - this._lastHitAt.get(key) < 200)) continue;
            this._lastHitAt.set(key, now);
 
-           console.log(`🎯 HIT CONFIRMED on ${rp.name || rp.id}`);
+           // LOG REMOVED: console.log(`🎯 HIT CONFIRMED...`);
 
            const currentRoom = this.mp.roomId;
            if (currentRoom) {
-               // payload data setup
                const hitData = {
                    roomId: currentRoom,
                    targetId: rp.id, 
@@ -60,13 +60,12 @@ class MPHitDetection {
                    bulletId: b.id
                };
 
-               // STRATEGY 1: Standard Event (Ye zyadatar servers pass-through karte hain)
+               // Send both event types for reliability
                this.mp.socket.emit("mp_event", {
                    type: "HIT",
                    ...hitData
                });
-
-               // STRATEGY 2: Dedicated Hit Event (Backup)
+               
                this.mp.socket.emit("mp_hit", hitData);
            }
 
