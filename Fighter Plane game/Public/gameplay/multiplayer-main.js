@@ -84,10 +84,20 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
-    // ✅ FIXED: ULTRA ROBUST HIT LISTENER (RECEIVER LOGIC)
+    // --------------------------------------------------------
+    // ✅ ADD THIS BLOCK (Fix for Victory/Defeat Screen)
+    // --------------------------------------------------------
+    onState: (snapshot) => {
+       // This checks if we met win conditions every time server sends data (20 times/sec)
+       if (window.mpVictory) {
+           window.mpVictory.tryRingWinFromSnapshot(snapshot);
+           window.mpVictory.tryLastPlayerWinFromSnapshot(snapshot);
+       }
+    },
+
+// ✅ FIXED & CLEANED: No Console Spam
     onEvent: (evt) => {
-      // 🕵️‍♂️ JASOOS LOG: Check karega ki server se koi bhi signal aaya kya
-      if (evt) console.log("📨 PACKET RECVD:", evt.type, evt);
+      // LOG REMOVED: console.log("📨 PACKET RECVD:", evt.type, evt);
 
       if (!evt) return;
 
@@ -107,33 +117,25 @@ window.addEventListener("load", () => {
       // 2. HIT / DAMAGE Update
       if (evt.type === "HIT" || evt.type === "DAMAGE") {
         
-        // Data Extraction (Flexible handling)
-        // Kabhi data 'msg' ke andar hota hai, kabhi direct
         const payload = evt.msg || evt; 
-        
-        // Target ID (Victim) dhoondo
         const targetId = payload.targetId || payload.id || payload.victimId;
         const damage = payload.damage || 10;
         
-        // Agar MAIN hi Target hu (String convert karke check karo)
+        // Agar MAIN hi Target hu
         if (targetId && myId && String(targetId) === String(myId)) {
             
-            console.log(`🩸 I WAS HIT! Damage: ${damage} | Attacker: ${payload.attackerId || 'Unknown'}`);
+            // LOG OPTIONAL: Rakha hai taaki hit pata chale, agar ye bhi hatana hai to hata dena
+            // console.log(`🩸 I WAS HIT! Damage: ${damage}`);
 
-            // Agar respawn ho raha hai toh damage mat lo
             if (game.playerController && game.playerController.isRespawning) {
-                console.log("🛡️ Shield Active (Respawning)");
                 return;
             }
 
             if (game.playerController) {
-                // --- APPLY DAMAGE ---
                 game.playerController.health -= damage;
                 
-                // --- VISUAL SHAKE (Proof ki hit laga) ---
                 if (game.cameraSystem?.addShake) game.cameraSystem.addShake(0.8);
                 
-                // --- FORCE UI UPDATE ---
                 if (game.uiManager) {
                     game.uiManager.update(
                         game.playerController.speed || 0,
@@ -142,8 +144,6 @@ window.addEventListener("load", () => {
                         game.playerController.boostEnergy || 100
                     );
                 }
-                
-                console.log(`⚠️ NEW HP: ${game.playerController.health}`);
             }
         }
       }
