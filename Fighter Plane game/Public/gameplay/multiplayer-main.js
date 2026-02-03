@@ -3,7 +3,7 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-    console.log("🌐 Multiplayer Mode Initializing... (Stats & Audio Fix v26)");
+    console.log("🌐 Multiplayer Mode Initializing... (Final Complete v27)");
 
     // ------------------------------------------------------------
     // 1. INITIALIZE AUDIO & SYSTEMS
@@ -11,11 +11,15 @@ window.addEventListener("load", () => {
     const procAudio = (typeof ProceduralAudio !== "undefined") ? new ProceduralAudio() : null;
     const sfx = (typeof SFXManager !== "undefined") ? new SFXManager({ masterVolume: 0.4, enableEngineHum: false }) : null;
     
-    // Unlock Audio on first interaction
-    document.addEventListener('click', () => {
+    // Unlock Audio on first interaction (Click/Touch)
+    const unlockAudio = () => {
         if(sfx) sfx.init();
         if(procAudio) procAudio.unlock();
-    }, { once: true });
+        document.removeEventListener('click', unlockAudio);
+        document.removeEventListener('touchstart', unlockAudio);
+    };
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
 
     const game = new GameManager();
     game.init(); 
@@ -28,50 +32,36 @@ window.addEventListener("load", () => {
     }
 
     // ------------------------------------------------------------
-    // 2. MOBILE CONTROLS INJECTOR (GUARANTEED FIX)
+    // 2. MOBILE CONTROLS BINDING
     // ------------------------------------------------------------
     if (typeof MobileControls !== "undefined") {
-        console.log("📱 Injecting Mobile Controls...");
+        console.log("📱 Mobile Controls Attaching...");
         game.mobileControls = new MobileControls(game.inputManager);
         
-        // Force inject HTML if missing or hidden
-        setTimeout(() => {
-            let mc = document.getElementById("mobile-controls");
-            if (!mc) {
-                // Creates controls dynamically if HTML is missing
-                const div = document.createElement("div");
-                div.id = "mobile-controls";
-                div.innerHTML = `
-                    <div id="joystick-zone" style="position:absolute; bottom:50px; left:50px; width:120px; height:120px; background:rgba(255,255,255,0.1); border-radius:50%; pointer-events:auto;"></div>
-                    <button id="btn-fire" class="mobile-btn" style="position:absolute; bottom:60px; right:40px; width:80px; height:80px; background:rgba(255,0,0,0.5); border:2px solid red; border-radius:50%; color:white; font-weight:bold; pointer-events:auto;">FIRE</button>
-                    <button id="btn-boost" class="mobile-btn" style="position:absolute; bottom:160px; right:40px; width:60px; height:60px; background:rgba(255,255,0,0.5); border:2px solid yellow; border-radius:50%; color:black; font-weight:bold; pointer-events:auto;">BST</button>
-                `;
-                document.body.appendChild(div);
-                mc = div;
-            }
-            mc.style.zIndex = "2147483647"; // Max Z-Index
-            mc.style.position = "fixed";
-            mc.style.bottom = "0";
-            mc.style.left = "0";
-            mc.style.width = "100%";
-            mc.style.height = "100%";
-            mc.style.pointerEvents = "none"; // Let clicks pass through empty areas
+        // Ensure they are visible & Bind Events
+        const mc = document.getElementById("mobile-controls");
+        if(mc) {
+            mc.style.display = "block"; // Force show
             
-            // Re-bind events explicitly
+            // Manual Event Binding (Safety Backup)
             const btnFire = document.getElementById("btn-fire");
             const btnBoost = document.getElementById("btn-boost");
-            
-            if(btnFire) {
-                btnFire.style.pointerEvents = "auto";
-                btnFire.addEventListener("touchstart", (e) => { e.preventDefault(); game.inputManager.keys[' ']=true; });
-                btnFire.addEventListener("touchend", (e) => { e.preventDefault(); game.inputManager.keys[' ']=false; });
+
+            if (btnFire) {
+                btnFire.addEventListener("touchstart", (e) => { e.preventDefault(); game.inputManager.keys[' '] = true; });
+                btnFire.addEventListener("touchend", (e) => { e.preventDefault(); game.inputManager.keys[' '] = false; });
+                // Mouse events for PC testing
+                btnFire.addEventListener("mousedown", () => game.inputManager.keys[' '] = true);
+                btnFire.addEventListener("mouseup", () => game.inputManager.keys[' '] = false);
             }
-            if(btnBoost) {
-                btnBoost.style.pointerEvents = "auto";
-                btnBoost.addEventListener("touchstart", (e) => { e.preventDefault(); game.inputManager.keys['Shift']=true; });
-                btnBoost.addEventListener("touchend", (e) => { e.preventDefault(); game.inputManager.keys['Shift']=false; });
+            if (btnBoost) {
+                btnBoost.addEventListener("touchstart", (e) => { e.preventDefault(); game.inputManager.keys['Shift'] = true; });
+                btnBoost.addEventListener("touchend", (e) => { e.preventDefault(); game.inputManager.keys['Shift'] = false; });
+                // Mouse events for PC testing
+                btnBoost.addEventListener("mousedown", () => game.inputManager.keys['Shift'] = true);
+                btnBoost.addEventListener("mouseup", () => game.inputManager.keys['Shift'] = false);
             }
-        }, 500);
+        }
     }
 
     const mpState = new MPState(game.scene, {
@@ -99,7 +89,6 @@ window.addEventListener("load", () => {
     let gameStartedOnce = false;
     let ringClaimBlockedUntil = 0;
     let ringSystem = null;
-    let lastBoostTime = 0;
 
     if (typeof MinimapSystem !== "undefined" && !game.minimap) {
         game.minimap = new MinimapSystem(game);
@@ -170,9 +159,8 @@ window.addEventListener("load", () => {
         
         if (meServer) {
             // Sync Server Stats to Local Player
-            // This ensures Score/Kills/Rings are accurate for Game Over
             game.playerController.score = meServer.score || 0;
-            game.playerController.kills = meServer.kills || 0; // Requires adding .kills to PlayerController if not present
+            game.playerController.kills = meServer.kills || 0; 
             
             // Also update Rings locally if needed
             if (ringSystem && typeof meServer.rings === "number") {
@@ -250,7 +238,7 @@ window.addEventListener("load", () => {
         const pc = game.playerController;
         pc.health = 100;
         pc.score = 0;
-        pc.kills = 0; // Ensure kills property exists
+        pc.kills = 0; 
         pc.isRespawning = false;
         pc.mesh.visible = true;
 
