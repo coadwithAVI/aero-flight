@@ -40,12 +40,6 @@
       z-index: 999;
       pointer-events: none;
     }
-    
-    /* ✅ FIX: Mobile Controls ko sabse upar dikhane ke liye */
-    #mobile-controls, .mobile-btn {
-      z-index: 10001 !important; 
-      pointer-events: auto !important;
-    }
 
     /* ✅ ADVANCED BACKGROUND */
     .mpLobbyBG {
@@ -400,6 +394,7 @@
 
   <script src="./gameplay/input-manager.js"></script>
   <script src="./gameplay/mobile-controls.js"></script>
+  
   <script src="./gameplay/player-controller.js"></script>
   <script src="./gameplay/bullet-system.js"></script>
   <script src="./gameplay/weapon-system.js"></script>
@@ -513,6 +508,20 @@
 
       <div class="status" id="endStatus" style="text-align: center;"></div>
     </div>
+  </div>
+
+  <div id="mobile-controls" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 100%; z-index: 20000; pointer-events: none; display: block;">
+      
+      <div id="joystick-zone" style="position: absolute; bottom: 40px; left: 40px; width: 140px; height: 140px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 50%; pointer-events: auto;">
+      </div>
+
+      <button id="btn-fire" class="mobile-btn" style="position: absolute; bottom: 50px; right: 40px; width: 90px; height: 90px; background: rgba(255, 68, 68, 0.6); border: 3px solid #ff4444; border-radius: 50%; color: white; font-weight: bold; font-family: sans-serif; font-size: 1.2rem; pointer-events: auto;">
+          FIRE
+      </button>
+
+      <button id="btn-boost" class="mobile-btn" style="position: absolute; bottom: 160px; right: 50px; width: 70px; height: 70px; background: rgba(255, 221, 51, 0.6); border: 3px solid #ffdd33; border-radius: 50%; color: black; font-weight: bold; font-family: sans-serif; font-size: 0.9rem; pointer-events: auto;">
+          BOOST
+      </button>
   </div>
 
   <script src="./ui/mp-ui-manager.js"></script>
