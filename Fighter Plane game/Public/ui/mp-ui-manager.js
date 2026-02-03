@@ -14,7 +14,6 @@ class MPUIManager {
         }
         window.__mpUIManagerInstance = this;
 
-        // state
         this.uiRoot = null;
         this.lobbyPanel = null;
         this.statusText = null;
@@ -23,20 +22,17 @@ class MPUIManager {
         this.onStartClicked = null;
 
         this.gameRunning = false;
-        this.readyCheckInterval = null;
 
         this.injectStyles();
         this.createDOM();
         this.bindEvents();
         this.showLobby();
 
-        // start checking readiness
-        this.startReadyCheck();
+        // ✅ start button should work always
+        this.setStatus("Press START to begin");
+        if (this.startBtn) this.startBtn.disabled = false;
     }
 
-    // ----------------------------------------------------------
-    // CSS
-    // ----------------------------------------------------------
     injectStyles() {
         if (document.getElementById("mpUIStyles")) return;
 
@@ -128,18 +124,10 @@ class MPUIManager {
                 border: 1px solid rgba(255,255,255,0.15);
                 color: #fff;
             }
-
-            .mp-btn[disabled]{
-                opacity:0.4;
-                cursor:not-allowed;
-            }
         `;
         document.head.appendChild(style);
     }
 
-    // ----------------------------------------------------------
-    // DOM
-    // ----------------------------------------------------------
     createDOM() {
         if (document.getElementById("mp-ui-root")) {
             this.uiRoot = document.getElementById("mp-ui-root");
@@ -155,13 +143,12 @@ class MPUIManager {
         this.lobbyPanel.innerHTML = `
             <div class="mp-title">Multiplayer Lobby</div>
             <div class="mp-sub">
-                Server se connect hone ke baad START dabao.
-                Mobile pe joystick + buttons automatic enable honge.
+                START dabao aur game begin karo.
             </div>
-            <div class="mp-status" id="mpStatusText">Connecting...</div>
+            <div class="mp-status" id="mpStatusText">Press START to begin</div>
             <div class="mp-row">
                 <button class="mp-btn secondary" id="mpLeaveBtn">Leave</button>
-                <button class="mp-btn primary" id="mpStartBtn" disabled>Start</button>
+                <button class="mp-btn primary" id="mpStartBtn">Start</button>
             </div>
         `;
 
@@ -173,27 +160,19 @@ class MPUIManager {
         this.leaveBtn = this.lobbyPanel.querySelector("#mpLeaveBtn");
     }
 
-    // ----------------------------------------------------------
-    // EVENTS
-    // ----------------------------------------------------------
     bindEvents() {
         if (this.startBtn) {
             this.startBtn.addEventListener("click", () => {
                 if (this.gameRunning) return;
 
-                // must be ready
-                if (!this.isClientReady()) {
-                    this.setStatus("Client not ready yet...");
-                    return;
-                }
-
                 this.setStatus("Starting...");
                 this.hideLobby();
                 this.gameRunning = true;
 
-                // unlock audio
                 try {
-                    if (this.procAudio && typeof this.procAudio.unlock === "function") this.procAudio.unlock();
+                    if (this.procAudio && typeof this.procAudio.unlock === "function") {
+                        this.procAudio.unlock();
+                    }
                 } catch (e) {}
 
                 if (typeof this.onStartClicked === "function") {
@@ -204,53 +183,12 @@ class MPUIManager {
 
         if (this.leaveBtn) {
             this.leaveBtn.addEventListener("click", () => {
-                // safest fallback
+                // if you want: go back to menu
                 window.location.href = "index.html";
             });
         }
     }
 
-    // ----------------------------------------------------------
-    // READY CHECK
-    // ----------------------------------------------------------
-    startReadyCheck() {
-        if (this.readyCheckInterval) clearInterval(this.readyCheckInterval);
-
-        this.readyCheckInterval = setInterval(() => {
-            // if game already started, stop checks
-            if (this.gameRunning) {
-                clearInterval(this.readyCheckInterval);
-                this.readyCheckInterval = null;
-                return;
-            }
-
-            const ready = this.isClientReady();
-
-            if (ready) {
-                this.setStatus("✅ Connected. Press START.");
-                if (this.startBtn) this.startBtn.disabled = false;
-            } else {
-                this.setStatus("⏳ Waiting for server/client ready...");
-                if (this.startBtn) this.startBtn.disabled = true;
-            }
-        }, 300);
-    }
-
-    isClientReady() {
-        // ✅ robust ready check (prevents "mp-client is not ready" errors)
-        if (!this.mpClient) return false;
-        if (typeof this.mpClient.isReady === "function") return !!this.mpClient.isReady();
-        if (this.mpClient.ready === true) return true;
-
-        // fallback checks
-        if (this.mpClient.socket && this.mpClient.socket.connected) return true;
-
-        return false;
-    }
-
-    // ----------------------------------------------------------
-    // UI CONTROL
-    // ----------------------------------------------------------
     setStatus(text) {
         if (this.statusText) this.statusText.textContent = text;
     }
@@ -265,18 +203,15 @@ class MPUIManager {
 
     showConnected() {
         this.setStatus("✅ Connected. Press START.");
-        if (this.startBtn) this.startBtn.disabled = false;
     }
 
     showDisconnected() {
-        this.setStatus("❌ Disconnected. Reconnecting...");
-        if (this.startBtn) this.startBtn.disabled = true;
+        this.setStatus("❌ Disconnected.");
         this.showLobby();
     }
 
     showError(msg) {
         this.setStatus("❌ Error: " + msg);
-        if (this.startBtn) this.startBtn.disabled = true;
         this.showLobby();
     }
 }
