@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,maximum-scale=1.0"/>
   <title>Sky Pilot - Multiplayer Uplink</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -29,6 +29,9 @@
       font-family: var(--font-main);
       color: white;
       user-select: none;
+      -webkit-user-select: none;
+      /* ✅ CRITICAL: Disables browser gestures */
+      touch-action: none; 
     }
     
     canvas { display: block; }
@@ -41,7 +44,7 @@
       pointer-events: none;
     }
 
-    /* ✅ ADVANCED BACKGROUND */
+    /* Background Effects */
     .mpLobbyBG {
       position: fixed;
       inset: 0;
@@ -83,19 +86,11 @@
       pointer-events: auto;
       background: var(--bg-glass);
       border: 1px solid var(--border-glass);
-      box-shadow: 
-        0 0 30px rgba(0, 243, 255, 0.1),
-        inset 0 0 20px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 0 30px rgba(0, 243, 255, 0.1), inset 0 0 20px rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(16px);
       padding: 2rem;
       border-radius: 4px;
-      clip-path: polygon(
-        0 0, 
-        100% 0, 
-        100% calc(100% - 20px), 
-        calc(100% - 20px) 100%, 
-        0 100%
-      );
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%);
     }
 
     .panel::after {
@@ -369,18 +364,61 @@
       .lobbyGrid { grid-template-columns: 1fr; }
       h1 { font-size: 1.8rem; }
     }
+
+    /* =========================================
+       ✅ MOBILE CONTROLS STYLES
+       ========================================= */
+    #mobile-controls {
+        /* High Z-Index to stay on top */
+        z-index: 20000 !important;
+        touch-action: none; 
+    }
+
+    #joystick-zone {
+        position: absolute; 
+        bottom: 50px; left: 40px;
+        width: 140px; height: 140px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 2px solid rgba(0, 243, 255, 0.3);
+        border-radius: 50%;
+        pointer-events: auto;
+    }
+
+    #joystick-knob {
+        position: absolute; 
+        top: 50%; left: 50%;
+        width: 60px; height: 60px;
+        background: rgba(0, 243, 255, 0.8);
+        border-radius: 50%;
+        transform: translate(-50%, -50%); 
+        box-shadow: 0 0 15px cyan;
+        pointer-events: none; /* Let clicks pass to zone */
+    }
+
+    .mobile-btn {
+        pointer-events: auto;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .mobile-btn:active {
+        transform: scale(0.92);
+        opacity: 0.8;
+    }
   </style>
 </head>
 
 <body>
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
 
   <script src="./core/game-config.js"></script>
   <script src="./config/config.world.js"></script>
   <script src="./config/config.physics.js"></script>
 
-  <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
   <script src="./engine/map.js"></script>
   <script src="./engine/camera-system.js"></script>
   <script src="./engine/models.js"></script>
@@ -393,17 +431,16 @@
   <script src="./audio/music-manager.js"></script>
 
   <script src="./gameplay/input-manager.js"></script>
-  <script src="./gameplay/mobile-controls.js"></script>
-  
-  <script src="./gameplay/player-controller.js"></script>
+  <script src="./gameplay/mobile-controls.js"></script> <script src="./gameplay/player-controller.js"></script>
   <script src="./gameplay/bullet-system.js"></script>
   <script src="./gameplay/weapon-system.js"></script>
   <script src="./gameplay/ring-system.js"></script>
 
   <script src="./multiplayer/mp-state.js"></script>
   <script src="./multiplayer/mp-client.js"></script>
-  <script src="./multiplayer/mp-hit-detection.js"></script> <script src="./core/game-manager.js"></script>
-
+  <script src="./multiplayer/mp-hit-detection.js"></script> 
+  <script src="./core/game-manager.js"></script>
+  
   <script src="./gameplay/multiplayer-main.js"></script>
 
   <div id="uiRoot">
@@ -436,7 +473,6 @@
           <label>Callsign (ID)</label>
           <input id="inpName" placeholder="MAVERICK" maxlength="12" />
         </div>
-
         <div class="input-group">
           <label>Access Code</label>
           <input id="inpCode" placeholder="A1B2" maxlength="4" style="text-transform: uppercase; letter-spacing: 2px;" />
@@ -449,7 +485,6 @@
         <button id="btnCreate" class="primary">Initialize New Squad</button>
         <button id="btnJoin" class="secondary">Join Squad</button>
       </div>
-      
       <div class="btnRow" style="margin-top: 0;">
         <button id="btnBack" class="danger">Abort Mission</button>
       </div>
@@ -470,14 +505,12 @@
             <button id="btnStart" class="primary">INITIATE LAUNCH</button>
             <button id="btnLeave" class="danger">LEAVE SQUAD</button>
           </div>
-          
           <div class="status" id="lobbyStatus" style="margin-top: 10px;"></div>
         </div>
 
         <div>
           <label>Active Pilots</label>
-          <div id="playerList" class="playerList">
-            </div>
+          <div id="playerList" class="playerList"></div>
         </div>
       </div>
     </div>
@@ -505,21 +538,21 @@
         <button id="btnReplay" class="primary">RE-ENGAGE</button>
         <button id="btnEndBack" class="danger">RETURN TO BASE</button>
       </div>
-
       <div class="status" id="endStatus" style="text-align: center;"></div>
     </div>
   </div>
 
-  <div id="mobile-controls" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 100%; z-index: 20000; pointer-events: none; display: block;">
+  <div id="mobile-controls" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: block;">
       
-      <div id="joystick-zone" style="position: absolute; bottom: 40px; left: 40px; width: 140px; height: 140px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 50%; pointer-events: auto;">
+      <div id="joystick-zone">
+          <div id="joystick-knob"></div>
       </div>
 
-      <button id="btn-fire" class="mobile-btn" style="position: absolute; bottom: 50px; right: 40px; width: 90px; height: 90px; background: rgba(255, 68, 68, 0.6); border: 3px solid #ff4444; border-radius: 50%; color: white; font-weight: bold; font-family: sans-serif; font-size: 1.2rem; pointer-events: auto;">
+      <button id="btn-fire" class="mobile-btn" style="position: absolute; bottom: 50px; right: 40px; width: 90px; height: 90px; background: rgba(255, 68, 68, 0.6); border: 3px solid #ff4444; border-radius: 50%; color: white; font-weight: bold; font-family: sans-serif; font-size: 1.2rem;">
           FIRE
       </button>
 
-      <button id="btn-boost" class="mobile-btn" style="position: absolute; bottom: 160px; right: 50px; width: 70px; height: 70px; background: rgba(255, 221, 51, 0.6); border: 3px solid #ffdd33; border-radius: 50%; color: black; font-weight: bold; font-family: sans-serif; font-size: 0.9rem; pointer-events: auto;">
+      <button id="btn-boost" class="mobile-btn" style="position: absolute; bottom: 160px; right: 50px; width: 70px; height: 70px; background: rgba(255, 221, 51, 0.6); border: 3px solid #ffdd33; border-radius: 50%; color: black; font-weight: bold; font-family: sans-serif; font-size: 0.9rem;">
           BOOST
       </button>
   </div>
