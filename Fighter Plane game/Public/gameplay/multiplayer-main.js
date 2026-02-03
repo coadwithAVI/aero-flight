@@ -3,7 +3,7 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-  console.log("🌐 Multiplayer Mode Booting... (Final v15 - Hit Sync Fix)");
+  console.log("🌐 Multiplayer Mode Booting... (Final v16 - Receiver Fixed)");
 
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const safeUI = () => window.mpUIBridge || null;
@@ -84,14 +84,14 @@ window.addEventListener("load", () => {
       showHUDOnly();
     },
 
-    // ✅ FIXED: ULTRA ROBUST HIT LISTENER
+    // ✅ FIXED: ULTRA ROBUST HIT LISTENER (RECEIVER LOGIC)
     onEvent: (evt) => {
-      if (!evt) return;
-      
-      // DEBUG: Har event ko log karo taaki pata chale victim ko kuch mil raha hai ya nahi
-      // console.log("📩 EVENT IN:", evt.type, evt);
+      // 🕵️‍♂️ JASOOS LOG: Check karega ki server se koi bhi signal aaya kya
+      if (evt) console.log("📨 PACKET RECVD:", evt.type, evt);
 
-      const socket = window.mpClient?.socket; // Window global se uthao safe side ke liye
+      if (!evt) return;
+
+      const socket = window.mpClient?.socket; 
       const myId = socket?.id;
 
       // 1. SCORE Update
@@ -107,20 +107,22 @@ window.addEventListener("load", () => {
       // 2. HIT / DAMAGE Update
       if (evt.type === "HIT" || evt.type === "DAMAGE") {
         
-        // Data Extraction (Har tarah ka structure check karo)
+        // Data Extraction (Flexible handling)
+        // Kabhi data 'msg' ke andar hota hai, kabhi direct
         const payload = evt.msg || evt; 
         
-        // Target ID dhoondo (kabhi 'targetId', kabhi 'id', kabhi 'victimId')
+        // Target ID (Victim) dhoondo
         const targetId = payload.targetId || payload.id || payload.victimId;
         const damage = payload.damage || 10;
         
-        // Agar main hi target hu
+        // Agar MAIN hi Target hu (String convert karke check karo)
         if (targetId && myId && String(targetId) === String(myId)) {
             
             console.log(`🩸 I WAS HIT! Damage: ${damage} | Attacker: ${payload.attackerId || 'Unknown'}`);
 
-            // Invincibility Check
+            // Agar respawn ho raha hai toh damage mat lo
             if (game.playerController && game.playerController.isRespawning) {
+                console.log("🛡️ Shield Active (Respawning)");
                 return;
             }
 
@@ -141,7 +143,6 @@ window.addEventListener("load", () => {
                     );
                 }
                 
-                // Debug log
                 console.log(`⚠️ NEW HP: ${game.playerController.health}`);
             }
         }
@@ -178,9 +179,10 @@ window.addEventListener("load", () => {
     }
   );
 
-  // ✅ HIT DETECTION (Client side)
+  // ✅ HIT DETECTION (Client side sender)
+  // Ensure we pass mpClient correctly
   const hitDetection = new MPHitDetection(mpClient, bulletSystem, mpState, {
-      hitRadius: 22.0, // Thoda aur easy banaya hit karna
+      hitRadius: 24.0, 
       damage: 15
   });
 
