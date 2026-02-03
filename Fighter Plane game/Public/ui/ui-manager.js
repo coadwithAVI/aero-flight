@@ -6,16 +6,43 @@ class UIManager {
     constructor() {
         this.injectStyles(); // Inject CSS styles dynamically
         this.createDOM();    // Create HTML elements
-        this.bindInternalEvents();
+
+        // callbacks
         this.onPlayAgain = null;
+        this.onResume = null;
+        this.onAbort = null;
+        this.onSettings = null;
+        this.onPause = null;
 
+        // state
+        this._mode = "pause"; // pause | victory | gameover
+
+        // bind events
+        this.bindInternalEvents();
     }
 
+    // ----------------------------------------------------------
+    // CALLBACK SETTERS (external game can hook these)
+    // ----------------------------------------------------------
     setOnPlayAgain(fn) {
-    this.onPlayAgain = fn;
+        this.onPlayAgain = fn;
     }
-    
 
+    setOnResume(fn) {
+        this.onResume = fn;
+    }
+
+    setOnAbort(fn) {
+        this.onAbort = fn;
+    }
+
+    setOnSettings(fn) {
+        this.onSettings = fn;
+    }
+
+    setOnPause(fn) {
+        this.onPause = fn;
+    }
 
     /**
      * Creates all necessary DOM elements for the UI.
@@ -45,7 +72,7 @@ class UIManager {
                     <span class="score-label">SCORE</span>
                     <span id="scoreValue">0</span>
                 </div>
-                <button id="pauseBtn" class="icon-btn">
+                <button id="pauseBtn" class="icon-btn" aria-label="Pause">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
                 </button>
             </div>
@@ -73,7 +100,7 @@ class UIManager {
         this.resumeBtn = document.getElementById('resumeBtn');
         this.settingsBtn = document.getElementById('settingsBtn');
         this.abortBtn = document.getElementById('abortBtn');
-        
+
         // Element references for updates
         this.healthBar = document.getElementById('healthBar');
         this.boostBar = document.getElementById('boostBar');
@@ -84,16 +111,20 @@ class UIManager {
      * Injects the CSS for the modern UI directly into the head.
      */
     injectStyles() {
+        // avoid duplicate style injection
+        if (document.getElementById("uiManagerStyles")) return;
+
         const style = document.createElement('style');
+        style.id = "uiManagerStyles";
         style.innerHTML = `
             /* --- FONTS & VARS --- */
             @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap');
             
             :root {
                 --ui-font: 'Rajdhani', sans-serif;
-                --primary: #00f0ff; /* Cyber Cyan */
-                --danger: #ff003c;  /* Cyber Red */
-                --warning: #fcee0a; /* Cyber Yellow */
+                --primary: #00f0ff;
+                --danger: #ff003c;
+                --warning: #fcee0a;
                 --dark-bg: rgba(0, 0, 0, 0.85);
                 --glass-bg: rgba(20, 30, 40, 0.6);
             }
@@ -102,7 +133,7 @@ class UIManager {
             #game-hud {
                 position: fixed;
                 top: 0; left: 0; width: 100%; height: 100%;
-                pointer-events: none; /* Let clicks pass through to game */
+                pointer-events: none;
                 z-index: 100;
                 font-family: var(--ui-font);
             }
@@ -117,7 +148,7 @@ class UIManager {
             .bottom-left {
                 bottom: 20px;
                 left: 20px;
-                transform: skewX(-15deg); /* Speedy look */
+                transform: skewX(-15deg);
             }
 
             .top-right {
@@ -126,7 +157,7 @@ class UIManager {
                 align-items: flex-end;
             }
 
-            /* --- BARS (Health & Boost) --- */
+            /* --- BARS --- */
             .bar-container {
                 display: flex;
                 align-items: center;
@@ -165,7 +196,7 @@ class UIManager {
             }
 
             .health-fill { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
-            .boost-fill { background: var(--warning); box-shadow: 0 0 8px var(--warning); }
+            .boost-fill  { background: var(--warning); box-shadow: 0 0 8px var(--warning); }
 
             /* --- SCORE & PAUSE BTN --- */
             .score-box {
@@ -190,7 +221,7 @@ class UIManager {
                 width: 48px;
                 height: 48px;
                 cursor: pointer;
-                pointer-events: auto; /* Enable clicks */
+                pointer-events: auto;
                 transition: all 0.2s;
                 border-radius: 4px;
                 display: flex;
@@ -206,7 +237,7 @@ class UIManager {
 
             .icon-btn svg { width: 24px; height: 24px; }
 
-            /* --- PAUSE MENU OVERLAY --- */
+            /* --- OVERLAY --- */
             .overlay {
                 position: fixed;
                 top: 0; left: 0; width: 100%; height: 100%;
@@ -238,9 +269,7 @@ class UIManager {
                 min-width: 300px;
             }
             
-            .overlay.hidden .menu-content {
-                transform: scale(0.9);
-            }
+            .overlay.hidden .menu-content { transform: scale(0.9); }
 
             .menu-title {
                 color: white;
@@ -300,7 +329,7 @@ class UIManager {
             /* Mobile Adjustments */
             @media (max-width: 768px) {
                 .bottom-left { bottom: 10px; left: 10px; transform: none; }
-                .top-right { top: 10px; right: 10px; }
+                .top-right   { top: 10px; right: 10px; }
                 .bar-container { width: 180px; }
                 .menu-title { font-size: 2rem; }
             }
@@ -308,8 +337,66 @@ class UIManager {
         document.head.appendChild(style);
     }
 
+    // ----------------------------------------------------------
+    // FIXED: Internal Events (Pause/Resume/Abort/Play Again working)
+    // ----------------------------------------------------------
     bindInternalEvents() {
-        // Just empty for now, logic is handled by external game loop as per snippet
+        if (this.pauseBtn) {
+            this.pauseBtn.addEventListener("click", () => {
+                if (typeof this.onPause === "function") this.onPause();
+                else this.showPause(); // fallback
+            });
+        }
+
+        if (this.resumeBtn) {
+            this.resumeBtn.addEventListener("click", () => {
+                // if victory/gameover: resume means play again
+                if (this._mode === "victory" || this._mode === "gameover") {
+                    if (typeof this.onPlayAgain === "function") {
+                        this.hidePause();
+                        this.onPlayAgain();
+                    } else if (typeof this.onResume === "function") {
+                        // fallback
+                        this.hidePause();
+                        this.onResume();
+                    } else {
+                        // last fallback hard reload
+                        location.reload();
+                    }
+                    return;
+                }
+
+                // normal pause resume
+                if (typeof this.onResume === "function") {
+                    this.hidePause();
+                    this.onResume();
+                } else {
+                    this.hidePause();
+                }
+            });
+        }
+
+        if (this.settingsBtn) {
+            this.settingsBtn.addEventListener("click", () => {
+                if (typeof this.onSettings === "function") this.onSettings();
+                else alert("Settings not implemented yet.");
+            });
+        }
+
+        if (this.abortBtn) {
+            this.abortBtn.addEventListener("click", () => {
+                // if victory: abortBtn should go main menu
+                if (this._mode === "victory") {
+                    // safest fallback: go to index/home
+                    window.location.href = "index.html";
+                    return;
+                }
+
+                // normal abort
+                if (typeof this.onAbort === "function") this.onAbort();
+                else window.location.href = "index.html";
+            });
+        }
     }
 
     // --- Public Methods to Control UI ---
@@ -318,78 +405,79 @@ class UIManager {
      * Shows the pause menu with animation
      */
     showPause() {
-        this.pauseMenu.classList.remove('hidden');
-        this.hudContainer.style.filter = 'blur(4px)'; // Blur HUD too
+        this._mode = "pause";
+        if (this.pauseMenu) this.pauseMenu.classList.remove('hidden');
+        if (this.hudContainer) this.hudContainer.style.filter = 'blur(4px)';
+        if (this.settingsBtn) this.settingsBtn.style.display = "inline-block";
+
+        const title = this.pauseMenu?.querySelector(".menu-title");
+        if (title) title.innerText = "PAUSED";
+
+        if (this.resumeBtn) this.resumeBtn.innerText = "RESUME";
+        if (this.abortBtn) this.abortBtn.innerText = "ABORT MISSION";
     }
 
     /**
      * Hides the pause menu
      */
     hidePause() {
-        this.pauseMenu.classList.add('hidden');
-        this.hudContainer.style.filter = 'none';
+        if (this.pauseMenu) this.pauseMenu.classList.add('hidden');
+        if (this.hudContainer) this.hudContainer.style.filter = 'none';
     }
 
+    // ✅ FIXED VICTORY SCREEN
     showVictory() {
-    // If you already have a gameOverScreen, reuse it.
-    // Otherwise simple pause-like overlay use kar lo:
+        this._mode = "victory";
+        this.showPause();
 
-    // ✅ If pause menu exists, use it as victory modal
-    this.showPause();
+        const title = this.pauseMenu?.querySelector(".menu-title");
+        if (title) title.innerText = "MISSION COMPLETE";
 
-    // Title change
-    const title = this.pauseMenu.querySelector(".menu-title");
-    if (title) title.innerText = "MISSION COMPLETE";
+        if (this.resumeBtn) this.resumeBtn.innerText = "▶ PLAY AGAIN";
+        if (this.abortBtn) this.abortBtn.innerText = "⬅ MAIN MENU";
 
-    // Buttons text tweak (optional)
-    if (this.resumeBtn) this.resumeBtn.innerText = "▶ PLAY AGAIN";
-    if (this.abortBtn) this.abortBtn.innerText = "⬅ MAIN MENU";
-
-    // Settings button optional hide
-    if (this.settingsBtn) this.settingsBtn.style.display = "none";
+        if (this.settingsBtn) this.settingsBtn.style.display = "none";
     }
 
+    // ✅ FIXED GAME OVER SCREEN
     showGameOver() {
-    this.showPause();
+        this._mode = "gameover";
+        this.showPause();
 
-    const title = this.pauseMenu.querySelector(".menu-title");
-    if (title) title.innerText = "SYSTEM FAILURE";
+        const title = this.pauseMenu?.querySelector(".menu-title");
+        if (title) title.innerText = "SYSTEM FAILURE";
 
-    if (this.resumeBtn) this.resumeBtn.innerText = "RESTART";
-    if (this.abortBtn) this.abortBtn.innerText = "ABORT MISSION";
-    if (this.settingsBtn) this.settingsBtn.style.display = "inline-block";
+        if (this.resumeBtn) this.resumeBtn.innerText = "RESTART";
+        if (this.abortBtn) this.abortBtn.innerText = "⬅ MAIN MENU";
+
+        if (this.settingsBtn) this.settingsBtn.style.display = "none";
     }
-
 
     /**
      * Update Health Bar
-     * @param {number} current - Current Health
-     * @param {number} max - Max Health
      */
     updateHealth(current, max) {
         const pct = Math.max(0, Math.min(100, (current / max) * 100));
-        if(this.healthBar) this.healthBar.style.width = `${pct}%`;
+        if (this.healthBar) this.healthBar.style.width = `${pct}%`;
     }
 
     /**
      * Update Boost Bar
-     * @param {number} current 
-     * @param {number} max 
      */
     updateBoost(current, max) {
         const pct = Math.max(0, Math.min(100, (current / max) * 100));
-        if(this.boostBar) this.boostBar.style.width = `${pct}%`;
+        if (this.boostBar) this.boostBar.style.width = `${pct}%`;
     }
 
     /**
      * Update Score
-     * @param {number} score 
      */
     updateScore(score) {
-        if(this.scoreDisplay) this.scoreDisplay.innerText = Math.floor(score);
+        if (this.scoreDisplay) this.scoreDisplay.innerText = Math.floor(score);
     }
+
     /**
-     * Backward compatibility with old code:
+     * Backward compatibility:
      * update(speed, health, score, boostEnergy)
      */
     update(speed, health, score, boostEnergy = 100) {
@@ -406,7 +494,6 @@ class UIManager {
         // score
         this.updateScore(score);
     }
-
 }
 
 window.UIManager = UIManager;
