@@ -3,12 +3,11 @@
 // ==========================================
 
 window.addEventListener("load", () => {
-    console.log("🌐 Multiplayer Mode Initializing... (PC/Mobile Hybrid Fix v33)");
+    console.log("🌐 Multiplayer Mode Initializing... (Mobile Input Force Fix v34)");
 
     // ------------------------------------------------------------
-    // 1. DEVICE DETECTION (Crucial Fix)
+    // 1. DEVICE DETECTION
     // ------------------------------------------------------------
-    // Check if running on mobile so we don't block PC controls
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 0);
     console.log("📱 Device Type:", isMobile ? "Mobile" : "PC");
 
@@ -54,7 +53,7 @@ window.addEventListener("load", () => {
     // 5. MANUAL JOYSTICK & BUTTON LOGIC
     // ------------------------------------------------------------
     function setupMobileInputs() {
-        // PC par ye setup karne ki zarurat nahi, warna error aa sakta hai
+        // PC par ye setup karne ki zarurat nahi
         if (!isMobile) return;
 
         const zone = document.getElementById('joystick-zone');
@@ -70,7 +69,7 @@ window.addEventListener("load", () => {
         let isDragging = false;
         const maxDist = 40;
 
-        // JOYSTICK
+        // --- JOYSTICK ---
         zone.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
@@ -96,7 +95,6 @@ window.addEventListener("load", () => {
             }
 
             knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-
             window.mobileState.x = dx / maxDist;
             window.mobileState.y = dy / maxDist;
         }, { passive: false });
@@ -113,32 +111,42 @@ window.addEventListener("load", () => {
         zone.addEventListener('touchend', endDrag);
         zone.addEventListener('touchcancel', endDrag);
 
-        // FIRE
+        // --- FIRE BUTTON (Touch Events) ---
         if (btnFire) {
             btnFire.addEventListener('touchstart', (e) => {
                 e.preventDefault();
                 window.mobileState.fire = true;
+                btnFire.style.opacity = "0.5"; // Visual Feedback
                 btnFire.style.transform = "scale(0.9)";
             }, { passive: false });
-            btnFire.addEventListener('touchend', (e) => {
+
+            const releaseFire = (e) => {
                 e.preventDefault();
                 window.mobileState.fire = false;
+                btnFire.style.opacity = "1";
                 btnFire.style.transform = "scale(1)";
-            }, { passive: false });
+            };
+            btnFire.addEventListener('touchend', releaseFire);
+            btnFire.addEventListener('touchcancel', releaseFire);
         }
 
-        // BOOST
+        // --- BOOST BUTTON (Touch Events) ---
         if (btnBoost) {
             btnBoost.addEventListener('touchstart', (e) => {
                 e.preventDefault();
                 window.mobileState.boost = true;
+                btnBoost.style.opacity = "0.5"; // Visual Feedback
                 btnBoost.style.transform = "scale(0.9)";
             }, { passive: false });
-            btnBoost.addEventListener('touchend', (e) => {
+
+            const releaseBoost = (e) => {
                 e.preventDefault();
                 window.mobileState.boost = false;
+                btnBoost.style.opacity = "1";
                 btnBoost.style.transform = "scale(1)";
-            }, { passive: false });
+            };
+            btnBoost.addEventListener('touchend', releaseBoost);
+            btnBoost.addEventListener('touchcancel', releaseBoost);
         }
     }
 
@@ -169,7 +177,7 @@ window.addEventListener("load", () => {
     let ringSystem = null;
     let lastFireTime = 0; 
     let lastSoundTime = 0;
-    const FIRE_DELAY = 60;   
+    const FIRE_DELAY = 100; // Thoda slow kiya taki glitch na ho
     const SOUND_DELAY = 150; 
 
     if (typeof MinimapSystem !== "undefined" && !game.minimap) {
@@ -207,12 +215,10 @@ window.addEventListener("load", () => {
     mpClient.onLobbyUpdate = (msg) => {
         if (msg.you?.id) mpState.setLocalId(msg.you.id); 
         if (msg.status === "playing") return; 
-
         if (msg.status === "lobby" && gameStartedOnce) {
             window.location.reload();
             return;
         }
-
         if (mpUI) mpUI.updateLobby(msg);
         game.isPaused = true;
         if (game.renderer?.domElement) game.renderer.domElement.style.display = "none";
@@ -223,7 +229,6 @@ window.addEventListener("load", () => {
         gameStartedOnce = true;
         game.isPaused = false;
         ringClaimBlockedUntil = performance.now() + 2000;
-
         if (game.renderer?.domElement) game.renderer.domElement.style.display = "block";
         freshStartMatch(msg);
         if (mpUI) mpUI.onGameStart();
@@ -247,7 +252,6 @@ window.addEventListener("load", () => {
     mpClient.onEvent = (evt) => {
         if (!evt) return;
         const myId = mpClient.socket?.id;
-
         switch (evt.type) {
             case "GAME_OVER":
                 game.isPaused = true; 
@@ -385,25 +389,31 @@ window.addEventListener("load", () => {
 
             if (game.playerController && !game.playerController.isRespawning) {
                 
-                // ✅ UPDATE INPUTS
-                game.inputManager.update(dt); // WASD updates here
+                // 1. Reset Inputs (Clean slate for frame)
+                game.inputManager.update(dt);
 
-                // ✅ MERGE MOBILE INPUTS (Only if on mobile)
+                // 2. FORCE APPLY MOBILE INPUTS (This fixes buttons not working)
                 if (isMobile && window.mobileState) {
-                    // Joystick -> Keys
+                    // Joystick override
                     if (window.mobileState.x > 0.3) game.inputManager.keys['d'] = true;
                     else if (window.mobileState.x < -0.3) game.inputManager.keys['a'] = true;
-                    // Note: No "else = false" here to avoid killing PC input (though isMobile check handles it anyway)
-
+                    
                     if (window.mobileState.y > 0.3) game.inputManager.keys['s'] = true;
                     else if (window.mobileState.y < -0.3) game.inputManager.keys['w'] = true;
 
-                    // Buttons -> Keys
-                    if (window.mobileState.fire) game.inputManager.keys[' '] = true;
-                    if (window.mobileState.boost) game.inputManager.keys['Shift'] = true;
+                    // ✅ FIRE FIX: Force key state 'true' as long as button is held
+                    if (window.mobileState.fire) {
+                        game.inputManager.keys[' '] = true; 
+                        game.inputManager.keys['Space'] = true; 
+                    }
+
+                    // ✅ BOOST FIX: Force key state 'true'
+                    if (window.mobileState.boost) {
+                        game.inputManager.keys['Shift'] = true;
+                        game.inputManager.keys['ShiftLeft'] = true;
+                    }
                 }
 
-                // Update Player
                 game.playerController.update(dt);
                 checkTerrainCollision();
 
@@ -454,7 +464,6 @@ window.addEventListener("load", () => {
                     else game.playerController.mesh.position.set(0, 400, 0);
                     if (mpUI) mpUI.hideRespawn();
                 }
-                
                 mpState.update(dt);
                 game.renderer.render(game.scene, game.camera);
                 return;
