@@ -378,7 +378,8 @@
         position: absolute; 
         bottom: 50px; left: 40px;
         width: 140px; height: 140px;
-        background: rgba(255, 255, 255, 0.05);
+        /* Thoda visible background taki dikhe */
+        background: rgba(255, 255, 255, 0.1);
         border: 2px solid rgba(0, 243, 255, 0.3);
         border-radius: 50%;
         pointer-events: auto;
@@ -431,7 +432,8 @@
   <script src="./audio/music-manager.js"></script>
 
   <script src="./gameplay/input-manager.js"></script>
-  <script src="./gameplay/mobile-controls.js"></script> <script src="./gameplay/player-controller.js"></script>
+  <script src="./gameplay/mobile-controls.js"></script> 
+  <script src="./gameplay/player-controller.js"></script>
   <script src="./gameplay/bullet-system.js"></script>
   <script src="./gameplay/weapon-system.js"></script>
   <script src="./gameplay/ring-system.js"></script>
@@ -542,7 +544,7 @@
     </div>
   </div>
 
-  <div id="mobile-controls" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: block;">
+  <div id="mobile-controls" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none;">
       
       <div id="joystick-zone">
           <div id="joystick-knob"></div>
@@ -558,6 +560,18 @@
   </div>
 
   <script src="./ui/mp-ui-manager.js"></script>
+
+  <script>
+    // Simple check for touch capability or mobile user agent
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 0);
+    
+    if (isMobile) {
+        document.getElementById('mobile-controls').style.display = 'block';
+        console.log("📱 Mobile Detected: Controls Shown");
+    } else {
+        console.log("💻 PC Detected: Controls Hidden");
+    }
+  </script>
 
 </body>
 </html>
