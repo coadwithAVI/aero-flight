@@ -11,14 +11,17 @@ class InputManager {
         this._lastMouseY = null;
         this.enabled = true;
 
-        // --- KEYBOARD EVENTS (Fixed A/D & CapsLock issues) ---
+        // --- KEYBOARD EVENTS ---
         window.addEventListener("keydown", (e) => {
-            // e.code use karne se 'A' aur 'a' ka chakkar khatam
-            this.keys[e.code] = true; 
+            this.keys[e.code] = true;
+            this.keys[e.key] = true; 
+            this.keys[e.key.toLowerCase()] = true; 
         });
 
         window.addEventListener("keyup", (e) => {
             this.keys[e.code] = false;
+            this.keys[e.key] = false;
+            this.keys[e.key.toLowerCase()] = false;
         });
 
         // --- MOUSE EVENTS ---
@@ -58,31 +61,29 @@ class InputManager {
 
     getAction(action) {
         if (!this.enabled) return false;
+        
+        // Helper to check Keyboard OR Mobile inputs
+        const isPressed = (...codes) => codes.some(c => this.keys[c]);
 
         switch (action) {
-            // --- MOVEMENT (W/S = Speed, A/D = Turn) ---
-            case "moveForward":  return !!this.keys["KeyW"];
-            case "moveBackward": return !!this.keys["KeyS"];
-            case "moveLeft":     return !!this.keys["KeyA"];
-            case "moveRight":    return !!this.keys["KeyD"];
+            // --- MOVEMENT ---
+            // Now checks for "Mobile..." keys separately. No conflict with Keyboard.
+            case "moveForward":  return isPressed("KeyW", "ArrowUp", "w", "MobileUp");
+            case "moveBackward": return isPressed("KeyS", "ArrowDown", "s", "MobileDown");
+            case "moveLeft":     return isPressed("KeyA", "ArrowLeft", "a", "MobileLeft");
+            case "moveRight":    return isPressed("KeyD", "ArrowRight", "d", "MobileRight");
 
             // --- BOOST ---
-            case "boost":        
-                return !!(this.keys["ShiftLeft"] || this.keys["ShiftRight"]);
+            case "boost":        return isPressed("ShiftLeft", "ShiftRight", "MobileBoost");
 
             // --- FIRE ---
-            case "fire":         
-                return !!(this.mouse.isDown || this.keys["Space"]);
+            case "fire":         return !!(this.mouse.isDown || isPressed("Space", "MobileFire"));
 
-            // --- PITCH (Fixed: W = Up, S = Down) ---
-            // Agar abhi bhi ulta lage, to in dono ko swap kar dena
-            case "pitchUp":      return !!this.keys["KeyS"]; // S for Pull Up (Standard Flight) or W?
-            // NOTE: Agar "W" dabane se neeche ja raha tha, to maine Logic reverse kar diya hai.
-            // Ab 'KeyS' Pitch Up karega (Nose Upar) - Ye Flight Sim standard hai.
-            // Agar aapko W = Upar chahiye (Arcade), to niche wali line use karein:
-            // case "pitchUp": return !!this.keys["KeyW"]; 
-            
-            case "pitchDown":    return !!this.keys["KeyW"]; 
+            // --- PITCH (Flight Standard: S=Up, W=Down) ---
+            // Joystick Down (MobileDown) -> Nose Up
+            // Joystick Up (MobileUp) -> Nose Down
+            case "pitchUp":      return isPressed("KeyS", "ArrowDown", "s", "MobileDown");
+            case "pitchDown":    return isPressed("KeyW", "ArrowUp", "w", "MobileUp"); 
 
             default: return false;
         }
