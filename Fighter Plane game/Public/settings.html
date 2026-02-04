@@ -1,0 +1,413 @@
+<!-- ==========================================
+ PATH: Public/settings.html
+ Sky Pilot - Settings
+========================================== -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sky Pilot - Settings</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: radial-gradient(circle at top, #0b2a3a, #02040a);
+      font-family: Arial, Helvetica, sans-serif;
+      color: white;
+      overflow: hidden;
+    }
+
+    .container {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+
+    .card {
+      width: min(700px, 95vw);
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.08);
+      backdrop-filter: blur(6px);
+    }
+
+    h1 {
+      margin: 0 0 6px 0;
+      font-size: 34px;
+      letter-spacing: 1px;
+      color: #c8f7ff;
+    }
+
+    .subtitle {
+      opacity: 0.8;
+      font-size: 13px;
+      margin-bottom: 18px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .section {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .section h2 {
+      font-size: 15px;
+      margin: 0 0 12px 0;
+      opacity: 0.95;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 160px 1fr 70px;
+      gap: 10px;
+      align-items: center;
+      margin: 10px 0;
+      font-size: 13px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    .value {
+      text-align: right;
+      opacity: 0.85;
+      font-family: Consolas, monospace;
+    }
+
+    .toggleRow {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 10px;
+      font-size: 13px;
+    }
+
+    .switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255,255,255,0.2);
+      transition: 0.2s;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.18);
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      top: 2px;
+      background-color: white;
+      transition: 0.2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: rgba(0, 212, 255, 0.45);
+    }
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+
+    .actions {
+      margin-top: 18px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .btnGroup {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button, a.button {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      letter-spacing: 0.4px;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+      text-decoration: none;
+      display: inline-block;
+      text-align: center;
+    }
+    button:hover, a.button:hover {
+      transform: translateY(-2px);
+      opacity: 0.95;
+    }
+
+    .primary {
+      background: linear-gradient(90deg, #1abc9c, #00d4ff);
+      color: #000;
+    }
+    .secondary {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .danger {
+      background: rgba(231, 76, 60, 0.25);
+      color: white;
+      border: 1px solid rgba(231, 76, 60, 0.35);
+    }
+
+    .saved {
+      opacity: 0.7;
+      font-size: 12px;
+      margin-top: 10px;
+      font-family: Consolas, monospace;
+    }
+
+    .footer {
+      position: absolute;
+      bottom: 12px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      opacity: 0.4;
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    @media (max-width: 720px) {
+      .grid { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 130px 1fr 60px; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>SETTINGS</h1>
+      <div class="subtitle">
+        Your settings are saved locally (browser). They will apply to Singleplayer & Multiplayer.
+      </div>
+
+      <div class="grid">
+
+        <div class="section">
+          <h2>🔊 Audio</h2>
+
+          <div class="row">
+            <div>Master Volume</div>
+            <input id="masterVolume" type="range" min="0" max="1" step="0.01" />
+            <div class="value" id="masterVolumeVal"></div>
+          </div>
+
+          <div class="row">
+            <div>Music Volume</div>
+            <input id="musicVolume" type="range" min="0" max="1" step="0.01" />
+            <div class="value" id="musicVolumeVal"></div>
+          </div>
+
+          <div class="row">
+            <div>SFX Volume</div>
+            <input id="sfxVolume" type="range" min="0" max="1" step="0.01" />
+            <div class="value" id="sfxVolumeVal"></div>
+          </div>
+
+          <div class="saved" id="audioSaved">—</div>
+        </div>
+
+        <div class="section">
+          <h2>🎮 Controls</h2>
+
+          <div class="row">
+            <div>Sensitivity</div>
+            <input id="sensitivity" type="range" min="0.2" max="2.0" step="0.05" />
+            <div class="value" id="sensitivityVal"></div>
+          </div>
+
+          <div class="toggleRow">
+            <div>Invert Y Axis</div>
+            <label class="switch">
+              <input id="invertY" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="saved" id="controlsSaved">—</div>
+        </div>
+
+      </div>
+
+      <div class="actions">
+        <div class="btnGroup">
+          <a class="button secondary" href="./index.html">⬅ Back</a>
+          <a class="button primary" href="./singleplayer.html">▶ Play Singleplayer</a>
+          <a class="button secondary" href="./multiplayer.html">🌐 Multiplayer</a>
+        </div>
+
+        <div class="btnGroup">
+          <button class="danger" id="resetBtn">Reset Defaults</button>
+          <button class="secondary" id="saveBtn">Save</button>
+        </div>
+      </div>
+
+      <div class="saved" id="globalSaved"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Sky Pilot • Settings stored via localStorage
+  </div>
+
+  <script>
+    // ===============================
+    // Settings storage
+    // ===============================
+    const STORAGE_KEY = "SKY_PILOT_SETTINGS";
+
+    const DEFAULTS = {
+      masterVolume: 1.0,
+      musicVolume: 0.7,
+      sfxVolume: 1.0,
+      sensitivity: 1.0,
+      invertY: false
+    };
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { ...DEFAULTS };
+        const parsed = JSON.parse(raw);
+        return { ...DEFAULTS, ...parsed };
+      } catch {
+        return { ...DEFAULTS };
+      }
+    }
+
+    function saveSettings(settings) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    }
+
+    function setVal(id, value) {
+      document.getElementById(id).value = value;
+    }
+
+    function getVal(id) {
+      const el = document.getElementById(id);
+      if (el.type === "checkbox") return el.checked;
+      return parseFloat(el.value);
+    }
+
+    function showVal(valueEl, value, isBool = false) {
+      if (isBool) valueEl.innerText = value ? "ON" : "OFF";
+      else valueEl.innerText = value.toFixed(2);
+    }
+
+    function stamp(el, text) {
+      const t = new Date().toLocaleTimeString();
+      el.innerText = `${text} (${t})`;
+    }
+
+    // Elements
+    const masterVolume = document.getElementById("masterVolume");
+    const musicVolume = document.getElementById("musicVolume");
+    const sfxVolume = document.getElementById("sfxVolume");
+    const sensitivity = document.getElementById("sensitivity");
+    const invertY = document.getElementById("invertY");
+
+    const masterVolumeVal = document.getElementById("masterVolumeVal");
+    const musicVolumeVal = document.getElementById("musicVolumeVal");
+    const sfxVolumeVal = document.getElementById("sfxVolumeVal");
+    const sensitivityVal = document.getElementById("sensitivityVal");
+
+    const saveBtn = document.getElementById("saveBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    const audioSaved = document.getElementById("audioSaved");
+    const controlsSaved = document.getElementById("controlsSaved");
+    const globalSaved = document.getElementById("globalSaved");
+
+    // Init
+    const loaded = loadSettings();
+
+    setVal("masterVolume", loaded.masterVolume);
+    setVal("musicVolume", loaded.musicVolume);
+    setVal("sfxVolume", loaded.sfxVolume);
+    setVal("sensitivity", loaded.sensitivity);
+    invertY.checked = !!loaded.invertY;
+
+    function refreshUI() {
+      showVal(masterVolumeVal, parseFloat(masterVolume.value));
+      showVal(musicVolumeVal, parseFloat(musicVolume.value));
+      showVal(sfxVolumeVal, parseFloat(sfxVolume.value));
+      showVal(sensitivityVal, parseFloat(sensitivity.value));
+    }
+
+    refreshUI();
+
+    // Live updates
+    [masterVolume, musicVolume, sfxVolume, sensitivity].forEach(sl => {
+      sl.addEventListener("input", refreshUI);
+    });
+
+    invertY.addEventListener("change", refreshUI);
+
+    // Save
+    saveBtn.addEventListener("click", () => {
+      const settings = {
+        masterVolume: getVal("masterVolume"),
+        musicVolume: getVal("musicVolume"),
+        sfxVolume: getVal("sfxVolume"),
+        sensitivity: getVal("sensitivity"),
+        invertY: getVal("invertY")
+      };
+      saveSettings(settings);
+
+      stamp(audioSaved, "Audio saved");
+      stamp(controlsSaved, "Controls saved");
+      stamp(globalSaved, "✅ Settings saved");
+    });
+
+    // Reset
+    resetBtn.addEventListener("click", () => {
+      saveSettings({ ...DEFAULTS });
+
+      setVal("masterVolume", DEFAULTS.masterVolume);
+      setVal("musicVolume", DEFAULTS.musicVolume);
+      setVal("sfxVolume", DEFAULTS.sfxVolume);
+      setVal("sensitivity", DEFAULTS.sensitivity);
+      invertY.checked = DEFAULTS.invertY;
+
+      refreshUI();
+      stamp(globalSaved, "♻ Reset to defaults");
+    });
+  </script>
+</body>
+</html>

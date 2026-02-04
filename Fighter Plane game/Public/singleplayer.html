@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+  <title>Sky Pilot - Neon Edition</title>
+
+  <style>
+    /* --- RESET & BASIC SETUP --- */
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      font-family: 'Courier New', Courier, monospace;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+    }
+
+    /* --- NEON BACKGROUND ANIMATION --- */
+    #main-menu-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      /* Deep Space Gradient */
+      background: radial-gradient(circle at center, #120524 0%, #000000 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+      overflow: hidden;
+    }
+
+    /* Retro Grid Floor - SLOWER & HALF SCREEN */
+    .retro-grid {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 55%; 
+      background: 
+        linear-gradient(rgba(176, 38, 255, 0.5) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(176, 38, 255, 0.5) 1px, transparent 1px);
+      background-size: 50px 50px;
+      perspective: 1000px; 
+      transform: perspective(400px) rotateX(60deg);
+      transform-origin: bottom center;
+      opacity: 0.6;
+      z-index: -1;
+      /* Slow motion animation */
+      animation: gridMove 60s linear infinite; 
+      /* Fade out effect at the top (horizon) */
+      mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 80%);
+      -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 80%);
+    }
+    
+    @keyframes gridMove {
+      0% { background-position: 0 0; }
+      100% { background-position: 0 500px; }
+    }
+
+    /* --- NEON TYPOGRAPHY --- */
+    h1.neon-title {
+      font-size: 4.5rem;
+      margin-bottom: 3rem;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 8px;
+      text-shadow: 
+        0 0 5px #fff,
+        0 0 10px #fff,
+        0 0 20px #ff00de,
+        0 0 40px #ff00de,
+        0 0 60px #ff00de;
+      z-index: 2;
+    }
+
+    /* --- NEON BUTTONS --- */
+    .menu-container {
+      display: flex;
+      flex-direction: column;
+      gap: 25px;
+      z-index: 2;
+      align-items: center;
+    }
+
+    .neon-btn {
+      position: relative;
+      padding: 15px 50px;
+      font-size: 1.3rem;
+      color: #03e9f4;
+      background: rgba(0, 0, 0, 0.3); /* Slight tint */
+      border: 2px solid #03e9f4;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      cursor: pointer;
+      transition: 0.3s;
+      overflow: hidden;
+      font-weight: bold;
+      min-width: 280px;
+      text-align: center;
+      box-shadow: 0 0 10px rgba(3, 233, 244, 0.2);
+      text-decoration: none; /* For anchor tags if used */
+      display: inline-block;
+    }
+
+    .neon-btn:hover {
+      background: #03e9f4;
+      color: #000;
+      box-shadow: 
+        0 0 10px #03e9f4,
+        0 0 40px #03e9f4;
+      transform: scale(1.05);
+    }
+
+    /* Exit/Back button distinct style */
+    .neon-btn-exit {
+      border-color: #ff3333;
+      color: #ff3333;
+      box-shadow: 0 0 10px rgba(255, 51, 51, 0.2);
+    }
+    .neon-btn-exit:hover {
+      background: #ff3333;
+      color: #000;
+      box-shadow: 0 0 10px #ff3333, 0 0 40px #ff3333;
+      border-color: #ff3333;
+    }
+
+    /* Note for back to menu behavior */
+    .exit-note {
+        margin-top: 10px;
+        color: #ff3333;
+        font-size: 0.8rem;
+        opacity: 0.7;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ✅ NEON MAIN MENU -->
+  <div id="main-menu-overlay">
+    <!-- Background Grid -->
+    <div class="retro-grid"></div>
+
+    <!-- MAIN SCREEN -->
+    <div id="menu-main-screen" class="menu-container">
+      <h1 class="neon-title">Sky Pilot</h1>
+      
+      <!-- 1. Start Game -->
+      <button id="start-game-btn" class="neon-btn">Start Game</button>
+      
+      <!-- 2. Settings (Redirects to Public/settings.html) -->
+      <button id="settings-btn" class="neon-btn" style="border-color: #d800ff; color: #d800ff;">Settings</button>
+      
+      <!-- 3. Back to Menu (Redirects to index.html) -->
+      <button id="menu-exit-btn" class="neon-btn neon-btn-exit">Back to Menu</button>
+    </div>
+  </div>
+
+  <!-- ✅ SCRIPTS -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+  <!-- Configs -->
+  <script src="core/game-config.js"></script>
+  <script src="config/config.world.js"></script>
+  <script src="config/config.physics.js"></script>
+
+  <!-- Engine -->
+  <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
+  <script src="engine/map.js"></script>
+  <script src="engine/camera-system.js"></script>
+  <script src="engine/models.js"></script>
+  <script src="engine/collision-system.js"></script>
+
+  <!-- UI -->
+  <script src="ui/ui-manager.js"></script>
+  <script src="ui/minimap-system.js"></script>
+  <script src="ui/leaderboard-ui.js"></script>
+  <script src="ui/mobile-controls.js"></script>
+
+  <!-- Audio -->
+  <script src="audio/procedural-audio.js"></script>
+  <script src="audio/sfx-manager.js"></script>
+  <script src="audio/music-manager.js"></script>
+
+  <!-- Gameplay -->
+  <script src="gameplay/enemy-bullet-system.js"></script>
+  <script src="gameplay/enemy-weapon-system.js"></script>
+  <script src="gameplay/input-manager.js"></script>
+  <script src="gameplay/player-controller.js"></script>
+  <script src="gameplay/bullet-system.js"></script>
+  <script src="gameplay/weapon-system.js"></script>
+  <script src="gameplay/ring-system.js"></script>
+  <script src="gameplay/medkit-system.js"></script>
+  <script src="gameplay/enemy-ai.js"></script>
+  <script src="gameplay/enemy-manager.js"></script>
+  <script src="core/game-manager.js"></script>
+
+  <!-- ✅ UI LOGIC & GAME LOADER -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const menuOverlay = document.getElementById('main-menu-overlay');
+      const startBtn = document.getElementById('start-game-btn');
+      const settingsBtn = document.getElementById('settings-btn');
+      const menuExitBtn = document.getElementById('menu-exit-btn');
+      
+      // 1. START GAME (Fix for Black Screen)
+      startBtn.addEventListener('click', () => {
+        // Hide entire menu overlay
+        menuOverlay.style.display = 'none';
+        
+        // Load Game Logic Dynamically
+        const script = document.createElement('script');
+        script.src = 'gameplay/singleplayer-main.js';
+        
+        // IMPORTANT: Jab script load ho jaye, tab manually "load" event trigger karo
+        // kyunki game script shayad "window.onload" ka wait kar rahi hogi.
+        script.onload = () => {
+           console.log("Game Script Loaded. Triggering start...");
+           
+           // Thoda sa delay taaki script parse ho sake
+           setTimeout(() => {
+               window.dispatchEvent(new Event('load'));
+               window.dispatchEvent(new Event('DOMContentLoaded'));
+           }, 100);
+        };
+        
+        document.body.appendChild(script);
+      });
+
+      // 2. OPEN SETTINGS (REDIRECT)
+      settingsBtn.addEventListener('click', () => {
+        window.location.href = 'settings.html';
+      });
+
+      // 3. "BACK TO MENU" (RELOADS INDEX.HTML)
+      menuExitBtn.addEventListener('click', () => {
+        // Redirecting to itself refreshes the page and resets state
+        window.location.href = 'index.html';
+      });
+    });
+  </script>
+
+</body>
+</html>
