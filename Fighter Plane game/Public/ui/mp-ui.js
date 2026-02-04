@@ -105,6 +105,96 @@ document.addEventListener("DOMContentLoaded", () => {
         btnEndBack.onclick = () => { window.location.href = "./index.html"; };
     }
 
+    // This allows the UI to catch "Room not found" errors
+    function setupClientListeners() {
+        if (!window.mpClient) return;
+        
+        window.mpClient.onError = (msg) => {
+            console.error("MP Error:", msg);
+            // Show error in red
+            setStatus(joinStatus, "❌ Error: " + (msg.message || msg), true);
+            
+            // Re-enable buttons if they were disabled
+            if (btnJoin) btnJoin.innerText = "Join Squad";
+            if (btnJoin) btnJoin.disabled = false;
+            if (btnCreate) btnCreate.innerText = "Initialize New Squad";
+            if (btnCreate) btnCreate.disabled = false;
+        };
+    }
+
+    // Call this once on load
+    setupClientListeners();
+
+    // Create Room Logic (Updated)
+    if (btnCreate) {
+        btnCreate.onclick = () => {
+            unlockAudio();
+            setupClientListeners(); // Ensure listener is active
+            
+            const name = (inpName.value || "Pilot").trim();
+            if (!window.mpClient) return setStatus(joinStatus, "Connection System Offline", true);
+
+            if (!window.mpClient.isConnected()) {
+                window.mpClient.connect();
+                setStatus(joinStatus, "Connecting...", false);
+                setTimeout(() => {
+                    if(window.mpClient.isConnected()) window.mpClient.createRoom(name);
+                    else setStatus(joinStatus, "Server Unreachable", true);
+                }, 800);
+                return;
+            }
+
+            localStorage.setItem("SP_MP_NAME", name);
+            window.mpClient.playerName = name;
+            __startLocked = false;
+            if(btnStart) btnStart.disabled = false;
+            
+            setStatus(joinStatus, "Initializing Lobby...");
+            window.mpClient.createRoom(name);
+        };
+    }
+
+    // Join Room Logic (Updated)
+    if (btnJoin) {
+        btnJoin.onclick = () => {
+            unlockAudio();
+            setupClientListeners(); // Ensure listener is active
+
+            const name = (inpName.value || "Pilot").trim();
+            const code = sanitizeCode(inpCode.value);
+            
+            if (!code || code.length !== 4) return setStatus(joinStatus, "Invalid Code (Must be 4 chars)", true);
+            if (!window.mpClient) return setStatus(joinStatus, "System Offline", true);
+            
+            // Disable button to prevent spamming
+            btnJoin.disabled = true;
+            btnJoin.innerText = "SEARCHING...";
+
+            if (!window.mpClient.isConnected()) {
+                window.mpClient.connect();
+                setStatus(joinStatus, "Connecting...", false);
+                setTimeout(() => {
+                    if(window.mpClient.isConnected()) {
+                        window.mpClient.joinRoom(code, name);
+                    } else {
+                        setStatus(joinStatus, "Server Unreachable", true);
+                        btnJoin.disabled = false;
+                        btnJoin.innerText = "JOIN SQUAD";
+                    }
+                }, 800);
+                return;
+            }
+
+            localStorage.setItem("SP_MP_NAME", name);
+            window.mpClient.playerName = name;
+            __startLocked = false;
+            if(btnStart) btnStart.disabled = false;
+            
+            setStatus(joinStatus, "Joining Squad...");
+            window.mpClient.joinRoom(code, name);
+        };
+    }
+
     // Create Room
     if (btnCreate) {
         btnCreate.onclick = () => {
