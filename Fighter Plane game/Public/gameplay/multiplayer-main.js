@@ -335,7 +335,7 @@ window.addEventListener("load", () => {
     game.animate = function () {
         requestAnimationFrame(game.animate);
 
-        // If paused (Lobby / Game Over), render static scene
+        // If paused, render static
         if (game.isPaused) {
             if (game.renderer?.domElement?.style.display !== "none") {
                 game.renderer.render(game.scene, game.camera);
@@ -353,24 +353,31 @@ window.addEventListener("load", () => {
                 // 1. Inputs Update
                 game.inputManager.update(dt);
 
-                // 2. MOBILE INPUTS SYNC
-                // Ensure mobile joystick maps to the correct keys
-                if (isMobile && window.mobileState) {
-                    // Reset mobile keys first
-                    game.inputManager.keys['KeyD'] = false;
-                    game.inputManager.keys['KeyA'] = false;
-                    game.inputManager.keys['KeyS'] = false;
-                    game.inputManager.keys['KeyW'] = false;
-
-                    // Apply joystick state
-                    if (window.mobileState.x > 0.3) game.inputManager.keys['KeyD'] = true;
-                    else if (window.mobileState.x < -0.3) game.inputManager.keys['KeyA'] = true;
+                // 2. MOBILE INPUTS (Non-Destructive)
+                // This updates "Mobile" keys without touching "Keyboard" keys.
+                // Both can work at the same time now.
+                if (window.mobileState) {
+                    const threshold = 0.15; // Increased Sensitivity (Lower number = easier to turn)
                     
-                    if (window.mobileState.y > 0.3) game.inputManager.keys['KeyS'] = true;
-                    else if (window.mobileState.y < -0.3) game.inputManager.keys['KeyW'] = true;
+                    // Reset Mobile Keys Frame by Frame
+                    game.inputManager.keys['MobileUp'] = false;
+                    game.inputManager.keys['MobileDown'] = false;
+                    game.inputManager.keys['MobileLeft'] = false;
+                    game.inputManager.keys['MobileRight'] = false;
+                    game.inputManager.keys['MobileFire'] = false;
+                    game.inputManager.keys['MobileBoost'] = false;
 
-                    if (window.mobileState.fire) game.inputManager.keys['Space'] = true; 
-                    if (window.mobileState.boost) game.inputManager.keys['ShiftLeft'] = true;
+                    // Apply Joystick (X Axis)
+                    if (window.mobileState.x > threshold) game.inputManager.keys['MobileRight'] = true;
+                    else if (window.mobileState.x < -threshold) game.inputManager.keys['MobileLeft'] = true;
+                    
+                    // Apply Joystick (Y Axis)
+                    if (window.mobileState.y > threshold) game.inputManager.keys['MobileDown'] = true;
+                    else if (window.mobileState.y < -threshold) game.inputManager.keys['MobileUp'] = true;
+
+                    // Apply Buttons
+                    if (window.mobileState.fire) game.inputManager.keys['MobileFire'] = true;
+                    if (window.mobileState.boost) game.inputManager.keys['MobileBoost'] = true;
                 }
 
                 game.playerController.update(dt);
@@ -424,7 +431,6 @@ window.addEventListener("load", () => {
                     else game.playerController.mesh.position.set(0, 400, 0);
                     if (getUI()) getUI().hideRespawn();
                 }
-                // Update scene even while respawning
                 mpState.update(dt);
                 game.renderer.render(game.scene, game.camera);
                 return;
