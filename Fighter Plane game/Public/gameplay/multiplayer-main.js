@@ -353,13 +353,11 @@ window.addEventListener("load", () => {
                 // 1. Inputs Update
                 game.inputManager.update(dt);
 
-                // 2. MOBILE INPUTS (Non-Destructive)
-                // This updates "Mobile" keys without touching "Keyboard" keys.
-                // Both can work at the same time now.
+                // 2. MOBILE INPUTS (Fail-Safe Logic)
                 if (window.mobileState) {
-                    const threshold = 0.15; // Increased Sensitivity
+                    const threshold = 0.15; 
                     
-                    // Reset Mobile Keys Frame by Frame
+                    // Reset ALL possible mobile/boost keys first
                     game.inputManager.keys['MobileUp'] = false;
                     game.inputManager.keys['MobileDown'] = false;
                     game.inputManager.keys['MobileLeft'] = false;
@@ -367,28 +365,28 @@ window.addEventListener("load", () => {
                     game.inputManager.keys['MobileFire'] = false;
                     game.inputManager.keys['MobileBoost'] = false;
                     
-                    // ✅ SAFETY: Also reset PC keys mapped to mobile to prevent stuck keys
-                    if (isMobile) {
-                        game.inputManager.keys['ShiftLeft'] = false;
-                        game.inputManager.keys['Space'] = false;
-                    }
+                    // ✅ Reset PC keys mapped to mobile (prevents sticking)
+                    game.inputManager.keys['ShiftLeft'] = false;
+                    game.inputManager.keys['Shift'] = false;
+                    game.inputManager.keys['Space'] = false;
 
-                    // Apply Joystick (X Axis)
+                    // Apply Joystick
                     if (window.mobileState.x > threshold) game.inputManager.keys['MobileRight'] = true;
                     else if (window.mobileState.x < -threshold) game.inputManager.keys['MobileLeft'] = true;
                     
-                    // Apply Joystick (Y Axis)
                     if (window.mobileState.y > threshold) game.inputManager.keys['MobileDown'] = true;
                     else if (window.mobileState.y < -threshold) game.inputManager.keys['MobileUp'] = true;
 
                     // Apply Buttons
                     if (window.mobileState.fire) {
                         game.inputManager.keys['MobileFire'] = true;
-                        game.inputManager.keys['Space'] = true; // ✅ Trigger PC Fire Key
+                        game.inputManager.keys['Space'] = true; 
                     }
                     if (window.mobileState.boost) {
+                        // ✅ FORCE ALL SHIFT KEYS to ensure detection
                         game.inputManager.keys['MobileBoost'] = true;
-                        game.inputManager.keys['ShiftLeft'] = true; // ✅ Trigger PC Boost Key
+                        game.inputManager.keys['ShiftLeft'] = true;
+                        game.inputManager.keys['Shift'] = true;
                     }
                 }
 
@@ -481,6 +479,7 @@ window.addEventListener("load", () => {
             console.error("⚠️ Game Loop Error:", err);
         }
     };
+    
     // START LOOP
     game.animate();
 });
