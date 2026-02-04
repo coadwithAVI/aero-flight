@@ -2,19 +2,15 @@
 // PATH: ui/mp-ui.js
 // ==========================================
 
-// Class definition for internal logic (if needed)
-class MPUI {
-  constructor() {
-    // Legacy support logic kept empty to avoid errors
-  }
-}
+// Legacy class stub to prevent errors
+class MPUI { constructor() {} }
 window.MPUI = MPUI;
 
 // ==========================================================
-// Multiplayer UI Controller (FINAL FIXED)
+// Multiplayer UI Controller (FINAL)
 // ==========================================================
 
-// Isko DOMContentLoaded ke andar dala taaki buttons load hone ke baad hi code chale
+// ✅ Run only after HTML is ready
 document.addEventListener("DOMContentLoaded", () => {
     
     console.log("🎮 UI Controller Loaded");
@@ -60,20 +56,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnReplay = el("btnReplay");
     const btnEndBack = el("btnEndBack");
 
-    // --- State Flags ---
+    // State
     let __startLocked = false;
     let __isGameRunning = false;
     let __matchEnded = false;
     let __winnerId = null;
-    let __endReason = "";
 
-    // --- Helper Functions ---
-    
+    // --- Helpers ---
     function unlockAudio() {
         if (window.game && window.game.sfx) window.game.sfx.init();
         if (window.game && window.game.procAudio) {
             window.game.procAudio.unlock();
-            // Agar game nahi chal raha, toh lobby music bajao
             if (!__isGameRunning) window.game.procAudio.playLobbyMusic();
         }
     }
@@ -97,51 +90,43 @@ document.addEventListener("DOMContentLoaded", () => {
         return (v === undefined || v === null) ? fallback : String(v); 
     }
 
-    // --- BUTTON EVENT LISTENERS (Ab ye pakka kaam karenge) ---
+    // --- EVENT LISTENERS ---
 
-    // 1. INPUT SANITIZATION
+    // Input Code Formatting
     if (inpCode) {
-        inpCode.addEventListener("input", () => { 
-            inpCode.value = sanitizeCode(inpCode.value); 
-        });
+        inpCode.addEventListener("input", () => { inpCode.value = sanitizeCode(inpCode.value); });
     }
 
-    // 2. ABORT MISSION (Back to Index)
+    // Abort / Back Buttons
     if (btnBack) {
-        btnBack.onclick = () => {
-            console.log("⬅ Aborting Mission...");
-            window.location.href = "./index.html";
-        };
+        btnBack.onclick = () => { window.location.href = "./index.html"; };
     }
-
     if (btnEndBack) {
-        btnEndBack.onclick = () => {
-            window.location.href = "./index.html";
-        };
+        btnEndBack.onclick = () => { window.location.href = "./index.html"; };
     }
 
-    // 3. CREATE SQUAD
+    // Create Room
     if (btnCreate) {
         btnCreate.onclick = () => {
             unlockAudio();
             const name = (inpName.value || "Pilot").trim();
             
-            // Check if Client is ready
-            if (!window.mpClient) {
-                return setStatus(joinStatus, "Connection System Loading...", true);
-            }
+            if (!window.mpClient) return setStatus(joinStatus, "Connection System Offline", true);
+
+            // Connect if not connected
             if (!window.mpClient.isConnected()) {
-                // Try connecting manually if not connected
                 window.mpClient.connect();
-                setStatus(joinStatus, "Connecting to Server...", false);
-                setTimeout(() => window.mpClient.createRoom(name), 1000);
+                setStatus(joinStatus, "Connecting...", false);
+                // Wait slightly for connection
+                setTimeout(() => {
+                    if(window.mpClient.isConnected()) window.mpClient.createRoom(name);
+                    else setStatus(joinStatus, "Server Unreachable", true);
+                }, 800);
                 return;
             }
 
-            // Save Name
             localStorage.setItem("SP_MP_NAME", name);
             window.mpClient.playerName = name;
-
             __startLocked = false;
             if(btnStart) btnStart.disabled = false;
             setStatus(joinStatus, "Initializing Lobby...");
@@ -149,40 +134,46 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
 
-    // 4. JOIN SQUAD
+    // Join Room
     if (btnJoin) {
         btnJoin.onclick = () => {
             unlockAudio();
             const name = (inpName.value || "Pilot").trim();
             const code = sanitizeCode(inpCode.value);
-
-            if (!code || code.length !== 4) return setStatus(joinStatus, "Invalid Access Code", true);
+            if (!code || code.length !== 4) return setStatus(joinStatus, "Invalid Code", true);
             
             if (!window.mpClient) return setStatus(joinStatus, "System Offline", true);
             
-            // Save Name
+            if (!window.mpClient.isConnected()) {
+                window.mpClient.connect();
+                setStatus(joinStatus, "Connecting...", false);
+                setTimeout(() => {
+                    if(window.mpClient.isConnected()) window.mpClient.joinRoom(code, name);
+                    else setStatus(joinStatus, "Server Unreachable", true);
+                }, 800);
+                return;
+            }
+
             localStorage.setItem("SP_MP_NAME", name);
             window.mpClient.playerName = name;
-
             __startLocked = false;
             if(btnStart) btnStart.disabled = false;
-            setStatus(joinStatus, "Connecting to Squad...");
+            setStatus(joinStatus, "Joining Squad...");
             window.mpClient.joinRoom(code, name);
         };
     }
 
-    // 5. LEAVE LOBBY
+    // Leave
     if (btnLeave) {
         btnLeave.onclick = () => window.location.reload();
     }
 
-    // 6. START GAME
+    // Start Game
     if (btnStart) {
         btnStart.onclick = () => {
             unlockAudio();
             if (__startLocked) return;
             if (!window.mpClient?.roomId) return;
-            
             __startLocked = true;
             btnStart.disabled = true;
             btnStart.innerText = "LAUNCHING...";
@@ -191,57 +182,51 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
 
-    // 7. REPLAY
+    // Replay
     if (btnReplay) {
         btnReplay.onclick = () => {
-            setStatus(endStatus, "Re-engaging systems...");
+            setStatus(endStatus, "Re-engaging...");
             setTimeout(() => window.location.reload(), 500);
         };
     }
 
-    // --- GAME LOGIC HELPERS ---
+    // --- LOGIC FUNCTIONS ---
 
     function _endMatch({ winnerId, reason }) {
         if (__matchEnded) return;
         __matchEnded = true;
         __winnerId = winnerId || null;
-        __endReason = reason || "";
         __isGameRunning = false;
         
-        // Pause Game Loop
         if (window.game) {
             window.game.isPaused = true; 
             window.game.isRunning = false;
+            // Handle Audio
+            if (window.game.procAudio) {
+                window.game.procAudio.stopMusic();
+                const myId = window.mpClient?.playerId;
+                if (myId && winnerId === myId) window.game.procAudio.victory();
+                else window.game.procAudio.defeat();
+            }
         }
 
-        // Audio Handling
-        if (window.game && window.game.procAudio) {
-            window.game.procAudio.stopMusic();
-            const myId = window.mpClient?.socket?.id;
-            const didWin = !!(__winnerId && myId && (__winnerId === myId));
-            if (didWin) window.game.procAudio.victory();
-            else window.game.procAudio.defeat();
-        }
-
-        const myId = window.mpClient?.socket?.id;
+        const myId = window.mpClient?.playerId;
         const didWin = !!(__winnerId && myId && (__winnerId === myId));
 
         if (endTitle) endTitle.innerText = didWin ? "VICTORY" : "DEFEAT";
         if (endSub) endSub.innerText = didWin ? "Mission Successful" : "Mission Failed";
 
         showOnly(screenEnd);
-        
-        // Hide HUD / Show BG
         if(topHUD) topHUD.classList.add("hidden");
         if(mpLobbyBG) mpLobbyBG.style.display = "block";
 
-        setStatus(endStatus, didWin ? ("✅ " + (_endReason || "You won")) : ("❌ " + (_endReason || "You lost")), !didWin);
+        setStatus(endStatus, didWin ? ("✅ " + (reason || "You won")) : ("❌ " + (reason || "You lost")), !didWin);
     }
 
     function _renderEndTable(snapshotPlayers = []) {
         if(!statsBody) return;
         statsBody.innerHTML = "";
-        const myId = window.mpClient?.socket?.id;
+        const myId = window.mpClient?.playerId;
         const list = [...snapshotPlayers].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
         
         for (const p of list) {
@@ -258,35 +243,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // ==========================================================
-    // UI BRIDGE (Connected to multiplayer-main.js)
+    // UI BRIDGE (Connected to Main Game)
     // ==========================================================
     window.mpUIBridge = {
-        
         onConnected() {
-            setStatus(joinStatus, "✅ Uplink Established. Ready.");
+            setStatus(joinStatus, "✅ Uplink Established.");
             __isGameRunning = false;
-            __matchEnded = false;
-            __winnerId = null;
         },
 
         onDisconnected(reason) {
-            setStatus(joinStatus, "❌ Uplink Lost: " + reason, true);
+            setStatus(joinStatus, "❌ Disconnected: " + reason, true);
             __startLocked = false;
             __isGameRunning = false;
-            __matchEnded = false;
             if(btnStart) { btnStart.disabled = false; btnStart.innerText = "INITIATE LAUNCH"; }
             showOnly(screenJoin);
-            
             if(topHUD) topHUD.classList.add("hidden");
             if(mpLobbyBG) mpLobbyBG.style.display = "block";
         },
 
         onLobbyUpdate(msg) {
             if (__isGameRunning) return;
-            
             showOnly(screenLobby);
             
-            // HUD & BG
             if(topHUD) topHUD.classList.remove("hidden");
             if(mpLobbyBG) mpLobbyBG.style.display = "block";
             
@@ -311,7 +289,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 btnStart.style.display = isHost ? "block" : "none";
                 if(isHost) btnStart.disabled = false; 
             }
-            setStatus(lobbyStatus, isHost ? "You are Squad Leader. Launch when ready." : "Awaiting Launch Command.");
+            setStatus(lobbyStatus, isHost ? "Launch when ready." : "Waiting for Host...");
         },
 
         onGameStart(msg) {
@@ -319,34 +297,29 @@ document.addEventListener("DOMContentLoaded", () => {
             __matchEnded = false;
             __winnerId = null;
 
-            // Hide Menus
             screenJoin?.classList.add("hidden");
             screenLobby?.classList.add("hidden");
             screenEnd?.classList.add("hidden");
             if(respawnOverlay) respawnOverlay.classList.add("hidden");
             
-            // Show HUD / Hide BG
             if(topHUD) topHUD.classList.remove("hidden");
             if(mpLobbyBG) mpLobbyBG.style.display = "none";
-            if(hudInfo) hudInfo.innerText = "STATUS: ENGAGED";
+            if(hudInfo) hudInfo.innerText = "STATUS: COMBAT";
 
-            // ✅ CRITICAL FIX: CONTROLS NOT WORKING (Input Focus Issue)
-            // Name input se focus hatana padega taaki 'W,A,S,D' game me kaam kare
+            // ✅ CRITICAL: Fix Controls by blurring inputs
             if(inpName) inpName.blur();
             if(inpCode) inpCode.blur();
-            window.focus(); // Browser window ko wapis focus karo
+            window.focus();
 
-            setStatus(lobbyStatus, "Engaged.");
+            setStatus(lobbyStatus, "Game Started.");
         },
 
         onGameOver(msg) {
             const winnerId = msg?.winnerId || null;
-            const reason = msg?.reason || "Match ended";
+            const reason = msg?.reason || "Game Over";
             if (Array.isArray(msg?.players)) _renderEndTable(msg.players);
             _endMatch({ winnerId, reason });
         },
-
-        setEndStats(players) { if (Array.isArray(players)) _renderEndTable(players); },
 
         showRespawn(seconds) {
             if (respawnOverlay) respawnOverlay.classList.remove("hidden");
@@ -360,11 +333,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
-    // Initial State
+    // Initial
     showOnly(screenJoin);
-    
-    // Auto-fill name if available
-    const savedName = localStorage.getItem("SP_MP_NAME");
-    if (savedName && inpName) inpName.value = savedName;
-
+    if (localStorage.getItem("SP_MP_NAME") && inpName) {
+        inpName.value = localStorage.getItem("SP_MP_NAME");
+    }
 });
