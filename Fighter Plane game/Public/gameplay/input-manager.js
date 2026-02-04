@@ -67,11 +67,16 @@ class InputManager {
 
         switch (action) {
             // --- MOVEMENT ---
-            // Now checks for "Mobile..." keys separately. No conflict with Keyboard.
             case "moveForward":  return isPressed("KeyW", "ArrowUp", "w", "MobileUp");
             case "moveBackward": return isPressed("KeyS", "ArrowDown", "s", "MobileDown");
+            
+            // ✅ FIX: Added logic for "move" AND "roll" so inputs work for both
             case "moveLeft":     return isPressed("KeyA", "ArrowLeft", "a", "MobileLeft");
             case "moveRight":    return isPressed("KeyD", "ArrowRight", "d", "MobileRight");
+
+            // ✅ CRITICAL FIX: Mapping "roll" actions to the same keys
+            case "rollLeft":     return isPressed("KeyA", "ArrowLeft", "a", "MobileLeft");
+            case "rollRight":    return isPressed("KeyD", "ArrowRight", "d", "MobileRight");
 
             // --- BOOST ---
             case "boost":        return isPressed("ShiftLeft", "ShiftRight", "MobileBoost");
@@ -80,8 +85,6 @@ class InputManager {
             case "fire":         return !!(this.mouse.isDown || isPressed("Space", "MobileFire"));
 
             // --- PITCH (Flight Standard: S=Up, W=Down) ---
-            // Joystick Down (MobileDown) -> Nose Up
-            // Joystick Up (MobileUp) -> Nose Down
             case "pitchUp":      return isPressed("KeyS", "ArrowDown", "s", "MobileDown");
             case "pitchDown":    return isPressed("KeyW", "ArrowUp", "w", "MobileUp"); 
 
