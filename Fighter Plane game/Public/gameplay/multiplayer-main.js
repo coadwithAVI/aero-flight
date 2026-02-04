@@ -500,4 +500,7 @@ window.addEventListener("load", () => {
             console.error("⚠️ Game Loop Error:", err);
         }
     };
+
+    // ✅ IMPORTANT: START THE LOOP
+    game.animate();
 });
