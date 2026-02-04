@@ -329,7 +329,7 @@ window.addEventListener("load", () => {
         }
     }
 
-// ------------------------------------------------------------
+    // ------------------------------------------------------------
     // 8. GAME LOOP (ANIMATE)
     // ------------------------------------------------------------
     game.animate = function () {
@@ -357,7 +357,7 @@ window.addEventListener("load", () => {
                 // This updates "Mobile" keys without touching "Keyboard" keys.
                 // Both can work at the same time now.
                 if (window.mobileState) {
-                    const threshold = 0.15; // Increased Sensitivity (Lower number = easier to turn)
+                    const threshold = 0.15; // Increased Sensitivity
                     
                     // Reset Mobile Keys Frame by Frame
                     game.inputManager.keys['MobileUp'] = false;
@@ -366,6 +366,12 @@ window.addEventListener("load", () => {
                     game.inputManager.keys['MobileRight'] = false;
                     game.inputManager.keys['MobileFire'] = false;
                     game.inputManager.keys['MobileBoost'] = false;
+                    
+                    // ✅ SAFETY: Also reset PC keys mapped to mobile to prevent stuck keys
+                    if (isMobile) {
+                        game.inputManager.keys['ShiftLeft'] = false;
+                        game.inputManager.keys['Space'] = false;
+                    }
 
                     // Apply Joystick (X Axis)
                     if (window.mobileState.x > threshold) game.inputManager.keys['MobileRight'] = true;
@@ -376,8 +382,14 @@ window.addEventListener("load", () => {
                     else if (window.mobileState.y < -threshold) game.inputManager.keys['MobileUp'] = true;
 
                     // Apply Buttons
-                    if (window.mobileState.fire) game.inputManager.keys['MobileFire'] = true;
-                    if (window.mobileState.boost) game.inputManager.keys['MobileBoost'] = true;
+                    if (window.mobileState.fire) {
+                        game.inputManager.keys['MobileFire'] = true;
+                        game.inputManager.keys['Space'] = true; // ✅ Trigger PC Fire Key
+                    }
+                    if (window.mobileState.boost) {
+                        game.inputManager.keys['MobileBoost'] = true;
+                        game.inputManager.keys['ShiftLeft'] = true; // ✅ Trigger PC Boost Key
+                    }
                 }
 
                 game.playerController.update(dt);
@@ -469,7 +481,6 @@ window.addEventListener("load", () => {
             console.error("⚠️ Game Loop Error:", err);
         }
     };
-
     // START LOOP
     game.animate();
 });
