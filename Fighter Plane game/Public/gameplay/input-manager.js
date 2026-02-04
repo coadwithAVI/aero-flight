@@ -62,29 +62,27 @@ class InputManager {
     getAction(action) {
         if (!this.enabled) return false;
         
-        // Helper to check Keyboard OR Mobile inputs
         const isPressed = (...codes) => codes.some(c => this.keys[c]);
 
         switch (action) {
             // --- MOVEMENT ---
             case "moveForward":  return isPressed("KeyW", "ArrowUp", "w", "MobileUp");
             case "moveBackward": return isPressed("KeyS", "ArrowDown", "s", "MobileDown");
-            
-            // ✅ FIX: Added logic for "move" AND "roll" so inputs work for both
             case "moveLeft":     return isPressed("KeyA", "ArrowLeft", "a", "MobileLeft");
             case "moveRight":    return isPressed("KeyD", "ArrowRight", "d", "MobileRight");
 
-            // ✅ CRITICAL FIX: Mapping "roll" actions to the same keys
+            // --- ROLL (For Bank-to-Turn) ---
             case "rollLeft":     return isPressed("KeyA", "ArrowLeft", "a", "MobileLeft");
             case "rollRight":    return isPressed("KeyD", "ArrowRight", "d", "MobileRight");
 
-            // --- BOOST ---
-            case "boost":        return isPressed("ShiftLeft", "ShiftRight", "MobileBoost");
+            // --- BOOST (Updated) ---
+            // ✅ FIX: Added "Shift" to the list. Now checks ShiftLeft, MobileBoost, AND generic Shift.
+            case "boost":        return isPressed("ShiftLeft", "ShiftRight", "MobileBoost", "Shift");
 
             // --- FIRE ---
             case "fire":         return !!(this.mouse.isDown || isPressed("Space", "MobileFire"));
 
-            // --- PITCH (Flight Standard: S=Up, W=Down) ---
+            // --- PITCH ---
             case "pitchUp":      return isPressed("KeyS", "ArrowDown", "s", "MobileDown");
             case "pitchDown":    return isPressed("KeyW", "ArrowUp", "w", "MobileUp"); 
 
