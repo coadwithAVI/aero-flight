@@ -10,9 +10,9 @@ class MPClient {
     // socket.io instance
     this.socket = null;
 
-    // state
-    this.isConnected = false;
-    this.isInRoom = false;
+    // State Variables (Renamed to avoid collision with methods)
+    this.connected = false; // Changed from isConnected to connected
+    this.inRoom = false;    // Changed from isInRoom to inRoom
 
     this.playerId = null; // socket.id
     this.roomId = null;
@@ -30,7 +30,7 @@ class MPClient {
     this.onPlayerLeft = opts.onPlayerLeft ?? (() => {});
     this.onGameStart = opts.onGameStart ?? (() => {});
     this.onState = opts.onState ?? (() => {});
-    this.onEvent = opts.onEvent ?? (() => {}); // <-- Ye game ko batata hai damage hua
+    this.onEvent = opts.onEvent ?? (() => {}); 
     this.onDisconnect = opts.onDisconnect ?? (() => {});
     this.onConnect = opts.onConnect ?? (() => {});
     this.onError = opts.onError ?? ((e) => console.error(e));
@@ -75,7 +75,7 @@ class MPClient {
     // Connection
     // -------------------------
     s.on("connect", () => {
-      this.isConnected = true;
+      this.connected = true;
       this.playerId = s.id;
       this.log("Connected:", this.playerId);
       try { this.onConnect(); } catch (e) { console.error("onConnect crash:", e); }
@@ -87,8 +87,8 @@ class MPClient {
     });
 
     s.on("disconnect", (reason) => {
-      this.isConnected = false;
-      this.isInRoom = false;
+      this.connected = false;
+      this.inRoom = false;
       this.log("Disconnected:", reason);
       try { this.onDisconnect(reason); } catch (e) { console.error("onDisconnect crash:", e); }
     });
@@ -107,20 +107,20 @@ class MPClient {
 
     s.on("mp_room_created", (msg) => {
       this.roomId = msg?.roomId ?? this.roomId;
-      this.isInRoom = true;
+      this.inRoom = true;
       this._lastRoomToRejoin = this.roomId;
       try { this.onRoomCreated(msg); } catch (e) { console.error("onRoomCreated crash:", e); }
     });
 
     s.on("mp_room_joined", (msg) => {
       this.roomId = msg?.roomId ?? this.roomId;
-      this.isInRoom = true;
+      this.inRoom = true;
       this._lastRoomToRejoin = this.roomId;
       try { this.onRoomJoin(msg); } catch (e) { console.error("onRoomJoin crash:", e); }
     });
 
     s.on("mp_room_left", (msg) => {
-      this.isInRoom = false;
+      this.inRoom = false;
       this.roomId = null;
       try { this.onRoomLeft(msg); } catch (e) { console.error("onRoomLeft crash:", e); }
     });
@@ -164,24 +164,15 @@ class MPClient {
     });
 
     // -------------------------
-    // ✅ CRITICAL FIX: HIT & EVENTS
+    // Event / Hit Handling
     // -------------------------
     s.on("mp_event", (evt) => {
       try { this.onEvent(evt); } catch (e) { console.error("onEvent crash:", e); }
     });
 
-    // Yeh wo part hai jo MISSING tha:
     s.on("mp_hit", (msg) => {
-      // Server se hit aaya, hum ise 'HIT' event banakar game ko bhejenge
-      const evt = {
-         type: "HIT",
-         msg: msg // { targetId, damage, bulletId }
-      };
-      try { 
-          this.onEvent(evt); 
-      } catch (e) { 
-          console.error("onHit crash:", e); 
-      }
+      const evt = { type: "HIT", msg: msg };
+      try { this.onEvent(evt); } catch (e) { console.error("onHit crash:", e); }
     });
 
     s.on("mp_score_update", (msg) => {
@@ -201,16 +192,21 @@ class MPClient {
   // SOCKET ACTIONS
   // -------------------------
 
-  isConnected() { // Helper for other classes
-      return !!(this.socket && this.isConnected);
+  // ✅ CRITICAL FIX: This is now a function, and the property is 'this.connected'
+  isConnected() { 
+      return !!(this.socket && this.connected);
+  }
+
+  isInRoom() {
+      return !!this.inRoom;
   }
 
   disconnect() {
     if (!this.socket) return;
     try { this.socket.disconnect(); } catch (e) {}
     this.socket = null;
-    this.isConnected = false;
-    this.isInRoom = false;
+    this.connected = false;
+    this.inRoom = false;
     this.roomId = null;
   }
 
@@ -250,30 +246,33 @@ class MPClient {
   }
 
   sendTransform(p, q, roomId = null) {
-    if (!this.socket || !this.isInRoom) return;
+    if (!this.socket || !this.inRoom) return;
     const rid = (roomId || this.roomId);
     if (!rid) return;
-    this.socket.emit("mp_transform", { roomId: rid, p, q });
+    // Volatile for performance
+    if(this.socket.volatile) {
+        this.socket.volatile.emit("mp_transform", { roomId: rid, p, q });
+    } else {
+        this.socket.emit("mp_transform", { roomId: rid, p, q });
+    }
   }
 
   fire(p = null, q = null, roomId = null) {
-    if (!this.socket || !this.isInRoom) return;
+    if (!this.socket || !this.inRoom) return;
     const rid = (roomId || this.roomId);
     if (!rid) return;
     this.socket.emit("mp_fire", { roomId: rid, p, q });
   }
 
   reportHit(targetId, bulletId = null, roomId = null) {
-    // Note: Usually hit detection logic calls this directly via socket.emit('mp_hit')
-    // but we keep this helper for consistency
-    if (!this.socket || !this.isInRoom) return;
+    if (!this.socket || !this.inRoom) return;
     const rid = (roomId || this.roomId);
     if (!rid) return;
     this.socket.emit("mp_hit", { roomId: rid, targetId, bulletId });
   }
 
   claimRing(ringIndex, roomId = null) {
-    if (!this.socket || !this.isInRoom) return;
+    if (!this.socket || !this.inRoom) return;
     const rid = (roomId || this.roomId);
     if (!rid) return;
     this.socket.emit("mp_claim_ring", { roomId: rid, ringIndex });
