@@ -9,8 +9,8 @@ class CameraSystem {
         this.target = null;
 
         // Camera Settings
-        this.followDistance = 30; // plane se kitna door (peeche)
-        this.followHeight = 10;   // plane se kitna upar
+        this.followDistance = 60; // plane se kitna door (peeche)
+        this.followHeight = 25;   // plane se kitna upar
         this.smoothSpeed = 0.1;   // reserved (future tuning)
 
         // ✅ Reusable vectors (performance)
@@ -68,3 +68,4 @@ class CameraSystem {
 }
 
 window.CameraSystem = CameraSystem;
+
