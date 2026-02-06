@@ -117,16 +117,17 @@ class MobileControls {
         }, { passive: false });
 
         // ----------------------------------------------------------
-        // Events: BOOST
+        // Events: BOOST (Updated to use SPACE)
         // ----------------------------------------------------------
         this.boostBtn.addEventListener("touchstart", (e) => {
             e.preventDefault();
-            this.input.keys.Shift = true;
+            // ✅ FIX: Mobile Boost button ab Space key press karega
+            this.input.keys.Space = true;
         }, { passive: false });
 
         this.boostBtn.addEventListener("touchend", (e) => {
             e.preventDefault();
-            this.input.keys.Shift = false;
+            this.input.keys.Space = false;
         }, { passive: false });
 
         // ✅ extra safety: prevent stuck buttons if touch is cancelled
@@ -171,7 +172,8 @@ class MobileControls {
     releaseActions() {
         if (!this.input) return;
         if (this.input.mouse) this.input.mouse.isDown = false;
-        if (this.input.keys) this.input.keys.Shift = false;
+        // ✅ FIX: Space ko release karo (Shift ki jagah)
+        if (this.input.keys) this.input.keys.Space = false;
     }
 
     // ----------------------------------------------------------
