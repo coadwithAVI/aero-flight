@@ -75,12 +75,13 @@ class InputManager {
             case "rollLeft":     return isPressed("KeyA", "ArrowLeft", "a", "MobileLeft");
             case "rollRight":    return isPressed("KeyD", "ArrowRight", "d", "MobileRight");
 
-            // --- BOOST (Updated) ---
-            // ✅ FIX: Added "Shift" to the list. Now checks ShiftLeft, MobileBoost, AND generic Shift.
-            case "boost":        return isPressed("ShiftLeft", "ShiftRight", "MobileBoost", "Shift");
+            // --- BOOST (Updated: Space Bar) ---
+            // ✅ FIX: Ab Space bar se boost hoga.
+            case "boost":        return isPressed("Space", "MobileBoost");
 
-            // --- FIRE ---
-            case "fire":         return !!(this.mouse.isDown || isPressed("Space", "MobileFire"));
+            // --- FIRE (Updated: Shift Key) ---
+            // ✅ FIX: Ab kisi bhi Shift key se fire hoga (ya Mouse click).
+            case "fire":         return !!(this.mouse.isDown || isPressed("ShiftLeft", "ShiftRight", "Shift", "MobileFire"));
 
             // --- PITCH ---
             case "pitchUp":      return isPressed("KeyS", "ArrowDown", "s", "MobileDown");
